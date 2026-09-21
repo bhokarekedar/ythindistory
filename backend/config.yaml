@@ -7,13 +7,13 @@ groq:
   translation_model: qwen/qwen3.8-27b
 
 translation:
-  batch_size: 20
+  batch_size: 10
 
 tts:
-  engine: sarvam
+  engine: google
 
-sarvam:
-  speaker: shubh
+google_tts:
+  speaker: hi-IN-Neural2-C
   pace: 1.0
 
 transcription:

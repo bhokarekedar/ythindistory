@@ -1,39 +1,45 @@
 import os
 import re
-import base64
-from typing import Optional
-from sarvamai import SarvamAI
+from google.cloud import texttospeech
 
-class SarvamTTS:
-    def __init__(self, output_dir: str = "temp/segments", speaker: str = "shubh"):
+class GoogleTTS:
+    def __init__(self, output_dir: str = "temp/segments", voice_name: str = "hi-IN-Neural2-C"):
         self.output_dir = output_dir
-        self.speaker = speaker
-        self.client = SarvamAI(api_subscription_key=os.environ.get("SARVAM_TTS_API_KEY"))
+        self.voice_name = voice_name
+        
+        # Authenticate using API Key
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is missing from environment.")
+            
+        self.client = texttospeech.TextToSpeechClient(client_options={"api_key": api_key})
         os.makedirs(self.output_dir, exist_ok=True)
 
     def generate_audio(self, segment_id: int, text: str) -> str:
         """
-        Generates TTS audio for a specific segment using Sarvam AI.
+        Generates TTS audio for a specific segment using Google Cloud TTS.
         """
         output_path = os.path.join(self.output_dir, f"{segment_id:04d}.wav")
         text = re.sub(r"\s+", " ", text).strip()
         
-        # Convert text to speech exactly matching Sarvam 0.1.31a4 SDK spec
-        response = self.client.text_to_speech.convert(
-            model="bulbul:v3",
-            text=text,
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+        
+        voice = texttospeech.VoiceSelectionParams(
             language_code="hi-IN",
-            speaker=self.speaker,
+            name=self.voice_name
         )
         
-        # In this SDK version, the response object directly holds the audios array.
-        if not response.audios or len(response.audios) == 0:
-            raise RuntimeError(f"Sarvam TTS failed to return audio for segment {segment_id}")
-            
-        audio_b64 = response.audios[0]
-        audio_bytes = base64.b64decode(audio_b64)
+        # Output uncompressed PCM 16-bit to avoid re-encoding loss
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+            sample_rate_hertz=16000
+        )
         
-        with open(output_path, "wb") as f:
-            f.write(audio_bytes)
+        response = self.client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+        
+        with open(output_path, "wb") as out:
+            out.write(response.audio_content)
             
         return output_path

@@ -24,68 +24,126 @@ class AudioSynchronizer:
             rate = f.getframerate()
             return frames / float(rate)
 
-    def process_segment(self, audio_path: str, target_duration: float, output_path: str) -> bool:
-        """
-        Adjusts the duration of the audio to match the target duration.
-        Returns True if successful, False if the audio is too long and requires a rewrite.
-        """
-        duration = self.get_audio_duration(audio_path)
-        
-        if duration <= target_duration:
-            # Pad with silence if it's shorter
-            # apad pads the audio stream with silence
-            stream = ffmpeg.input(audio_path)
-            stream = ffmpeg.filter(stream, 'apad', whole_dur=f"{target_duration}")
-            stream = ffmpeg.output(stream, output_path, acodec='pcm_s16le', ac=1, ar='16k', t=target_duration)
-            ffmpeg.run(stream, quiet=True, overwrite_output=True)
-            return True
-            
-        elif duration <= target_duration * self.rewrite_threshold:
-            # Adjust speed if it's slightly longer
-            speed_factor = duration / target_duration
-            stream = ffmpeg.input(audio_path)
-            stream = ffmpeg.filter(stream, 'atempo', speed_factor)
-            stream = ffmpeg.output(stream, output_path, acodec='pcm_s16le', ac=1, ar='16k')
-            ffmpeg.run(stream, quiet=True, overwrite_output=True)
-            return True
-            
-        else:
-            # Too long, requires LLM rewrite
-            return False
+    # Audio stretching is no longer used. We dynamically retime the video instead.
 
-    def build_timeline(self, segments: list, original_video_path: str, output_path: str):
+    def build_timeline(self, segments: list, original_video_path: str, output_path: str, job_dir: str = "temp"):
         """
-        Mixes all aligned audio segments onto the final video and prepends intro if exists.
-        segments is a list of dicts: {"start": float, "audio_path": str}
+        Dynamically retimes the video by slicing it into chunks, altering speed to match audio, and concatenating.
         """
-        inputs = [ffmpeg.input(original_video_path).video]
-        audio_inputs = []
+        chunks_dir = os.path.join(job_dir, "video_chunks")
+        os.makedirs(chunks_dir, exist_ok=True)
         
+        concat_list_path = os.path.join(chunks_dir, "concat.txt")
+        concat_lines = []
+        
+        current_time = 0.0
+        total_duration = self.get_video_duration(original_video_path)
+        
+        chunk_idx = 0
+        
+        # 1. Generate Video Chunks
         for seg in segments:
-            audio_in = ffmpeg.input(seg["audio_path"])
-            delay_ms = int(seg["start"] * 1000)
-            delayed_audio = ffmpeg.filter(audio_in, 'adelay', f"{delay_ms}|{delay_ms}")
-            audio_inputs.append(delayed_audio)
+            # Handle Gap
+            if seg["start"] > current_time:
+                gap_dur = seg["start"] - current_time
+                if gap_dur > 0.1:
+                    chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
+                    if not os.path.exists(chunk_path):
+                        v = ffmpeg.input(original_video_path, ss=current_time, t=gap_dur).video
+                        a = ffmpeg.input(original_video_path, ss=current_time, t=gap_dur).audio
+                        
+                        v = v.filter('scale', 1280, 720).filter('setsar', 1).filter('fps', fps=30, round='near').filter('format', 'yuv420p')
+                        a = a.filter('aresample', 48000)
+                        
+                        out = ffmpeg.output(v, a, chunk_path, vcodec='libx264', acodec='aac', ac=2, ar=48000)
+                        try:
+                            ffmpeg.run(out, quiet=True, overwrite_output=True)
+                        except ffmpeg.Error as e:
+                            print("FFmpeg Error (gap):", e.stderr.decode('utf8') if e.stderr else str(e))
+                            raise e
+                            
+                    concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
+                    chunk_idx += 1
+                    
+            # Handle Segment
+            orig_dur = seg["end"] - seg["start"]
+            if orig_dur <= 0.1:
+                orig_dur = 0.1
+                
+            hindi_dur = self.get_audio_duration(seg["audio_path"])
             
-        if audio_inputs:
-            mixed_audio = ffmpeg.filter(audio_inputs, 'amix', inputs=len(audio_inputs), normalize=0)
-        else:
-            mixed_audio = ffmpeg.input(original_video_path).audio
+            chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_seg.mp4")
+            if not os.path.exists(chunk_path):
+                speed_factor = orig_dur / hindi_dur
+                
+                v = ffmpeg.input(original_video_path, ss=seg["start"], t=orig_dur).video
+                a = ffmpeg.input(seg["audio_path"]).audio
+                
+                pts_factor = 1.0 / speed_factor
+                v = v.filter('setpts', f"{pts_factor}*PTS")
+                v = v.filter('scale', 1280, 720).filter('setsar', 1).filter('fps', fps=30, round='near').filter('format', 'yuv420p')
+                a = a.filter('aresample', 48000)
+                
+                out = ffmpeg.output(v, a, chunk_path, vcodec='libx264', acodec='aac', ac=2, ar=48000)
+                try:
+                    ffmpeg.run(out, quiet=True, overwrite_output=True)
+                except ffmpeg.Error as e:
+                    print("FFmpeg Error (seg):", e.stderr.decode('utf8') if e.stderr else str(e))
+                    raise e
+                    
+            concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
+            chunk_idx += 1
+            current_time = seg["end"]
             
+        # Handle Final Gap
+        if current_time < total_duration:
+            gap_dur = total_duration - current_time
+            if gap_dur > 0.1:
+                chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
+                if not os.path.exists(chunk_path):
+                    v = ffmpeg.input(original_video_path, ss=current_time, t=gap_dur).video
+                    a = ffmpeg.input(original_video_path, ss=current_time, t=gap_dur).audio
+                    
+                    v = v.filter('scale', 1280, 720).filter('setsar', 1).filter('fps', fps=30, round='near').filter('format', 'yuv420p')
+                    a = a.filter('aresample', 48000)
+                    
+                    out = ffmpeg.output(v, a, chunk_path, vcodec='libx264', acodec='aac', ac=2, ar=48000)
+                    try:
+                        ffmpeg.run(out, quiet=True, overwrite_output=True)
+                    except ffmpeg.Error as e:
+                        print("FFmpeg Error (final gap):", e.stderr.decode('utf8') if e.stderr else str(e))
+                        raise e
+                        
+                concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
+                
+        # 2. Concat Chunks
+        with open(concat_list_path, "w") as f:
+            f.write("\n".join(concat_lines))
+            
+        mixed_video_path = os.path.join(job_dir, "mixed_temp.mp4")
+        if not os.path.exists(mixed_video_path):
+            try:
+                out = ffmpeg.input(concat_list_path, format='concat', safe=0)
+                out = ffmpeg.output(out, mixed_video_path, c='copy')
+                ffmpeg.run(out, quiet=True, overwrite_output=True)
+            except ffmpeg.Error as e:
+                err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
+                print(f"FFmpeg Error in concat:\n{err_msg}")
+                raise e
+                
+        # 3. Intro Crossfade Logic
         intro_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro.mp4"
-        
         if os.path.exists(intro_path):
             print("Prepending intro video with crossfade...")
             intro = ffmpeg.input(intro_path)
-            # Scale both to 1280x720 to prevent concat errors due to resolution mismatch
-            intro_v = intro.video.filter('scale', 1280, 720).filter('setsar', 1)
-            intro_a = intro.audio
+            intro_v = intro.video.filter('scale', 1280, 720).filter('setsar', 1).filter('fps', fps=30, round='near').filter('format', 'yuv420p').filter('settb', '1/30')
+            intro_a = intro.audio.filter('aresample', 48000)
             
-            main_v = inputs[0].filter('scale', 1280, 720).filter('setsar', 1)
-            main_a = mixed_audio
+            main = ffmpeg.input(mixed_video_path)
+            main_v = main.video.filter('settb', '1/30')
+            main_a = main.audio
             
-            # Crossfade logic
-            fade_duration = 1.0 # 1 second crossfade
+            fade_duration = 1.0
             intro_duration = self.get_video_duration(intro_path)
             offset = max(0, intro_duration - fade_duration)
             
@@ -93,7 +151,12 @@ class AudioSynchronizer:
             joined_a = ffmpeg.filter([intro_a, main_a], 'acrossfade', d=fade_duration)
             
             out = ffmpeg.output(joined_v, joined_a, output_path, vcodec='libx264', acodec='aac')
+            try:
+                ffmpeg.run(out, quiet=True, overwrite_output=True)
+            except ffmpeg.Error as e:
+                print("FFmpeg Error in crossfade:", e.stderr.decode('utf8') if e.stderr else str(e))
+                raise e
         else:
-            out = ffmpeg.output(inputs[0], mixed_audio, output_path, vcodec='copy', acodec='aac')
-            
-        ffmpeg.run(out, quiet=True, overwrite_output=True)
+            # No intro, just copy
+            out = ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c='copy')
+            ffmpeg.run(out, quiet=True, overwrite_output=True)
