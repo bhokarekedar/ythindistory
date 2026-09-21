@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+yt-dlp
+ffmpeg-python
+pyyaml
+tqdm
+pydantic
+python-multipart
+python-dotenv
+groq
+httpx

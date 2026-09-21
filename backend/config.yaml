@@ -1,0 +1,25 @@
+llm:
+  primary_provider: groq
+  fallback_provider: none
+
+groq:
+  transcription_model: whisper-large-v3-turbo
+  translation_model: qwen/qwen3.8-27b
+
+translation:
+  batch_size: 20
+
+transcription:
+  chunk_minutes: 10
+
+tts:
+  engine: piper
+  language: hi
+
+sync:
+  max_retries: 3
+  max_speed_change: 0.15
+  rewrite_threshold: 1.15
+
+storage:
+  cleanup_temp: true
