@@ -9,6 +9,13 @@ groq:
 translation:
   batch_size: 20
 
+tts:
+  engine: sarvam
+
+sarvam:
+  speaker: shubh
+  pace: 1.0
+
 transcription:
   chunk_minutes: 10
 

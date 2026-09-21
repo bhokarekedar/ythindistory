@@ -14,7 +14,7 @@ from core.downloader import YouTubeDownloader
 from core.audio_extractor import AudioExtractor
 from core.transcriber import Transcriber
 from core.translator import HindiTranslator
-from core.tts import PiperTTS
+from core.tts import SarvamTTS
 from core.sync import AudioSynchronizer
 
 app = FastAPI(title="Movie Recap Automation API")
@@ -86,8 +86,11 @@ def process_pipeline(job_id: str, url: str):
         print(f"[JOB {job_id}] Translation complete. JSON stored at: {hindi_transcript_path}")
         
         job_status[job_id] = "Generating Hindi voice..."
-        print(f"\n[JOB {job_id}] Step 5: Generating Hindi Voice via Piper TTS...")
-        tts = PiperTTS(output_dir=f"temp/{job_id}/segments")
+        print(f"\n[JOB {job_id}] Step 5: Generating Hindi Voice via Sarvam TTS...")
+        
+        speaker = config.get("sarvam", {}).get("speaker", "shubh")
+        tts = SarvamTTS(output_dir=f"temp/{job_id}/segments", speaker=speaker)
+        
         sync = AudioSynchronizer(
             max_speed_change=config.get("sync", {}).get("max_speed_change", 0.15),
             rewrite_threshold=config.get("sync", {}).get("rewrite_threshold", 1.15)
