@@ -28,7 +28,8 @@ Rules:
 5. Keep sentences reasonably short.
 6. Do not add introductions, conclusions, or commentary.
 7. Return ONLY the requested Hindi translations for the current segments.
-8. Preserve the segment IDs exactly."""
+8. Preserve the segment IDs exactly.
+9. If the speaker mentions their channel name, replace it with 'Movie Explained Hindi'. If they promote personal items, other channels, or social media (e.g., 'subscribe to my second channel', 'follow my instagram'), DO NOT translate it directly. Instead, replace it with a generic viewer engagement line (e.g., 'अगर वीडियो पसंद आ रहा है तो लाइक जरूर करें' or 'कमेंट करके अपनी राय दें') that fits naturally and has a similar length to maintain audio sync."""
 
     def _execute_translation(self, segments, context: str) -> list:
         for provider in self.providers:
