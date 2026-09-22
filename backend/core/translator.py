@@ -40,7 +40,8 @@ Rules:
 10. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. For example: 'मार देती है' is correct. 'मार, देती है' is WRONG. Only use a period (.) to end a complete sentence.
 11. Do NOT add any punctuation other than a single period (.) at the end of a sentence. No commas, no semicolons, no colons, no dashes, no ellipses.
 12. If the speaker mentions their channel name, replace it with 'Movie Explained Hindi'. If they promote personal items or social media, replace with a generic engagement line like 'अगर वीडियो पसंद आ रहा है तो like जरूर करें' that fits naturally.
-13. Gemini TTS supports inline audio tags. Add these tags in square brackets [] at appropriate places in the Hindi text based on the scene's emotion. Valid tags: [amused], [happy], [sad], [angry], [enthusiasm], [curiosity], [determination], [whispering], [laughs], [sigh], [gasp], [short pause], [long pause]. Example: '[amused] क्या बात है! [laughs] मैंने तो यह सोचा भी नहीं था.'"""
+13. Gemini TTS supports inline audio tags. Add these tags in square brackets [] at appropriate places in the Hindi text based on the scene's emotion. Valid tags: [amused], [happy], [sad], [angry], [enthusiasm], [curiosity], [determination], [whispering], [laughs], [sigh], [gasp], [short pause], [long pause]. Example: '[amused] क्या बात है! [laughs] मैंने तो यह सोचा भी नहीं था.'
+14. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend. Make it sound dramatic and interesting, not like a boring summary."""
 
     def _execute_translation(self, segments, context: str) -> list:
         for provider in self.providers:

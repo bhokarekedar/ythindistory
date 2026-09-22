@@ -25,7 +25,7 @@ class GeminiTTS:
 
     def __init__(self,
                  output_dir: str = "temp/segments",
-                 voice_name: str = "Zephyr",
+                 voice_name: str = "Algieba",
                  model: str = "gemini-3.1-flash-tts-preview"):
         self.output_dir = output_dir
         self.voice_name = voice_name
