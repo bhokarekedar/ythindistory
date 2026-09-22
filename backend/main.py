@@ -14,7 +14,7 @@ from core.downloader import YouTubeDownloader
 from core.audio_extractor import AudioExtractor
 from core.transcriber import Transcriber
 from core.translator import HindiTranslator
-from core.tts import GoogleTTS
+from core.tts import GeminiTTS
 from core.sync import AudioSynchronizer
 
 app = FastAPI(title="Movie Recap Automation API")
@@ -105,8 +105,9 @@ def process_pipeline(job_id: str, url: str):
         job_status[job_id] = "Generating Hindi voice..."
         print(f"\n[JOB {job_id}] Step 5: Generating Hindi Voice via Google Cloud TTS...")
         
-        speaker = config.get("google_tts", {}).get("speaker", "hi-IN-Neural2-C")
-        tts = GoogleTTS(output_dir=f"{job_dir}/segments", voice_name=speaker)
+        speaker = config.get("gemini_tts", {}).get("voice", "Zephyr")
+        model = config.get("gemini_tts", {}).get("model", "gemini-3.1-flash-tts-preview")
+        tts = GeminiTTS(output_dir=f"{job_dir}/segments", voice_name=speaker, model=model)
         
         sync = AudioSynchronizer(
             max_speed_change=config.get("sync", {}).get("max_speed_change", 0.15),

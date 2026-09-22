@@ -12,9 +12,9 @@ translation:
 tts:
   engine: google
 
-google_tts:
-  speaker: hi-IN-Neural2-C
-  pace: 1.0
+gemini_tts:
+  voice: Zephyr
+  model: gemini-3.1-flash-tts-preview
 
 transcription:
   chunk_minutes: 10
