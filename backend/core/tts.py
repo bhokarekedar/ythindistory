@@ -22,6 +22,11 @@ class GoogleTTS:
         output_path = os.path.join(self.output_dir, f"{segment_id:04d}.wav")
         text = re.sub(r"\s+", " ", text).strip()
         
+        # Aggressively remove all punctuation to force Google TTS to speak without any pauses
+        text = re.sub(r'[^\w\s\u0900-\u097F]', ' ', text)
+        text = text.replace('\n', ' ')
+        text = re.sub(r'\s+', ' ', text).strip()
+        
         synthesis_input = texttospeech.SynthesisInput(text=text)
         
         voice = texttospeech.VoiceSelectionParams(

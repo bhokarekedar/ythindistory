@@ -130,6 +130,7 @@ def process_pipeline(job_id: str, url: str):
                 tts.generate_audio(seg["id"], seg["hindi"])
                 
             aligned_audio_segments.append({
+                "id": seg["id"],
                 "start": seg["start"],
                 "end": seg["end"],
                 "audio_path": raw_audio_path_tts
@@ -139,6 +140,21 @@ def process_pipeline(job_id: str, url: str):
         print(f"\n[JOB {job_id}] Step 6: Rendering Final Video...")
         final_output = os.path.join(f"output", f"{job_id}_final.mp4")
         os.makedirs("output", exist_ok=True)
+        
+        # Clear stale render artifacts so we always regenerate with current code.
+        # (TTS WAVs and translation JSON are intentionally kept — they are expensive to regenerate.)
+        import shutil
+        for stale in ["video_only.mp4", "mixed_temp.mp4", "narrator_audio_track.wav"]:
+            p = os.path.join(job_dir, stale)
+            if os.path.exists(p):
+                os.remove(p)
+                print(f"  [Cache] Removed stale: {stale}")
+        for stale_dir in ["video_chunks", "resampled_wavs"]:
+            p = os.path.join(job_dir, stale_dir)
+            if os.path.exists(p):
+                shutil.rmtree(p)
+                print(f"  [Cache] Removed stale dir: {stale_dir}/")
+        
         sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir)
         
         job_status[job_id] = f"Completed: {final_output}"
