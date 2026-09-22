@@ -6,6 +6,15 @@ function App() {
   const [jobId, setJobId] = useState(null)
   const [status, setStatus] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
+  
+  const [watermark, setWatermark] = useState({
+    topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
+    topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
+    bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
+    bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 }
+  })
+  const [snapshotImg, setSnapshotImg] = useState(null)
+  const [snapshotLoading, setSnapshotLoading] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -15,7 +24,7 @@ function App() {
       const res = await fetch('http://localhost:8000/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url, watermark })
       })
       const data = await res.json()
       setJobId(data.job_id)
@@ -45,6 +54,42 @@ function App() {
     return () => clearInterval(interval)
   }, [jobId, status])
 
+  const handleSnapshot = async () => {
+    if (!url) {
+      alert("Please enter a YouTube URL first.")
+      return
+    }
+    setSnapshotLoading(true)
+    setSnapshotImg(null)
+    try {
+      const res = await fetch('http://localhost:8000/api/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, watermark })
+      })
+      const data = await res.json()
+      if (data.error) {
+        alert("Snapshot Error: " + data.error)
+      } else if (data.image) {
+        setSnapshotImg(data.image)
+      }
+    } catch (err) {
+      alert("Snapshot Request Failed: " + err.message)
+    } finally {
+      setSnapshotLoading(false)
+    }
+  }
+
+  const handleWatermarkChange = (corner, field, value) => {
+    setWatermark(prev => ({
+      ...prev,
+      [corner]: {
+        ...prev[corner],
+        [field]: field === 'enabled' ? value : parseInt(value) || 0
+      }
+    }))
+  }
+
   return (
     <div className="container">
       <h1>Automated English-to-Hindi Movie Recap</h1>
@@ -57,7 +102,43 @@ function App() {
           onChange={(e) => setUrl(e.target.value)}
           required
         />
-        <button type="submit" disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')}>
+        
+        <div className="watermark-settings">
+          <h3>Watermark Settings</h3>
+          <div className="corners-grid">
+            {['topLeft', 'topRight', 'bottomLeft', 'bottomRight'].map(corner => (
+              <div key={corner} className="corner-box">
+                <label>
+                  <input 
+                    type="checkbox" 
+                    checked={watermark[corner].enabled}
+                    onChange={(e) => handleWatermarkChange(corner, 'enabled', e.target.checked)}
+                  />
+                  {corner}
+                </label>
+                {watermark[corner].enabled && (
+                  <div className="corner-inputs">
+                    <label>X: <input type="number" value={watermark[corner].offsetX} onChange={e => handleWatermarkChange(corner, 'offsetX', e.target.value)} /></label>
+                    <label>Y: <input type="number" value={watermark[corner].offsetY} onChange={e => handleWatermarkChange(corner, 'offsetY', e.target.value)} /></label>
+                    <label>Size: <input type="number" value={watermark[corner].size} onChange={e => handleWatermarkChange(corner, 'size', e.target.value)} /></label>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={handleSnapshot} disabled={snapshotLoading} className="snapshot-btn">
+            {snapshotLoading ? 'Generating Snapshot...' : 'Test Snapshot (1-min mark)'}
+          </button>
+        </div>
+        
+        {snapshotImg && (
+          <div className="snapshot-preview">
+            <h4>Snapshot Preview</h4>
+            <img src={snapshotImg} alt="Snapshot Preview" style={{width: '100%', maxWidth: '600px', border: '1px solid #ccc'}} />
+          </div>
+        )}
+
+        <button type="submit" disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} className="main-btn">
           Generate Hindi Video
         </button>
       </form>

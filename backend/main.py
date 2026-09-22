@@ -27,13 +27,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from typing import Optional
+
+class WatermarkCorner(BaseModel):
+    enabled: bool = False
+    offsetX: int = 10
+    offsetY: int = 10
+    size: int = 50
+
+class WatermarkSettings(BaseModel):
+    topLeft: Optional[WatermarkCorner] = None
+    topRight: Optional[WatermarkCorner] = None
+    bottomLeft: Optional[WatermarkCorner] = None
+    bottomRight: Optional[WatermarkCorner] = None
+
 class VideoRequest(BaseModel):
     url: str
+    watermark: Optional[WatermarkSettings] = None
+
+class SnapshotRequest(BaseModel):
+    url: str
+    watermark: WatermarkSettings
 
 # In-memory status store for MVP
 job_status = {}
 
-def process_pipeline(job_id: str, url: str):
+def process_pipeline(job_id: str, request: VideoRequest):
+    url = request.url
     # Try to extract video ID for caching
     video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
     video_id = video_id_match.group(1) if video_id_match else job_id
@@ -156,7 +176,7 @@ def process_pipeline(job_id: str, url: str):
                 shutil.rmtree(p)
                 print(f"  [Cache] Removed stale dir: {stale_dir}/")
         
-        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir)
+        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark)
         
         job_status[job_id] = f"Completed: {final_output}"
         print(f"\n[JOB {job_id}] ✅ DONE! Final video saved to {final_output}")
@@ -173,12 +193,105 @@ def process_pipeline(job_id: str, url: str):
 def process_video(request: VideoRequest, background_tasks: BackgroundTasks):
     import uuid
     job_id = str(uuid.uuid4())[:8]
-    background_tasks.add_task(process_pipeline, job_id, request.url)
+    background_tasks.add_task(process_pipeline, job_id, request)
     return {"status": "started", "job_id": job_id}
 
 @app.get("/api/status/{job_id}")
 def get_status(job_id: str):
     return {"job_id": job_id, "status": job_status.get(job_id, "Not found")}
+
+def apply_watermarks_to_ffmpeg(stream, watermark_path, settings: WatermarkSettings, main_w="main_w", main_h="main_h"):
+    """Helper to apply the watermark to an ffmpeg video stream at multiple corners."""
+    import ffmpeg
+    if not settings:
+        return stream
+        
+    corners = {
+        "topLeft": settings.topLeft,
+        "topRight": settings.topRight,
+        "bottomLeft": settings.bottomLeft,
+        "bottomRight": settings.bottomRight
+    }
+    
+    enabled_corners = [(pos, corner) for pos, corner in corners.items() if corner and corner.enabled]
+    if not enabled_corners:
+        return stream
+        
+    wm_input = ffmpeg.input(watermark_path)
+    # If multiple corners are enabled, we must split the input to avoid graph deduping errors
+    splits = wm_input.split() if len(enabled_corners) > 1 else [wm_input]
+    
+    for i, (position, corner) in enumerate(enabled_corners):
+        wm = splits[i].filter('scale', w=corner.size, h='-1')
+        
+        # Determine coordinates
+        if position == "topLeft":
+            x = corner.offsetX
+            y = corner.offsetY
+        elif position == "topRight":
+            x = f"{main_w}-overlay_w-{corner.offsetX}"
+            y = corner.offsetY
+        elif position == "bottomLeft":
+            x = corner.offsetX
+            y = f"{main_h}-overlay_h-{corner.offsetY}"
+        elif position == "bottomRight":
+            x = f"{main_w}-overlay_w-{corner.offsetX}"
+            y = f"{main_h}-overlay_h-{corner.offsetY}"
+            
+        stream = ffmpeg.overlay(stream, wm, x=x, y=y)
+        
+    return stream
+
+@app.post("/api/snapshot")
+def generate_snapshot(request: SnapshotRequest):
+    import base64
+    import tempfile
+    
+    video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", request.url)
+    if not video_id_match:
+        return {"error": "Invalid YouTube URL"}
+    video_id = video_id_match.group(1)
+    
+    video_path = f"temp/videos/{video_id}.mp4"
+    if not os.path.exists(video_path):
+        os.makedirs("temp/videos", exist_ok=True)
+        downloader = YouTubeDownloader(output_dir="temp/videos")
+        try:
+            video_path = downloader.download(request.url)
+        except Exception as e:
+            return {"error": f"Failed to download video: {str(e)}"}
+            
+    watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
+    
+    try:
+        # Extract 1 frame at 00:01:00 (explicitly grab the video stream)
+        vid = ffmpeg.input(video_path, ss="00:01:00").video
+        
+        # Scale to match the final video rendering dimensions (1280x720) 
+        # so the X/Y coordinates in the snapshot exactly match the final video!
+        vid = vid.filter("scale", 1280, 720).filter("setsar", 1)
+        
+        # Apply watermarks
+        out_stream = apply_watermarks_to_ffmpeg(vid, watermark_path, request.watermark)
+        
+        # Output to temp file
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = tmp.name
+            
+        out_stream = out_stream.output(tmp_path, vframes=1, format='image2', vcodec='mjpeg', loglevel='error')
+        ffmpeg.run(out_stream, overwrite_output=True)
+        
+        with open(tmp_path, "rb") as img_file:
+            encoded_string = base64.b64encode(img_file.read()).decode('utf-8')
+            
+        os.remove(tmp_path)
+        return {"image": f"data:image/jpeg;base64,{encoded_string}"}
+        
+    except ffmpeg.Error as e:
+        err = e.stderr.decode('utf8') if e.stderr else str(e)
+        return {"error": f"FFmpeg error: {err}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

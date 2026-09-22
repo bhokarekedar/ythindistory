@@ -83,3 +83,83 @@ code {
   border-radius: 4px;
   color: #eab308;
 }
+
+.input-form {
+  flex-direction: column;
+  align-items: center;
+}
+
+.watermark-settings {
+  background: #1a1a1a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid #333;
+  margin-bottom: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.corners-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.corner-box {
+  background: #222;
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.corner-box label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  text-transform: capitalize;
+}
+
+.corner-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.corner-inputs label {
+  display: flex;
+  justify-content: space-between;
+  font-weight: normal;
+  margin-bottom: 0;
+}
+
+.corner-inputs input[type="number"] {
+  width: 60px;
+  padding: 0.2rem;
+  background: #333;
+  border: 1px solid #444;
+  color: white;
+  border-radius: 4px;
+}
+
+.snapshot-btn {
+  background: #0ea5e9;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.snapshot-btn:hover:not(:disabled) {
+  background: #0284c7;
+}
+
+.snapshot-preview {
+  margin: 1.5rem 0;
+}
+
+.main-btn {
+  width: 100%;
+}

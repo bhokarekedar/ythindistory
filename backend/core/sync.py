@@ -58,6 +58,44 @@ class AudioSynchronizer:
     def _silence_bytes(self, n_frames: int) -> bytes:
         return b"\x00" * (n_frames * TARGET_CHANNELS * TARGET_SAMPWIDTH)
 
+    def _apply_watermarks(self, v_stream, settings):
+        """Helper to apply the watermark to an ffmpeg video stream at multiple corners."""
+        if not settings:
+            return v_stream
+            
+        watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
+        corners = {
+            "topLeft": getattr(settings, "topLeft", None),
+            "topRight": getattr(settings, "topRight", None),
+            "bottomLeft": getattr(settings, "bottomLeft", None),
+            "bottomRight": getattr(settings, "bottomRight", None)
+        }
+        
+        enabled_corners = [(pos, corner) for pos, corner in corners.items() if corner and corner.enabled]
+        if not enabled_corners:
+            return v_stream
+            
+        wm_input = ffmpeg.input(watermark_path)
+        splits = wm_input.split() if len(enabled_corners) > 1 else [wm_input]
+        
+        for i, (position, corner) in enumerate(enabled_corners):
+            wm = splits[i].filter('scale', w=corner.size, h='-1')
+            main_w, main_h = "main_w", "main_h"
+            
+            # Determine coordinates
+            if position == "topLeft":
+                x, y = corner.offsetX, corner.offsetY
+            elif position == "topRight":
+                x, y = f"{main_w}-overlay_w-{corner.offsetX}", corner.offsetY
+            elif position == "bottomLeft":
+                x, y = corner.offsetX, f"{main_h}-overlay_h-{corner.offsetY}"
+            elif position == "bottomRight":
+                x, y = f"{main_w}-overlay_w-{corner.offsetX}", f"{main_h}-overlay_h-{corner.offsetY}"
+                
+            v_stream = ffmpeg.overlay(v_stream, wm, x=x, y=y)
+            
+        return v_stream
+
     # ─────────────────────────────────────────────────────────────────────────
     # Step 0: Compute audio timeline
     # This is the KEY fix — compute WHERE each sentence starts in the output
@@ -185,7 +223,7 @@ class AudioSynchronizer:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_video_timeline(self, timeline: list, original_video_path: str,
-                              total_audio_dur: float, job_dir: str) -> str:
+                              total_audio_dur: float, job_dir: str, watermark_settings=None) -> str:
         """
         Produces a video-only MP4 retimed to exactly match the audio timeline.
 
@@ -242,6 +280,7 @@ class AudioSynchronizer:
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
+                    v = self._apply_watermarks(v, watermark_settings)
                     a = ffmpeg.input(
                         "anullsrc=channel_layout=stereo:sample_rate=48000",
                         format="lavfi", t=gap_dur
@@ -274,6 +313,7 @@ class AudioSynchronizer:
                     .filter("scale", 1280, 720).filter("setsar", 1)
                     .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                 )
+                v = self._apply_watermarks(v, watermark_settings)
                 a = ffmpeg.input(
                     "anullsrc=channel_layout=stereo:sample_rate=48000",
                     format="lavfi", t=tts_dur
@@ -312,6 +352,7 @@ class AudioSynchronizer:
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
+                    v = self._apply_watermarks(v, watermark_settings)
                     a = ffmpeg.input(
                         "anullsrc=channel_layout=stereo:sample_rate=48000",
                         format="lavfi", t=trailing_dur
@@ -345,7 +386,7 @@ class AudioSynchronizer:
     # ─────────────────────────────────────────────────────────────────────────
 
     def build_timeline(self, segments: list, original_video_path: str,
-                       output_path: str, job_dir: str = "temp"):
+                       output_path: str, job_dir: str = "temp", watermark_settings=None):
         """
         Produces the final video:
           0. Compute audio timeline  → where each sentence starts/ends in output
@@ -367,7 +408,7 @@ class AudioSynchronizer:
 
         # ── Step B: Video timeline ────────────────────────────────────────
         print("\n[Sync] Step B: Building retimed video timeline...")
-        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir)
+        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir, watermark_settings)
 
         # ── Step C: Mux video + clean audio ──────────────────────────────
         print("\n[Sync] Step C: Muxing video + clean audio (single encode pass)...")
@@ -408,7 +449,11 @@ class AudioSynchronizer:
             intro_a = intro.audio.filter("aresample", TARGET_RATE)
 
             main = ffmpeg.input(mixed_video_path)
-            main_v = main.video.filter("settb", "1/30")
+            main_v = (
+                main.video
+                .filter("fps", fps=30, round="near")
+                .filter("settb", "1/30")
+            )
             main_a = main.audio
 
             fade_duration = 1.0
