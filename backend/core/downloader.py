@@ -30,7 +30,7 @@ class YouTubeDownloader:
 
             # JavaScript runtime
             "js_runtimes": {
-                "deno": None,
+                "deno": {},
             },
 
             # Download EJS challenge-solving components
