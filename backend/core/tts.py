@@ -94,6 +94,8 @@ class GeminiTTS:
             except Exception as e:
                 error_msg = str(e)
                 if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                    if attempt == max_retries - 1:
+                        raise e
                     wait_time = 45 + (attempt * 10) # The error usually asks to wait ~45s
                     print(f"  [TTS Rate Limit] Hit 10 requests/min quota. Waiting {wait_time}s before retry {attempt+1}/{max_retries}...")
                     import time

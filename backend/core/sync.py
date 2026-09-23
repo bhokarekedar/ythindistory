@@ -58,12 +58,11 @@ class AudioSynchronizer:
     def _silence_bytes(self, n_frames: int) -> bytes:
         return b"\x00" * (n_frames * TARGET_CHANNELS * TARGET_SAMPWIDTH)
 
-    def _apply_watermarks(self, v_stream, settings):
+    def _apply_watermarks(self, v_stream, settings, watermark_path="/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"):
         """Helper to apply the watermark to an ffmpeg video stream at multiple corners."""
         if not settings:
             return v_stream
             
-        watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
         corners = {
             "topLeft": getattr(settings, "topLeft", None),
             "topRight": getattr(settings, "topRight", None),
@@ -223,7 +222,7 @@ class AudioSynchronizer:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_video_timeline(self, timeline: list, original_video_path: str,
-                              total_audio_dur: float, job_dir: str, watermark_settings=None) -> str:
+                              total_audio_dur: float, job_dir: str, watermark_settings=None, text_watermark_settings=None) -> str:
         """
         Produces a video-only MP4 retimed to exactly match the audio timeline.
 
@@ -280,7 +279,8 @@ class AudioSynchronizer:
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
-                    v = self._apply_watermarks(v, watermark_settings)
+                    v = self._apply_watermarks(v, watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png")
+                    v = self._apply_watermarks(v, text_watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png")
                     a = ffmpeg.input(
                         "anullsrc=channel_layout=stereo:sample_rate=48000",
                         format="lavfi", t=gap_dur
@@ -313,7 +313,8 @@ class AudioSynchronizer:
                     .filter("scale", 1280, 720).filter("setsar", 1)
                     .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                 )
-                v = self._apply_watermarks(v, watermark_settings)
+                v = self._apply_watermarks(v, watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png")
+                v = self._apply_watermarks(v, text_watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png")
                 a = ffmpeg.input(
                     "anullsrc=channel_layout=stereo:sample_rate=48000",
                     format="lavfi", t=tts_dur
@@ -352,7 +353,8 @@ class AudioSynchronizer:
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
-                    v = self._apply_watermarks(v, watermark_settings)
+                    v = self._apply_watermarks(v, watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png")
+                    v = self._apply_watermarks(v, text_watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png")
                     a = ffmpeg.input(
                         "anullsrc=channel_layout=stereo:sample_rate=48000",
                         format="lavfi", t=trailing_dur
@@ -386,7 +388,7 @@ class AudioSynchronizer:
     # ─────────────────────────────────────────────────────────────────────────
 
     def build_timeline(self, segments: list, original_video_path: str,
-                       output_path: str, job_dir: str = "temp", watermark_settings=None):
+                       output_path: str, job_dir: str = "temp", watermark_settings=None, text_watermark_settings=None):
         """
         Produces the final video:
           0. Compute audio timeline  → where each sentence starts/ends in output
@@ -408,7 +410,7 @@ class AudioSynchronizer:
 
         # ── Step B: Video timeline ────────────────────────────────────────
         print("\n[Sync] Step B: Building retimed video timeline...")
-        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir, watermark_settings)
+        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir, watermark_settings, text_watermark_settings)
 
         # ── Step C: Mux video + clean audio ──────────────────────────────
         print("\n[Sync] Step C: Muxing video + clean audio (single encode pass)...")

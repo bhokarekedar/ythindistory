@@ -13,6 +13,12 @@ function App() {
     bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
     bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 }
   })
+  const [textWatermark, setTextWatermark] = useState({
+    topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
+    topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
+    bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
+    bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 }
+  })
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
 
@@ -24,7 +30,7 @@ function App() {
       const res = await fetch('http://localhost:8000/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, watermark })
+        body: JSON.stringify({ url, watermark, textWatermark })
       })
       const data = await res.json()
       setJobId(data.job_id)
@@ -65,7 +71,7 @@ function App() {
       const res = await fetch('http://localhost:8000/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, watermark })
+        body: JSON.stringify({ url, watermark, textWatermark })
       })
       const data = await res.json()
       if (data.error) {
@@ -82,6 +88,16 @@ function App() {
 
   const handleWatermarkChange = (corner, field, value) => {
     setWatermark(prev => ({
+      ...prev,
+      [corner]: {
+        ...prev[corner],
+        [field]: field === 'enabled' ? value : parseInt(value) || 0
+      }
+    }))
+  }
+
+  const handleTextWatermarkChange = (corner, field, value) => {
+    setTextWatermark(prev => ({
       ...prev,
       [corner]: {
         ...prev[corner],
@@ -126,6 +142,30 @@ function App() {
               </div>
             ))}
           </div>
+
+          <h3>Text Watermark Settings</h3>
+          <div className="corners-grid">
+            {['topLeft', 'topRight', 'bottomLeft', 'bottomRight'].map(corner => (
+              <div key={`text-${corner}`} className="corner-box">
+                <label>
+                  <input 
+                    type="checkbox" 
+                    checked={textWatermark[corner].enabled}
+                    onChange={(e) => handleTextWatermarkChange(corner, 'enabled', e.target.checked)}
+                  />
+                  {corner}
+                </label>
+                {textWatermark[corner].enabled && (
+                  <div className="corner-inputs">
+                    <label>X: <input type="number" value={textWatermark[corner].offsetX} onChange={e => handleTextWatermarkChange(corner, 'offsetX', e.target.value)} /></label>
+                    <label>Y: <input type="number" value={textWatermark[corner].offsetY} onChange={e => handleTextWatermarkChange(corner, 'offsetY', e.target.value)} /></label>
+                    <label>Size: <input type="number" value={textWatermark[corner].size} onChange={e => handleTextWatermarkChange(corner, 'size', e.target.value)} /></label>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
           <button type="button" onClick={handleSnapshot} disabled={snapshotLoading} className="snapshot-btn">
             {snapshotLoading ? 'Generating Snapshot...' : 'Test Snapshot (1-min mark)'}
           </button>
