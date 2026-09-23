@@ -44,10 +44,12 @@ class WatermarkSettings(BaseModel):
 class VideoRequest(BaseModel):
     url: str
     watermark: Optional[WatermarkSettings] = None
+    textWatermark: Optional[WatermarkSettings] = None
 
 class SnapshotRequest(BaseModel):
     url: str
     watermark: WatermarkSettings
+    textWatermark: Optional[WatermarkSettings] = None
 
 # In-memory status store for MVP
 job_status = {}
@@ -176,7 +178,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 shutil.rmtree(p)
                 print(f"  [Cache] Removed stale dir: {stale_dir}/")
         
-        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark)
+        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark, text_watermark_settings=request.textWatermark)
         
         job_status[job_id] = f"Completed: {final_output}"
         print(f"\n[JOB {job_id}] ✅ DONE! Final video saved to {final_output}")
@@ -272,7 +274,9 @@ def generate_snapshot(request: SnapshotRequest):
         vid = vid.filter("scale", 1280, 720).filter("setsar", 1)
         
         # Apply watermarks
+        text_watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
         out_stream = apply_watermarks_to_ffmpeg(vid, watermark_path, request.watermark)
+        out_stream = apply_watermarks_to_ffmpeg(out_stream, text_watermark_path, request.textWatermark)
         
         # Output to temp file
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
