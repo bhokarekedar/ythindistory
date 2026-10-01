@@ -1,4 +1,4 @@
-# Running the English-to-Hindi Movie Recap Application
+# Running the Automated Movie Recap Application (English & Hindi)
 
 To run this application locally, you will need to start both the Python Backend and the React Frontend. You should open two separate terminal windows.
 
@@ -6,7 +6,7 @@ To run this application locally, you will need to start both the Python Backend 
 
 ## 1. Starting the Backend (FastAPI)
 
-The backend handles video downloading, transcription (via Groq), translation (via Groq), TTS (via Piper), and synchronization (via FFmpeg).
+The backend handles video downloading, transcription (via Groq Whisper), script rewriting/translation (via Groq LLM), TTS (via Kokoro/Gemini), and synchronization (via FFmpeg).
 
 **Steps:**
 1. Open a new terminal window.

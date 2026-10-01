@@ -3,7 +3,7 @@ import os
 import time
 from core.providers import GroqProvider, OpenRouterProvider
 
-class HindiTranslator:
+class StoryTranslator:
     def __init__(self, primary_provider: str = "groq", fallback_provider: str = "none",
                  translation_model: str = "qwen/qwen3.8-27b",
                  fallback_model: str = "openrouter/auto",
@@ -18,7 +18,10 @@ class HindiTranslator:
         if fallback_provider == "openrouter":
             self.providers.append(OpenRouterProvider(model=fallback_model))
 
-        self.system_prompt = """You are a professional Hindi YouTube movie-recap narrator.
+    def get_system_prompt(self, target_language: str) -> str:
+        lang = target_language.lower()
+        if lang == "hindi":
+            return """You are a professional Hindi YouTube movie-recap narrator.
 Convert the provided English movie explanation into natural spoken Hindi.
 Rules:
 1. If the English text is broken, fragmented, or grammatically incorrect, first reconstruct the correct intended meaning, THEN translate it into fluent Hindi. Never translate broken English literally.
@@ -35,19 +38,32 @@ Rules:
 5. Avoid overly formal Hindi. Use conversational Hindi mixed with English words naturally (as Indians speak).
 6. Keep sentences short — one idea per sentence.
 7. Do not add introductions, conclusions, or commentary.
-8. Return ONLY the requested Hindi translations for the current segments.
+8. Return ONLY the requested translations for the current segments.
 9. Preserve the segment IDs exactly.
-10. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. For example: 'मार देती है' is correct. 'मार, देती है' is WRONG. Only use a period (.) to end a complete sentence.
-11. Do NOT add any punctuation other than a single period (.) at the end of a sentence. No commas, no semicolons, no colons, no dashes, no ellipses.
-12. If the speaker mentions their channel name, replace it with 'Movie Explained Hindi'. If they promote personal items or social media, replace with a generic engagement line like 'अगर वीडियो पसंद आ रहा है तो like जरूर करें' that fits naturally.
-13. Gemini TTS supports inline audio tags. Add these tags in square brackets [] at appropriate places in the Hindi text based on the scene's emotion. Valid tags: [amused], [happy], [sad], [angry], [enthusiasm], [curiosity], [determination], [whispering], [laughs], [sigh], [gasp], [short pause], [long pause]. Example: '[amused] क्या बात है! [laughs] मैंने तो यह सोचा भी नहीं था.'
-14. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend. Make it sound dramatic and interesting, not like a boring summary."""
+10. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. Only use a period (.) to end a complete sentence.
+11. Do NOT add any punctuation other than a single period (.) at the end of a sentence.
+12. If the speaker mentions their channel name, replace it with 'Movie Explained Hindi'. If they promote personal items, replace with a generic engagement line like 'अगर वीडियो पसंद आ रहा है तो like जरूर करें'.
+13. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend."""
+        else:
+            return """You are a professional English YouTube movie-recap narrator.
+Refine and rewrite the provided English movie explanation into natural, spoken English.
+Rules:
+1. If the text is broken, fragmented, or grammatically incorrect, reconstruct the correct intended meaning into fluent English.
+2. Make it sound natural when spoken aloud — it will be read by a Text-to-Speech engine.
+3. Keep sentences short and engaging — one idea per sentence.
+4. Do not add introductions, conclusions, or commentary outside of the story recap.
+5. Return ONLY the requested rewritten text for the current segments.
+6. Preserve the segment IDs exactly.
+7. Do not use complex punctuation like colons, semicolons, or dashes as they confuse the TTS. Use commas (,) and periods (.).
+8. If the speaker mentions their channel name, replace it with 'Movie Explained'. If they promote personal items, replace with a generic engagement line like 'If you are enjoying the video, be sure to like and subscribe.'
+9. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend."""
 
-    def _execute_translation(self, segments, context: str) -> list:
+    def _execute_translation(self, segments, system_prompt: str, context: str, target_language: str) -> list:
         for provider in self.providers:
             for attempt in range(self.max_retries):
                 try:
-                    result = provider.translate_segments(segments, self.system_prompt, context)
+                    # Pass target_language if provider supports it, otherwise provider needs to handle "translated_text"
+                    result = provider.translate_segments(segments, system_prompt, context, target_language=target_language.lower())
                     if result and len(result) > 0:
                         return result
                 except Exception as e:
@@ -55,11 +71,13 @@ Rules:
                 time.sleep(2 * (attempt + 1)) # exponential backoff
         return []
 
-    def translate_transcript(self, transcript_path: str, output_dir: str = "temp") -> str:
+    def translate_transcript(self, transcript_path: str, target_language: str = "hindi", output_dir: str = "temp") -> str:
         with open(transcript_path, "r", encoding="utf-8") as f:
             segments = json.load(f)
             
         translated_segments = []
+        lang_key = target_language.lower()
+        system_prompt = self.get_system_prompt(lang_key)
         
         # Process in batches
         for i in range(0, len(segments), self.batch_size):
@@ -71,14 +89,14 @@ Rules:
             next_context = segments[next_idx]["text"] if next_idx < len(segments) else ""
             context = f"{prev_context} [...] {next_context}"
             
-            print(f"Translating batch {i // self.batch_size + 1} ({len(batch)} segments)...")
-            hindi_results = self._execute_translation(batch, context)
+            print(f"Generating {lang_key} script for batch {i // self.batch_size + 1} ({len(batch)} segments)...")
+            results = self._execute_translation(batch, system_prompt, context, lang_key)
             
             # Map results back by ID (convert to int in case LLM outputs strings)
             result_map = {}
-            for item in hindi_results:
+            for item in results:
                 try:
-                    result_map[int(item["id"])] = item.get("hindi", "अनुवाद विफल")
+                    result_map[int(item["id"])] = item.get("translated_text", item.get("hindi", item.get("text", "Error")))
                 except (KeyError, ValueError):
                     pass
             
@@ -87,15 +105,15 @@ Rules:
                     "id": seg["id"],
                     "start": seg["start"],
                     "end": seg["end"],
-                    "english": seg["text"],
-                    "hindi": result_map.get(seg["id"], "अनुवाद विफल") # Fallback text if it fails
+                    "original_text": seg["text"],
+                    lang_key: result_map.get(seg["id"], "Translation/Rewrite Failed")
                 })
             
         base_name = os.path.splitext(os.path.basename(transcript_path))[0].replace("_transcript", "")
-        output_path = os.path.join(output_dir, f"{base_name}_hindi_transcript.json")
+        output_path = os.path.join(output_dir, f"{base_name}_{lang_key}_transcript.json")
         
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(translated_segments, f, indent=4, ensure_ascii=False)
             
-        print(f"Hindi transcript saved to {output_path}")
+        print(f"{lang_key.capitalize()} script saved to {output_path}")
         return output_path

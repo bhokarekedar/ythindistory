@@ -9,15 +9,15 @@ class OpenRouterProvider(LLMProvider):
         self.api_key = os.environ.get("OPENROUTER_API_KEY")
         self.url = "https://openrouter.ai/api/v1/chat/completions"
 
-    def translate_segments(self, segments, system_prompt: str, context: str = "") -> list:
+    def translate_segments(self, segments, system_prompt: str, context: str = "", target_language: str = "hindi") -> list:
         if not self.api_key:
             print("Warning: OPENROUTER_API_KEY not set.")
             return []
 
-        user_content = f"Context (do not translate this): {context}\n\nSegments to translate:\n"
+        user_content = f"Context (do not translate this): {context}\n\nSegments to translate/rewrite:\n"
         user_content += json.dumps([{"id": s["id"], "text": s["text"]} for s in segments], ensure_ascii=False)
         
-        system_prompt += "\n\nIMPORTANT: You must output ONLY a valid JSON object with a single key 'translations', containing a list of objects with 'id' and 'hindi'. Do not output markdown code blocks or any other text."
+        system_prompt += "\n\nIMPORTANT: You must output ONLY a valid JSON object with a single key 'translations', containing a list of objects with 'id' and 'translated_text'. Do not output markdown code blocks or any other text."
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",

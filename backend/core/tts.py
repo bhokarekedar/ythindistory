@@ -62,13 +62,15 @@ class GeminiTTS:
     def generate_audio(self, segment_id: int, text: str) -> str:
         """
         Generates TTS audio for one segment using Gemini 3.1 Flash TTS.
-
-        The prompt includes a narration style direction so Gemini speaks
-        in a professional movie-narrator tone, not a casual conversational tone.
-        Returns the path to the saved WAV file.
         """
         output_path = os.path.join(self.output_dir, f"{segment_id:04d}.wav")
         text = self._clean_text(text)
+        
+        if not text.strip():
+            print(f"  [GeminiTTS] Warning: Empty text for segment {segment_id}. Padding with silence.")
+            pcm_data = b"\x00" * (int(GEMINI_TTS_RATE * 0.1) * GEMINI_TTS_CHANNELS * GEMINI_TTS_SAMPWIDTH)
+            self._save_pcm_as_wav(pcm_data, output_path)
+            return output_path
 
         # Style direction: tells Gemini to narrate like a Hindi movie narrator
         prompt = f"[Speak as a professional Hindi movie narrator, clear and engaging pace] {text}"
@@ -114,3 +116,6 @@ class GeminiTTS:
         # Wrap in WAV header so the rest of the pipeline can use wave.open()
         self._save_pcm_as_wav(pcm_data, output_path)
         return output_path
+
+
+

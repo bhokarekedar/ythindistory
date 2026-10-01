@@ -22,7 +22,7 @@ function App() {
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e, language) => {
     e.preventDefault()
     if (!url) return
     setStatus('Starting...')
@@ -30,7 +30,7 @@ function App() {
       const res = await fetch('http://localhost:8000/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, watermark, textWatermark })
+        body: JSON.stringify({ url, watermark, textWatermark, target_language: language })
       })
       const data = await res.json()
       setJobId(data.job_id)
@@ -108,9 +108,9 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Automated English-to-Hindi Movie Recap</h1>
+      <h1>Automated Movie Recap</h1>
       
-      <form onSubmit={handleSubmit} className="input-form">
+      <form className="input-form">
         <input 
           type="url" 
           placeholder="Enter YouTube URL" 
@@ -178,9 +178,15 @@ function App() {
           </div>
         )}
 
-        <button type="submit" disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} className="main-btn">
-          Generate Hindi Video
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
+          <button type="button" onClick={(e) => handleSubmit(e, 'hindi')} disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} className="main-btn">
+            Generate Hindi Video
+          </button>
+          
+          <button type="button" onClick={(e) => handleSubmit(e, 'english')} disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} className="main-btn" style={{ backgroundColor: '#28a745' }}>
+            Generate English Video
+          </button>
+        </div>
       </form>
 
       {status && (

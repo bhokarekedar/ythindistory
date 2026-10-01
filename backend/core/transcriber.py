@@ -10,7 +10,7 @@ class Transcriber:
         os.makedirs(self.output_dir, exist_ok=True)
         self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-    def transcribe(self, audio_path: str) -> str:
+    def transcribe(self, audio_path: str, language: str = None) -> str:
         """
         Transcribes the audio using Groq Whisper API and saves a timestamped JSON file.
         In MVP, we process the whole file (assuming it's small). 
@@ -22,11 +22,15 @@ class Transcriber:
         # Max file size for Groq Whisper is 25MB.
         # We request verbose_json to get timestamps.
         with open(audio_path, "rb") as file:
-            transcription = self.client.audio.transcriptions.create(
-              file=(os.path.basename(audio_path), file.read()),
-              model=self.model_name,
-              response_format="verbose_json",
-            )
+            kwargs = {
+                "file": (os.path.basename(audio_path), file.read()),
+                "model": self.model_name,
+                "response_format": "verbose_json",
+            }
+            if language:
+                kwargs["language"] = language
+            
+            transcription = self.client.audio.transcriptions.create(**kwargs)
         
         segments = []
         for i, segment in enumerate(transcription.segments):

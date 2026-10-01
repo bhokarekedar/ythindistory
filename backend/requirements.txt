@@ -10,3 +10,5 @@ python-dotenv
 groq
 httpx
 google-cloud-texttospeech
+kokoro
+soundfile

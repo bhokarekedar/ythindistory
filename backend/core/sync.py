@@ -74,7 +74,7 @@ class AudioSynchronizer:
         if not enabled_corners:
             return v_stream
             
-        wm_input = ffmpeg.input(watermark_path)
+        wm_input = ffmpeg.input(watermark_path, loop=1)
         splits = wm_input.split() if len(enabled_corners) > 1 else [wm_input]
         
         for i, (position, corner) in enumerate(enabled_corners):
@@ -91,7 +91,7 @@ class AudioSynchronizer:
             elif position == "bottomRight":
                 x, y = f"{main_w}-overlay_w-{corner.offsetX}", f"{main_h}-overlay_h-{corner.offsetY}"
                 
-            v_stream = ffmpeg.overlay(v_stream, wm, x=x, y=y)
+            v_stream = ffmpeg.overlay(v_stream, wm, x=x, y=y, shortest=1)
             
         return v_stream
 

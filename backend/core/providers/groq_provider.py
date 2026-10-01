@@ -8,12 +8,12 @@ class GroqProvider(LLMProvider):
         self.model = model
         self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-    def translate_segments(self, segments, system_prompt: str, context: str = "") -> list:
+    def translate_segments(self, segments, system_prompt: str, context: str = "", target_language: str = "hindi") -> list:
         # We need to construct a robust JSON prompt to ensure Groq outputs clean JSON
-        user_content = f"Context (do not translate this): {context}\n\nSegments to translate:\n"
+        user_content = f"Context (do not translate this): {context}\n\nSegments to translate/rewrite:\n"
         user_content += json.dumps([{"id": s["id"], "text": s["text"]} for s in segments], ensure_ascii=False)
         
-        system_prompt += "\n\nIMPORTANT: You must output ONLY a valid JSON object with a single key 'translations', containing a list of objects with 'id' and 'hindi'. Do not output markdown code blocks or any other text."
+        system_prompt += "\n\nIMPORTANT: You must output ONLY a valid JSON object with a single key 'translations', containing a list of objects with 'id' and 'translated_text'. Do not output markdown code blocks or any other text."
 
         response = self.client.chat.completions.create(
             messages=[

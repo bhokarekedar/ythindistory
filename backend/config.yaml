@@ -10,18 +10,14 @@ translation:
   batch_size: 10
 
 tts:
-  engine: google
+  provider: kokoro
+  engine: kokoro
 
-gemini_tts:
-  voice: Algieba
-  model: gemini-3.1-flash-tts-preview
+kokoro:
+  voice: hf_alpha
 
 transcription:
   chunk_minutes: 10
-
-tts:
-  engine: piper
-  language: hi
 
 sync:
   max_retries: 3
