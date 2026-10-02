@@ -1,45 +1,110 @@
 import os
 import json
 from groq import Groq
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
 class Transcriber:
-    def __init__(self, model_name: str = "whisper-large-v3-turbo", output_dir: str = "temp", chunk_minutes: int = 10):
+    def __init__(self, model_name: str = "whisper-large-v3-turbo", output_dir: str = "temp", chunk_minutes: int = 10, api_key: str = None):
         self.model_name = model_name
         self.output_dir = output_dir
         self.chunk_minutes = chunk_minutes
         os.makedirs(self.output_dir, exist_ok=True)
-        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        self.client = Groq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
 
-    def transcribe(self, audio_path: str, language: str = None) -> str:
+    def fetch_youtube_transcript(self, url: str) -> list:
         """
-        Transcribes the audio using Groq Whisper API and saves a timestamped JSON file.
-        In MVP, we process the whole file (assuming it's small). 
-        # TODO: Implement pydub/ffmpeg audio chunking here if audio is > 25MB (Groq limit).
+        Attempts to instantly download the transcript directly from YouTube servers.
+        Returns a list of segments if successful, otherwise None.
         """
-        print(f"Transcribing {audio_path} via Groq...")
-        
-        # For Groq, we need to send the audio file directly. 
-        # Max file size for Groq Whisper is 25MB.
-        # We request verbose_json to get timestamps.
-        with open(audio_path, "rb") as file:
-            kwargs = {
-                "file": (os.path.basename(audio_path), file.read()),
-                "model": self.model_name,
-                "response_format": "verbose_json",
-            }
-            if language:
-                kwargs["language"] = language
+        try:
+            from urllib.parse import urlparse, parse_qs
+            # Extract video ID
+            parsed_url = urlparse(url)
+            video_id = ""
+            if parsed_url.hostname in ['www.youtube.com', 'youtube.com']:
+                video_id = parse_qs(parsed_url.query).get('v', [None])[0]
+            elif parsed_url.hostname in ['youtu.be']:
+                video_id = parsed_url.path[1:]
+                
+            if not video_id:
+                return None
+
+            print(f"Fetching official YouTube transcript for video {video_id}...")
             
-            transcription = self.client.audio.transcriptions.create(**kwargs)
+            # Fetch transcripts, prioritizing english and hindi
+            transcript_list = YouTubeTranscriptApi().list(video_id)
+            
+            try:
+                transcript = transcript_list.find_transcript(['en', 'hi', 'en-US', 'hi-IN'])
+            except NoTranscriptFound:
+                # If neither english nor hindi exists, just get whatever is available and we'll translate it later
+                transcript = transcript_list.find_transcript([t.language_code for t in transcript_list])
+                
+            fetched_data = transcript.fetch()
+            
+            # Convert YouTube's format to our segment format
+            segments = []
+            for i, seg in enumerate(fetched_data):
+                # Handle both dicts (older versions) and objects (newer versions)
+                text = seg['text'] if isinstance(seg, dict) else seg.text
+                start = seg['start'] if isinstance(seg, dict) else seg.start
+                duration = seg['duration'] if isinstance(seg, dict) else seg.duration
+                
+                segments.append({
+                    "id": i + 1,
+                    "start": start,
+                    "end": start + duration,
+                    "text": text.strip()
+                })
+            
+            return segments
+        except Exception as e:
+            print(f"YouTube Transcript Fetch Failed: {e}. Falling back to Whisper...")
+            return None
+
+    def transcribe(self, audio_path: str, language: str = None, youtube_url: str = None) -> str:
+        """
+        Transcribes the audio. First tries to fetch official YouTube transcript if url is provided.
+        Falls back to Groq Whisper API if no transcript exists.
+        Saves a timestamped JSON file.
+        """
+        base_name = os.path.splitext(os.path.basename(audio_path))[0]
+        output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")
+
+        segments = None
         
-        segments = []
-        for i, segment in enumerate(transcription.segments):
-            segments.append({
-                "id": i + 1,
-                "start": segment["start"],
-                "end": segment["end"],
-                "text": segment["text"].strip()
-            })
+        # 1. Fast Path: Try Official YouTube Transcript first
+        if youtube_url:
+            segments = self.fetch_youtube_transcript(youtube_url)
+            
+        # 2. Fallback Path: Groq Whisper
+        if not segments:
+            print(f"Transcribing {audio_path} via Groq Whisper...")
+            with open(audio_path, "rb") as file:
+                kwargs = {
+                    "file": (os.path.basename(audio_path), file.read()),
+                    "model": self.model_name,
+                    "response_format": "verbose_json",
+                    "temperature": 0.0,
+                    "prompt": "यह एक कहानी है। स्वागत है दोस्तों।", # Conditions the model to output proper Hindi and reduces gibberish
+                }
+                if language:
+                    kwargs["language"] = language
+                else:
+                    # Force Hindi language detection to prevent Whisper from outputting Urdu/Arabic script
+                    # This fixes the issue where the raw transcript had Urdu characters instead of Devanagari/English!
+                    kwargs["language"] = "hi"
+                
+                transcription = self.client.audio.transcriptions.create(**kwargs)
+            
+            segments = []
+            for i, segment in enumerate(transcription.segments):
+                segments.append({
+                    "id": i + 1,
+                    "start": segment["start"],
+                    "end": segment["end"],
+                    "text": segment["text"].strip()
+                })
             
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")

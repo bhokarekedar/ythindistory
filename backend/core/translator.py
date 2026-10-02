@@ -40,15 +40,10 @@ Rules:
 7. Do not add introductions, conclusions, or commentary.
 8. Return ONLY the requested translations for the current segments.
 9. Preserve the segment IDs exactly.
-10. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. Only use a period (.) to end a complete sentence.
-11. Do NOT add any punctuation other than a single period (.) at the end of a sentence.
-12. CRITICAL RULES - DO NOT INCLUDE THE FOLLOWING:
-    - No Intros/Outros: Remove any "Welcome to my channel", "Thanks for 1 million subscribers", or "Don't forget to subscribe/like/comment".
-    - No Promotions/Sponsorships: Remove any mentions of sponsors, giveaways, merchandise, or brand deals.
-    - No Personal Anecdotes: Remove any personal life updates that are unrelated to the core story of the video.
-    - Start at the Core Story: Ignore the hook if it's promotional. Begin the script exactly where the actual educational/entertainment story begins.
-    - If you encounter these, skip them completely and return an empty string ("") for that segment's translated_text. Do NOT bridge the gap.
-13. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend."""
+4. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. Only use a period (.) to end a complete sentence.
+5. Do NOT add any punctuation other than a single period (.) at the end of a sentence.
+6. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend.
+7. DO NOT DELETE THE INTRO: If the script starts with an introduction (like 'Welcome to the channel' or 'Today we are explaining...'), you MUST translate and keep it! Do not delete it."""
         else:
             return """You are a professional English YouTube movie-recap narrator.
 Refine and rewrite the provided English movie explanation into natural, spoken English.
