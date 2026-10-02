@@ -16,6 +16,10 @@ TARGET_SAMPWIDTH = 2  # 16-bit
 # Prevents sentences from running together while keeping narration tight.
 MIN_PAUSE_S = 0.40
 
+# Maximum silence gap allowed between any two consecutive TTS segments.
+# Ensures the pacing is consistently engaging, skipping long original silences.
+MAX_PAUSE_S = 1.0
+
 # Silence added after the last segment before audio ends.
 TRAILING_SILENCE_S = 1.5
 
@@ -142,8 +146,9 @@ class AudioSynchronizer:
             if i == 0:
                 audio_start = seg["start"]
             else:
-                # Respect original timing unless TTS overran — then push forward
-                audio_start = max(seg["start"], prev_audio_end + MIN_PAUSE_S)
+                # Respect original timing but enforce MIN and MAX pauses to keep pacing tight and natural
+                desired_start = max(seg["start"], prev_audio_end + MIN_PAUSE_S)
+                audio_start = min(desired_start, prev_audio_end + MAX_PAUSE_S)
 
             audio_end = audio_start + tts_dur
             prev_audio_end = audio_end
@@ -221,8 +226,18 @@ class AudioSynchronizer:
     # Step B: Build the video-only timeline driven by audio timestamps
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _is_skipped(self, start: float, end: float, skip_intervals: list) -> bool:
+        if not skip_intervals: return False
+        for interval in skip_intervals:
+            s = getattr(interval, 'start', interval.get('start', 0) if isinstance(interval, dict) else 0)
+            e = getattr(interval, 'end', interval.get('end', 0) if isinstance(interval, dict) else 0)
+            # True if there is ANY overlap between [start, end] and [s, e]
+            if max(start, s) < min(end, e):
+                return True
+        return False
+
     def _build_video_timeline(self, timeline: list, original_video_path: str,
-                              total_audio_dur: float, job_dir: str, watermark_settings=None, text_watermark_settings=None) -> str:
+                              total_audio_dur: float, job_dir: str, watermark_settings=None, text_watermark_settings=None, skip_intervals=None) -> str:
         """
         Produces a video-only MP4 retimed to exactly match the audio timeline.
 
@@ -249,33 +264,56 @@ class AudioSynchronizer:
             seg_id = entry.get("id", 0)
             orig_start = entry["start"]
             orig_end = entry["end"]
-            orig_dur = max(orig_end - orig_start, 0.05)
             audio_start = entry["audio_start"]
             audio_end = entry["audio_end"]
             tts_dur = entry["tts_dur"]
 
+            # Variables passed to ffmpeg for extraction
+            # We don't overwrite orig_start/orig_end so the video_cursor advances correctly!
+            seg_extract_start = orig_start
+            seg_extract_dur = max(orig_end - orig_start, 0.05)
+            
+            gap_extract_start = video_cursor
+            gap_extract_dur = max(orig_start - video_cursor, 0.0)
+
+            # 1. Handle gap skips
+            if self._is_skipped(video_cursor, orig_start, skip_intervals):
+                print(f"  [Video] Gap visuals skipped. Freezing last valid frame.")
+                gap_extract_start = max(0, video_cursor - 0.1)
+                gap_extract_dur = 0.1
+
+            # 2. Handle segment skips
+            if self._is_skipped(orig_start, orig_end, skip_intervals):
+                print(f"  [Video] Segment {seg_id} visuals skipped. Freezing last valid frame.")
+                seg_extract_start = max(0, video_cursor - 0.1)
+                seg_extract_dur = 0.1
+
             # ── Gap chunk: original video played at natural speed ──────────
-            # Gap in audio = silence between prev TTS end and this TTS start
             gap_dur = audio_start - audio_cursor
             if gap_dur > 0.05:
-                # How much original video to use for this gap?
-                # Use the original video gap (original silence between segments)
-                orig_gap = orig_start - video_cursor
-                if orig_gap < 0.05:
-                    orig_gap = gap_dur  # fallback if no original gap
+                # If we skipped a large chunk of video naturally (not manually)
+                if not self._is_skipped(video_cursor, orig_start, skip_intervals):
+                    if gap_extract_dur > max(gap_dur * 2, 2.0):
+                        print(f"  [Video] Skipping large video gap naturally: {gap_extract_dur:.2f}s")
+                        gap_extract_start = max(gap_extract_start, orig_start - 0.5)
+                        gap_extract_dur = orig_start - gap_extract_start
+
+                if gap_extract_dur < 0.05:
+                    gap_extract_dur = gap_dur  # fallback
+                
                 # Clamp: don't use more original video than available
-                orig_gap = min(orig_gap, self.get_video_duration(original_video_path) - video_cursor)
-                orig_gap = max(orig_gap, 0.05)
+                gap_extract_dur = min(gap_extract_dur, self.get_video_duration(original_video_path) - gap_extract_start)
+                gap_extract_dur = max(gap_extract_dur, 0.05)
 
                 chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
                 if not os.path.exists(chunk_path):
                     # Scale video speed to fill exactly gap_dur output time
-                    pts_scale = orig_gap / gap_dur  # <1 = speed up, >1 = slow
+                    pts_scale = gap_extract_dur / gap_dur  
                     v = (
                         ffmpeg.input(original_video_path).video
-                        .filter("trim", start=video_cursor, duration=orig_gap)
+                        .filter("trim", start=gap_extract_start, duration=gap_extract_dur)
                         .filter("setpts", "PTS-STARTPTS")
-                        .filter("setpts", f"{gap_dur / orig_gap}*PTS")
+                        .filter("setpts", f"{gap_dur / gap_extract_dur}*PTS")
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
@@ -297,17 +335,17 @@ class AudioSynchronizer:
                         raise
                 concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
                 chunk_idx += 1
-                video_cursor += orig_gap
+                video_cursor = orig_start
                 audio_cursor = audio_start
 
             # ── Segment chunk: original video retimed to match TTS ─────────
             chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_seg.mp4")
             if not os.path.exists(chunk_path):
                 # PTS scale: orig_dur seconds of video → tts_dur seconds of output
-                pts_factor = tts_dur / orig_dur   # >1 = slow down, <1 = speed up
+                pts_factor = tts_dur / seg_extract_dur   
                 v = (
                     ffmpeg.input(original_video_path).video
-                    .filter("trim", start=orig_start, duration=orig_dur)
+                    .filter("trim", start=seg_extract_start, duration=seg_extract_dur)
                     .filter("setpts", "PTS-STARTPTS")
                     .filter("setpts", f"{pts_factor}*PTS")
                     .filter("scale", 1280, 720).filter("setsar", 1)
@@ -388,7 +426,7 @@ class AudioSynchronizer:
     # ─────────────────────────────────────────────────────────────────────────
 
     def build_timeline(self, segments: list, original_video_path: str,
-                       output_path: str, job_dir: str = "temp", watermark_settings=None, text_watermark_settings=None):
+                       output_path: str, job_dir: str = "temp", watermark_settings=None, text_watermark_settings=None, skip_intervals=None):
         """
         Produces the final video:
           0. Compute audio timeline  → where each sentence starts/ends in output
@@ -410,7 +448,7 @@ class AudioSynchronizer:
 
         # ── Step B: Video timeline ────────────────────────────────────────
         print("\n[Sync] Step B: Building retimed video timeline...")
-        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir, watermark_settings, text_watermark_settings)
+        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir, watermark_settings, text_watermark_settings, skip_intervals)
 
         # ── Step C: Mux video + clean audio ──────────────────────────────
         print("\n[Sync] Step C: Muxing video + clean audio (single encode pass)...")

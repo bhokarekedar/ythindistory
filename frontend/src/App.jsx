@@ -7,6 +7,8 @@ function App() {
   const [status, setStatus] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
   
+  const [skipIntervals, setSkipIntervals] = useState([{ start: '', end: '' }])
+  
   const [watermark, setWatermark] = useState({
     topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
     topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
@@ -22,15 +24,35 @@ function App() {
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
 
+  const parseTimeToSeconds = (timeStr) => {
+    if (!timeStr) return 0;
+    const str = timeStr.toString().replace(':', '.');
+    if (str.includes('.')) {
+        const parts = str.split('.');
+        const mins = parseInt(parts[0]) || 0;
+        const secs = parseInt(parts[1]) || 0;
+        return mins * 60 + secs;
+    }
+    return parseFloat(timeStr) || 0;
+  }
+
   const handleSubmit = async (e, language) => {
     e.preventDefault()
     if (!url) return
     setStatus('Starting...')
+    
+    const formattedSkipIntervals = skipIntervals
+      .filter(s => s.start !== '' && s.end !== '')
+      .map(s => ({
+        start: parseTimeToSeconds(s.start),
+        end: parseTimeToSeconds(s.end)
+      }))
+
     try {
       const res = await fetch('http://localhost:8000/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, watermark, textWatermark, target_language: language })
+        body: JSON.stringify({ url, watermark, textWatermark, target_language: language, skip_intervals: formattedSkipIntervals })
       })
       const data = await res.json()
       setJobId(data.job_id)
@@ -106,6 +128,22 @@ function App() {
     }))
   }
 
+  const handleAddSkip = () => {
+    setSkipIntervals([...skipIntervals, { start: '', end: '' }])
+  }
+
+  const handleRemoveSkip = (index) => {
+    const newSkips = [...skipIntervals]
+    newSkips.splice(index, 1)
+    setSkipIntervals(newSkips)
+  }
+
+  const handleSkipChange = (index, field, value) => {
+    const newSkips = [...skipIntervals]
+    newSkips[index][field] = value
+    setSkipIntervals(newSkips)
+  }
+
   return (
     <div className="container">
       <h1>Automated Movie Recap</h1>
@@ -169,6 +207,34 @@ function App() {
           <button type="button" onClick={handleSnapshot} disabled={snapshotLoading} className="snapshot-btn">
             {snapshotLoading ? 'Generating Snapshot...' : 'Test Snapshot (1-min mark)'}
           </button>
+        </div>
+
+        <div className="skip-settings" style={{ marginTop: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
+          <h3>Skip Video Segments (Optional)</h3>
+          <p style={{ fontSize: '12px', color: '#666' }}>Exclude parts of the original video (e.g., promos). Use format MM:SS or MM.SS (like 0.44 or 1:34).</p>
+          {skipIntervals.map((skip, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+              <input 
+                type="text" 
+                placeholder="Start (e.g. 0.44)" 
+                value={skip.start}
+                onChange={(e) => handleSkipChange(idx, 'start', e.target.value)}
+                style={{ width: '120px' }}
+              />
+              <span>to</span>
+              <input 
+                type="text" 
+                placeholder="End (e.g. 1.34)" 
+                value={skip.end}
+                onChange={(e) => handleSkipChange(idx, 'end', e.target.value)}
+                style={{ width: '120px' }}
+              />
+              {skipIntervals.length > 1 && (
+                <button type="button" onClick={() => handleRemoveSkip(idx)} style={{ padding: '5px 10px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>X</button>
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={handleAddSkip} style={{ padding: '5px 10px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Add Skip Interval</button>
         </div>
         
         {snapshotImg && (

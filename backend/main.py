@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from typing import Optional
+from typing import Optional, List
 
 class WatermarkCorner(BaseModel):
     enabled: bool = False
@@ -43,11 +43,16 @@ class WatermarkSettings(BaseModel):
     bottomLeft: Optional[WatermarkCorner] = None
     bottomRight: Optional[WatermarkCorner] = None
 
+class TimeRange(BaseModel):
+    start: float
+    end: float
+
 class VideoRequest(BaseModel):
     url: str
     target_language: str = "hindi"
     watermark: Optional[WatermarkSettings] = None
     textWatermark: Optional[WatermarkSettings] = None
+    skip_intervals: Optional[List[TimeRange]] = None
 
 class SnapshotRequest(BaseModel):
     url: str
@@ -121,6 +126,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
             transcript_path = transcriber.transcribe(raw_audio_path)
             print(f"[JOB {job_id}] Transcription complete. JSON stored at: {transcript_path}")
             
+
         # Step 4: Translation / Script Rewrite
         target_lang = request.target_language.lower()
         script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}_transcript.json")
@@ -167,7 +173,13 @@ def process_pipeline(job_id: str, request: VideoRequest):
             
         aligned_audio_segments = []
         for i, seg in enumerate(segments):
-            text = seg.get(target_lang, "Error")
+            text = seg.get(target_lang, "Error").strip()
+            
+            # Skip empty segments (filtered out by LLM)
+            if not text:
+                print(f"  [TTS] Skipping segment {seg['id']} (Empty text - likely filtered by LLM)")
+                continue
+
             audio_path = os.path.join(f"{job_dir}/segments", f"{seg['id']:04d}.wav")
             
             if not os.path.exists(audio_path):
@@ -200,7 +212,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 shutil.rmtree(p)
                 print(f"  [Cache] Removed stale dir: {stale_dir}/")
         
-        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark, text_watermark_settings=request.textWatermark)
+        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark, text_watermark_settings=request.textWatermark, skip_intervals=request.skip_intervals)
         
         job_status[job_id] = f"Completed: {final_output}"
         print(f"\n[JOB {job_id}] ✅ DONE! Final video saved to {final_output}")
