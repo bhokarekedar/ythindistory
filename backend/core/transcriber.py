@@ -82,9 +82,11 @@ class Transcriber:
             ends_with_punc = text.endswith(('.', '!', '?', '।', ',', ';'))
             duration = current_seg["end"] - current_seg["start"]
             
-            # Merge if the sentence hasn't naturally ended (no punctuation) AND isn't too long.
+            # Merge if the sentence hasn't naturally ended (no punctuation).
+            # We use a massive 60-second absolute cap to prevent infinite merging 
+            # if the transcriber fails to output any punctuation.
             # Also merge extremely short fragments (under 1.5s) regardless.
-            if (not ends_with_punc and duration < max_duration) or (duration < 1.5):
+            if (not ends_with_punc and duration < 60.0) or (duration < 1.5):
                 current_seg["text"] += " " + seg["text"].strip()
                 current_seg["end"] = seg["end"]
             else:
