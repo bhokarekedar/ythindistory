@@ -271,12 +271,13 @@ class AudioSynchronizer:
             tts_dur = entry["tts_dur"]
 
             # Variables passed to ffmpeg for extraction
-            # We don't overwrite orig_start/orig_end so the video_cursor advances correctly!
-            seg_extract_start = orig_start
-            seg_extract_dur = max(orig_end - orig_start, 0.05)
+            # If original segments overlap (orig_start < video_cursor), clamp the start to video_cursor
+            # so the video doesn't awkwardly jump backward in time!
+            seg_extract_start = max(orig_start, video_cursor)
+            seg_extract_dur = max(orig_end - seg_extract_start, 0.05)
             
             gap_extract_start = video_cursor
-            gap_extract_dur = max(orig_start - video_cursor, 0.0)
+            gap_extract_dur = max(seg_extract_start - video_cursor, 0.0)
 
             # 1. Handle gap skips
             if self._is_skipped(video_cursor, orig_start, skip_intervals):
