@@ -11,9 +11,13 @@ class StoryTranslator:
         self.batch_size = batch_size
         self.max_retries = max_retries
         self.providers = []
+        self.validator_provider = None
         
         if primary_provider == "groq":
             self.providers.append(GroqProvider(model=translation_model))
+            validator_key = os.environ.get("GROQ_API_KEY_TWO")
+            if validator_key:
+                self.validator_provider = GroqProvider(model=translation_model, api_key=validator_key)
         
         if fallback_provider == "openrouter":
             self.providers.append(OpenRouterProvider(model=fallback_model))
@@ -37,13 +41,13 @@ Rules:
    WRONG example: 'जेनिफर एक राइटर थी जो न्यू यॉर्क में रहती थी'
 5. Avoid overly formal Hindi. Use conversational Hindi mixed with English words naturally (as Indians speak).
 6. Keep sentences short — one idea per sentence.
-7. Do not add introductions, conclusions, or commentary.
-8. Return ONLY the requested translations for the current segments.
-9. Preserve the segment IDs exactly.
-4. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. Only use a period (.) to end a complete sentence.
-5. Do NOT add any punctuation other than a single period (.) at the end of a sentence.
-6. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend.
-7. DO NOT DELETE THE INTRO: If the script starts with an introduction (like 'Welcome to the channel' or 'Today we are explaining...'), you MUST translate and keep it! Do not delete it."""
+7. CRITICAL — CONCISENESS: Keep translations as brief and concise as possible. The spoken Hindi should not be longer in duration than the original English. Use short, punchy sentences.
+8. CRITICAL — NO mid-sentence commas: Do NOT use commas (,) inside a Hindi sentence. Commas cause the TTS engine to add an unnatural pause mid-sentence. Only use a period (.) to end a complete sentence.
+9. Do NOT add any punctuation other than a single period (.) at the end of a sentence.
+10. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend.
+11. DO NOT DELETE THE INTRO: If the script starts with an introduction (like 'Welcome to the channel' or 'Today we are explaining...'), you MUST translate and keep it! Do not delete it.
+12. Return ONLY the requested translations for the current segments.
+13. Preserve the segment IDs exactly."""
         else:
             return """You are a professional English YouTube movie-recap narrator.
 Refine and rewrite the provided English movie explanation into natural, spoken English.
@@ -62,6 +66,17 @@ Rules:
     - Start at the Core Story: Ignore the hook if it's promotional. Begin the script exactly where the actual educational/entertainment story begins.
     - If you encounter these, skip them completely and return an empty string ("") for that segment's translated_text. Do NOT bridge the gap.
 9. STORYTELLING TONE: Narrate this as a captivating, immersive story. Build suspense in thrilling moments, express sadness in emotional scenes, and engage the listener as if you are telling a gripping story to a friend."""
+
+    def get_validator_prompt(self, target_language: str) -> str:
+        return f"""You are a strict QA Editor for a YouTube movie recap channel.
+Review and fix the provided {target_language.capitalize()} translations.
+Rules:
+1. Fix any unnatural flow, bad grammar, or robotic phrasing.
+2. Ensure it sounds like a captivating story told by a human.
+3. Keep sentences short and punchy.
+4. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
+5. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
+"""
 
     def _execute_translation(self, segments, system_prompt: str, context: str, target_language: str) -> list:
         for provider in self.providers:
@@ -94,12 +109,66 @@ Rules:
             next_context = segments[next_idx]["text"] if next_idx < len(segments) else ""
             context = f"{prev_context} [...] {next_context}"
             
-            print(f"Generating {lang_key} script for batch {i // self.batch_size + 1} ({len(batch)} segments)...")
-            results = self._execute_translation(batch, system_prompt, context, lang_key)
+            batch_ids = {int(seg["id"]) for seg in batch}
+            valid_results = []
+            
+            # --- Pass 1: Translation with retry loop for missing IDs ---
+            for attempt in range(self.max_retries + 1):
+                print(f"Generating {lang_key} script for batch {i // self.batch_size + 1} (Attempt {attempt+1})...")
+                results = self._execute_translation(batch, system_prompt, context, lang_key)
+                
+                returned_ids = set()
+                for item in results:
+                    try:
+                        returned_ids.add(int(item["id"]))
+                    except:
+                        pass
+                
+                if batch_ids.issubset(returned_ids):
+                    valid_results = results
+                    break
+                else:
+                    missing = batch_ids - returned_ids
+                    print(f"Warning: LLM missed IDs {missing}. Retrying batch...")
+                    time.sleep(2)
+            
+            if not valid_results:
+                valid_results = results
+                
+            # --- Pass 2: Validation/Editing with GROQ_API_KEY_TWO ---
+            if self.validator_provider and valid_results:
+                print(f"Validating batch {i // self.batch_size + 1} with second API key...")
+                validator_prompt = self.get_validator_prompt(lang_key)
+                
+                # Format for the validator (it expects 'text' to translate/fix)
+                validator_input = []
+                for r in valid_results:
+                    val_text = r.get("translated_text", r.get(lang_key, r.get("text", "")))
+                    validator_input.append({"id": r["id"], "text": val_text})
+                
+                for attempt in range(self.max_retries):
+                    try:
+                        val_results = self.validator_provider.translate_segments(validator_input, validator_prompt, context="", target_language=lang_key)
+                        val_returned_ids = set()
+                        for item in val_results:
+                            try:
+                                val_returned_ids.add(int(item["id"]))
+                            except:
+                                pass
+                        
+                        if batch_ids.issubset(val_returned_ids):
+                            valid_results = val_results
+                            break
+                        else:
+                            missing = batch_ids - val_returned_ids
+                            print(f"Warning: Validator missed IDs {missing}. Retrying validation...")
+                    except Exception as e:
+                        print(f"Validator failed: {e}")
+                    time.sleep(2)
             
             # Map results back by ID (convert to int in case LLM outputs strings)
             result_map = {}
-            for item in results:
+            for item in valid_results:
                 try:
                     result_map[int(item["id"])] = item.get("translated_text", item.get("hindi", item.get("text", "Error")))
                 except (KeyError, ValueError):

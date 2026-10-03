@@ -62,6 +62,44 @@ class Transcriber:
             print(f"YouTube Transcript Fetch Failed: {e}. Falling back to Whisper...")
             return None
 
+    def _merge_segments(self, segments: list, max_duration: float = 8.0) -> list:
+        """
+        Merges short or incomplete fragments into longer sentences.
+        This prevents the TTS engine from receiving fragments and taking unnatural pauses mid-sentence.
+        """
+        if not segments:
+            return []
+            
+        merged = []
+        current_seg = None
+        
+        for seg in segments:
+            if not current_seg:
+                current_seg = seg.copy()
+                continue
+                
+            text = current_seg["text"].strip()
+            ends_with_punc = text.endswith(('.', '!', '?', '।', ',', ';'))
+            duration = current_seg["end"] - current_seg["start"]
+            
+            # Merge if the sentence hasn't naturally ended (no punctuation) AND isn't too long.
+            # Also merge extremely short fragments (under 1.5s) regardless.
+            if (not ends_with_punc and duration < max_duration) or (duration < 1.5):
+                current_seg["text"] += " " + seg["text"].strip()
+                current_seg["end"] = seg["end"]
+            else:
+                merged.append(current_seg)
+                current_seg = seg.copy()
+                
+        if current_seg:
+            merged.append(current_seg)
+            
+        # Re-assign sequential IDs
+        for i, m in enumerate(merged):
+            m["id"] = i + 1
+            
+        return merged
+
     def transcribe(self, audio_path: str, language: str = None, youtube_url: str = None) -> str:
         """
         Transcribes the audio. First tries to fetch official YouTube transcript if url is provided.
@@ -105,6 +143,12 @@ class Transcriber:
                     "end": segment["end"],
                     "text": segment["text"].strip()
                 })
+        
+        # Merge fragments into complete sentences for better TTS flow
+        if segments:
+            print(f"Original segments: {len(segments)}")
+            segments = self._merge_segments(segments)
+            print(f"Merged into {len(segments)} sentences for smoother audio flow.")
             
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")

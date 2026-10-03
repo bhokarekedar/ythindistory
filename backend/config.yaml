@@ -7,7 +7,7 @@ groq:
   translation_model: qwen/qwen3.8-27b
 
 translation:
-  batch_size: 10
+  batch_size: 5
 
 tts:
   provider: kokoro

@@ -4,9 +4,10 @@ from groq import Groq
 from core.providers.base import LLMProvider
 
 class GroqProvider(LLMProvider):
-    def __init__(self, model: str = "llama-3.1-70b-versatile"):
+    def __init__(self, model: str = "llama-3.1-70b-versatile", api_key: str = None):
         self.model = model
-        self.client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        self.api_key = api_key or os.environ.get("GROQ_API_KEY")
+        self.client = Groq(api_key=self.api_key)
 
     def translate_segments(self, segments, system_prompt: str, context: str = "", target_language: str = "hindi") -> list:
         # We need to construct a robust JSON prompt to ensure Groq outputs clean JSON

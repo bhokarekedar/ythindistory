@@ -14,11 +14,11 @@ TARGET_SAMPWIDTH = 2  # 16-bit
 
 # Minimum silence gap enforced between any two consecutive TTS segments.
 # Prevents sentences from running together while keeping narration tight.
-MIN_PAUSE_S = 0.40
+MIN_PAUSE_S = 0.15
 
 # Maximum silence gap allowed between any two consecutive TTS segments.
 # Ensures the pacing is consistently engaging, skipping long original silences.
-MAX_PAUSE_S = 1.0
+MAX_PAUSE_S = 0.8
 
 # Silence added after the last segment before audio ends.
 TRAILING_SILENCE_S = 1.5
@@ -144,7 +144,9 @@ class AudioSynchronizer:
 
             # Compute placement
             if i == 0:
-                audio_start = seg["start"]
+                # Cap initial silence to 0.5s. If the first few segments were deleted by the LLM 
+                # (e.g., intro music text), we don't want 8 seconds of silence at the start of the video.
+                audio_start = min(seg["start"], 0.5)
             else:
                 # Respect original timing but enforce MIN and MAX pauses to keep pacing tight and natural
                 desired_start = max(seg["start"], prev_audio_end + MIN_PAUSE_S)
@@ -486,7 +488,11 @@ class AudioSynchronizer:
                 .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                 .filter("settb", "1/30")
             )
-            intro_a = intro.audio.filter("aresample", TARGET_RATE)
+            
+            # Pad or trim intro audio to EXACTLY match video duration. 
+            # If intro audio is shorter than intro video, acrossfade triggers early and desyncs the main video!
+            intro_duration = self.get_video_duration(intro_path)
+            intro_a = intro.audio.filter("aresample", TARGET_RATE).filter("apad").filter("atrim", end=intro_duration)
 
             main = ffmpeg.input(mixed_video_path)
             main_v = (
