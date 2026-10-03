@@ -62,7 +62,7 @@ class Transcriber:
             print(f"YouTube Transcript Fetch Failed: {e}. Falling back to Whisper...")
             return None
 
-    def _merge_segments(self, segments: list, max_duration: float = 8.0) -> list:
+    def _merge_segments(self, segments: list, max_duration: float = 25.0) -> list:
         """
         Merges short or incomplete fragments into longer sentences.
         This prevents the TTS engine from receiving fragments and taking unnatural pauses mid-sentence.
