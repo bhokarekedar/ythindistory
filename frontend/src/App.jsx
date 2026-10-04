@@ -3,6 +3,7 @@ import './App.css'
 
 function App() {
   const [url, setUrl] = useState('')
+  const [webhookUrl, setWebhookUrl] = useState('http://localhost:5678/webhook-test/video-complete')
   const [jobId, setJobId] = useState(null)
   const [status, setStatus] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
@@ -52,7 +53,14 @@ function App() {
       const res = await fetch('http://localhost:8000/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, watermark, textWatermark, target_language: language, skip_intervals: formattedSkipIntervals })
+        body: JSON.stringify({ 
+          url, 
+          watermark, 
+          textWatermark, 
+          target_language: language, 
+          skip_intervals: formattedSkipIntervals,
+          webhook_url: webhookUrl || undefined
+        })
       })
       const data = await res.json()
       setJobId(data.job_id)
@@ -155,6 +163,14 @@ function App() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           required
+        />
+
+        <input 
+          type="url" 
+          placeholder="n8n Webhook URL (Optional)" 
+          value={webhookUrl}
+          onChange={(e) => setWebhookUrl(e.target.value)}
+          style={{ marginTop: '10px' }}
         />
         
         <div className="watermark-settings">

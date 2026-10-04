@@ -31,6 +31,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+import os
+
+os.makedirs("output", exist_ok=True)
+app.mount("/output", StaticFiles(directory="output"), name="output")
+
 from typing import Optional, List
 
 class WatermarkCorner(BaseModel):
@@ -55,6 +61,7 @@ class VideoRequest(BaseModel):
     watermark: Optional[WatermarkSettings] = None
     textWatermark: Optional[WatermarkSettings] = None
     skip_intervals: Optional[List[TimeRange]] = None
+    webhook_url: Optional[str] = None
 
 class SnapshotRequest(BaseModel):
     url: str
@@ -81,6 +88,47 @@ def process_pipeline(job_id: str, request: VideoRequest):
         
     job_dir = f"temp/{video_id}"
     os.makedirs(job_dir, exist_ok=True)
+    
+    output_folder = f"output/{video_id}"
+    os.makedirs(output_folder, exist_ok=True)
+    final_output = os.path.join(output_folder, f"{video_id}_final.mp4")
+    metadata_output = os.path.join(output_folder, f"{video_id}_metadata.json")
+    
+    if os.path.exists(final_output) and os.path.exists(metadata_output):
+        print(f"\n[JOB {job_id}] ⚡ FINAL VIDEO ALREADY EXISTS! Skipping generation and firing webhook directly.")
+        job_status[job_id] = f"Completed: {final_output}"
+        
+        if request.webhook_url:
+            import urllib.request
+            import json
+            print(f"  [Webhook] Sending completion POST to {request.webhook_url}...")
+            try:
+                abs_video_path = os.path.abspath(final_output)
+                abs_metadata_path = os.path.abspath(metadata_output)
+                
+                with open(abs_metadata_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                
+                payload = {
+                    "job_id": job_id,
+                    "video_id": video_id,
+                    "status": "success",
+                    "final_video_path": abs_video_path,
+                    "metadata_path": abs_metadata_path,
+                    "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
+                    "url": url,
+                    "title": meta.get("title", f"Movie Recap {video_id}"),
+                    "description": meta.get("description", ""),
+                    "tags": meta.get("keywords", [])
+                }
+                
+                data = json.dumps(payload).encode('utf-8')
+                req = urllib.request.Request(request.webhook_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+                urllib.request.urlopen(req, timeout=10)
+                print("  [Webhook] Success!")
+            except Exception as e:
+                print(f"  [Webhook] Failed to send webhook: {e}")
+        return
     
     try:
         with open("config.yaml", "r") as f:
@@ -234,6 +282,37 @@ def process_pipeline(job_id: str, request: VideoRequest):
         
         job_status[job_id] = f"Completed: {final_output}"
         print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
+        
+        if request.webhook_url:
+            import urllib.request
+            print(f"  [Webhook] Sending completion POST to {request.webhook_url}...")
+            try:
+                abs_video_path = os.path.abspath(final_output)
+                abs_metadata_path = os.path.abspath(metadata_output)
+                
+                # Load metadata to send it directly in the webhook!
+                with open(abs_metadata_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                
+                payload = {
+                    "job_id": job_id,
+                    "video_id": video_id,
+                    "status": "success",
+                    "final_video_path": abs_video_path,
+                    "metadata_path": abs_metadata_path,
+                    "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
+                    "url": url,
+                    "title": meta.get("title", f"Movie Recap {video_id}"),
+                    "description": meta.get("description", ""),
+                    "tags": meta.get("keywords", [])
+                }
+                
+                data = json.dumps(payload).encode('utf-8')
+                req = urllib.request.Request(request.webhook_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+                urllib.request.urlopen(req, timeout=10)
+                print("  [Webhook] Success!")
+            except Exception as e:
+                print(f"  [Webhook] Failed to send webhook: {e}")
         
     except ffmpeg.Error as e:
         err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
