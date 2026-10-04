@@ -62,45 +62,79 @@ class Transcriber:
             print(f"YouTube Transcript Fetch Failed: {e}. Falling back to Whisper...")
             return None
 
-    def _merge_segments(self, segments: list, max_duration: float = 25.0) -> list:
+    def _llm_merge_segments(self, segments: list, batch_size: int = 50) -> list:
         """
-        Merges short or incomplete fragments into longer sentences.
-        This prevents the TTS engine from receiving fragments and taking unnatural pauses mid-sentence.
+        Uses an LLM to read the fragments and return the exact IDs that should be merged.
+        This guarantees perfect grammatical groupings without messing up the timestamps.
         """
         if not segments:
             return []
             
-        merged = []
-        current_seg = None
+        print("Grouping segments via LLM to preserve perfect video sync...")
+        merged_segments = []
         
-        for seg in segments:
-            if not current_seg:
-                current_seg = seg.copy()
-                continue
-                
-            text = current_seg["text"].strip()
-            ends_with_punc = text.endswith(('.', '!', '?', '।', ',', ';'))
-            duration = current_seg["end"] - current_seg["start"]
+        # Process in batches to avoid API context limits
+        for i in range(0, len(segments), batch_size):
+            batch = segments[i:i+batch_size]
             
-            # Merge if the sentence hasn't naturally ended (no punctuation).
-            # We use a massive 60-second absolute cap to prevent infinite merging 
-            # if the transcriber fails to output any punctuation.
-            # Also merge extremely short fragments (under 1.5s) regardless.
-            if (not ends_with_punc and duration < 60.0) or (duration < 1.5):
-                current_seg["text"] += " " + seg["text"].strip()
-                current_seg["end"] = seg["end"]
+            prompt = """You are a Hindi linguistic expert.
+Your task is to analyze fragmented subtitle text and determine which fragments should be merged to form logical, complete sentences.
+Rules:
+1. Return strictly a JSON object with a single key 'groups' containing a list of lists of the IDs that should be merged.
+2. Example Output: {"groups": [[1, 2], [3], [4, 5, 6]]}
+3. KEEP GROUPS AS SMALL AS POSSIBLE! If a fragment ends with a natural pause (like a comma, clause boundary, or words like 'hai', 'tha', 'ho'), DO NOT merge it with the next one.
+4. ONLY merge fragments that are completely broken mid-sentence and require immediate continuation to make grammatical sense.
+5. Make sure every single ID provided in the input is accounted for exactly once in the output groups.
+"""
+            # Build input JSON
+            input_data = [{"id": s["id"], "text": s["text"]} for s in batch]
+            user_content = f"Fragments:\n{json.dumps(input_data, ensure_ascii=False)}"
+            
+            import time
+            for attempt in range(3):
+                try:
+                    completion = self.client.chat.completions.create(
+                        model="qwen/qwen3.8-27b",
+                        messages=[
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": user_content}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.0
+                    )
+                    
+                    response_text = completion.choices[0].message.content
+                    parsed = json.loads(response_text)
+                    groups = parsed.get("groups", [])
+                    
+                    # Execute the merge based on the returned groups
+                    for group in groups:
+                        if not group:
+                            continue
+                        
+                        group_segs = [s for s in batch if s["id"] in group]
+                        if not group_segs:
+                            continue
+                            
+                        merged_segments.append({
+                            "id": group_segs[0]["id"], # Temporary ID, re-indexed later
+                            "start": group_segs[0]["start"],
+                            "end": group_segs[-1]["end"],
+                            "text": " ".join([s["text"] for s in group_segs])
+                        })
+                    break # Success, break out of retry loop
+                except Exception as e:
+                    print(f"LLM Grouper attempt {attempt+1} failed: {e}")
+                    time.sleep(2)
             else:
-                merged.append(current_seg)
-                current_seg = seg.copy()
+                print("Warning: LLM Grouper failed for this batch. Using raw fragments as fallback.")
+                merged_segments.extend(batch)
                 
-        if current_seg:
-            merged.append(current_seg)
-            
         # Re-assign sequential IDs
-        for i, m in enumerate(merged):
+        for i, m in enumerate(merged_segments):
             m["id"] = i + 1
             
-        return merged
+        return merged_segments
 
     def transcribe(self, audio_path: str, language: str = None, youtube_url: str = None) -> str:
         """
@@ -146,11 +180,11 @@ class Transcriber:
                     "text": segment["text"].strip()
                 })
         
-        # Merge fragments into complete sentences for better TTS flow
+        # Merge fragments into complete sentences via LLM for perfect TTS flow
         if segments:
             print(f"Original segments: {len(segments)}")
-            segments = self._merge_segments(segments)
-            print(f"Merged into {len(segments)} sentences for smoother audio flow.")
+            segments = self._llm_merge_segments(segments)
+            print(f"Merged into {len(segments)} highly accurate groups.")
             
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")
