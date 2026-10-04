@@ -82,14 +82,14 @@ Your task is to analyze fragmented subtitle text and determine which fragments s
 Rules:
 1. Return strictly a JSON object with a single key 'groups' containing a list of lists of the IDs that should be merged.
 2. Example Output: {"groups": [[1, 2], [3], [4, 5, 6]]}
-3. KEEP GROUPS AS SMALL AS POSSIBLE! If a fragment ends with a natural pause (like a comma, clause boundary, or words like 'hai', 'tha', 'ho'), DO NOT merge it with the next one.
-5. CRITICAL VISUAL RULE (ACT AS A VIDEO EDITOR): You must NEVER merge fragments across hard visual cuts. A fragment MUST start a brand new group if it contains:
+3. NEVER split a single sentence in half! A group MUST represent a complete thought. If a fragment ends abruptly without a terminating verb (like 'hai', 'tha', 'ho', 'gaya', 'diya') or ends with a conjunction, you MUST merge it with the next fragment.
+4. CRITICAL VISUAL RULE (ACT AS A VIDEO EDITOR): You must NEVER merge fragments across hard visual cuts. A fragment MUST start a brand new group if it contains:
    - A Location/Scene Change (e.g., "अगले सीन में", "वही दूसरी तरफ", "पुलिस स्टेशन में")
    - A Time Jump or Flashback (e.g., "15 साल बाद", "अगले दिन", "फ्लैशबैक में")
    - A New Character Introduction (e.g., "हम मैथ्यू नाम के आदमी को देख पाते हैं", "तभी वहां एक नया आदमी आता है")
    - A Sudden Action/Shocking Event (e.g., "तभी अचानक", "लेकिन तभी एक धमाका होता है")
    These represent massive visual shifts on screen. Merging them into the middle of a previous sentence will ruin the video sync!
-6. Make sure every single ID provided in the input is accounted for exactly once in the output groups.
+5. Make sure every single ID provided in the input is accounted for exactly once in the output groups.
 """
             # Build input JSON
             input_data = [{"id": s["id"], "text": s["text"]} for s in batch]
