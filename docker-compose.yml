@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: yt-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/temp:/app/temp
+      - ./backend/output:/app/output
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_API_KEY_TWO=${GROQ_API_KEY_TWO}
+
+  frontend:
+    build: ./frontend
+    container_name: yt-frontend
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: yt-n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - backend
+
+volumes:
+  n8n_data:

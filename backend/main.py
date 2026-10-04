@@ -20,7 +20,7 @@ from core.sync import AudioSynchronizer
 from core.metadata import MetadataGenerator
 from core.api_keys import ApiKeyManager
 import json
-
+import urllib.request
 app = FastAPI(title="Movie Recap Automation API")
 
 app.add_middleware(
@@ -99,8 +99,6 @@ def process_pipeline(job_id: str, request: VideoRequest):
         job_status[job_id] = f"Completed: {final_output}"
         
         if request.webhook_url:
-            import urllib.request
-            import json
             print(f"  [Webhook] Sending completion POST to {request.webhook_url}...")
             try:
                 abs_video_path = os.path.abspath(final_output)
@@ -284,7 +282,6 @@ def process_pipeline(job_id: str, request: VideoRequest):
         print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
         
         if request.webhook_url:
-            import urllib.request
             print(f"  [Webhook] Sending completion POST to {request.webhook_url}...")
             try:
                 abs_video_path = os.path.abspath(final_output)
