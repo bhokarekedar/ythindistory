@@ -21,16 +21,28 @@ class MetadataGenerator:
         # If it's too long, truncate it to the first 4000 characters to save context and speed up generation
         full_text = full_text[:4000]
         
-        prompt = """You are an expert YouTube SEO strategist.
-Based on the following movie recap story, generate:
-1. An engaging, click-worthy YouTube title that generates immense curiosity. Do NOT use emojis in the title.
-2. An SEO-optimized description that clearly tells YouTube's algorithm who to show this video to (area of interest, genre, target audience).
-3. A list of 15-20 high-volume, relevant SEO keywords/tags.
+        prompt = """You are an elite YouTube growth hacker and SEO strategist.
+Based on the following movie recap story, you must generate metadata designed to maximize Click-Through Rate (CTR).
+
+1. TITLE RULES:
+   - Make it ultra click-worthy and "thumbnail-worthy".
+   - It MUST create an irresistible "information gap" (e.g., "He Messed With The Wrong Father", "She Thought She Was Safe Until...").
+   - DO NOT just write the name of the movie. 
+   - Keep it under 70 characters so it doesn't get truncated on mobile.
+   - DO NOT use emojis.
+   - Use high-emotion trigger words (Revenge, Betrayal, Shocking, Genius, Psycho).
+
+2. DESCRIPTION RULES:
+   - The first 2 lines MUST be an incredible hook that makes them want to watch immediately.
+   - The rest should be an SEO-optimized summary packed with natural keywords to tell the YouTube algorithm exactly who to show this to (genre, audience interest).
+
+3. KEYWORDS:
+   - Provide 15-20 high-volume, relevant tags.
 
 Return STRICTLY a JSON object with this format:
 {
-    "title": "Your Title Here",
-    "description": "Your SEO description here",
+    "title": "Your Irresistible Title Here",
+    "description": "Your hooked SEO description here",
     "keywords": ["tag1", "tag2", "tag3"]
 }
 """
