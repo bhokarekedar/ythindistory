@@ -14,14 +14,14 @@ TARGET_SAMPWIDTH = 2  # 16-bit
 
 # Minimum silence gap enforced between any two consecutive TTS segments.
 # Prevents sentences from running together while keeping narration tight.
-MIN_PAUSE_S = 0.15
+MIN_PAUSE_S = 0.05
 
 # Maximum silence gap allowed between any two consecutive TTS segments.
 # Ensures the pacing is consistently engaging, skipping long original silences.
-MAX_PAUSE_S = 0.8
+MAX_PAUSE_S = 0.25
 
 # Silence added after the last segment before audio ends.
-TRAILING_SILENCE_S = 1.5
+TRAILING_SILENCE_S = 1.0
 
 
 class AudioSynchronizer:
@@ -48,11 +48,17 @@ class AudioSynchronizer:
             return f.getnframes() / float(f.getframerate())
 
     def _resample_wav_ffmpeg(self, input_path: str, output_path: str):
-        """Resample a WAV to TARGET_RATE / stereo / 16-bit. Called once per segment."""
+        """Resample a WAV to TARGET_RATE / stereo / 16-bit and strip silence. Called once per segment."""
         (
             ffmpeg
             .input(input_path)
             .audio
+            # Strip silence from the beginning
+            .filter("silenceremove", start_periods=1, start_threshold="-50dB")
+            # Reverse, strip silence from the 'end' (now beginning), and reverse back
+            .filter("areverse")
+            .filter("silenceremove", start_periods=1, start_threshold="-50dB")
+            .filter("areverse")
             .filter("aresample", TARGET_RATE)
             .filter("aformat", sample_fmts="s16", channel_layouts="stereo")
             .output(output_path, ar=TARGET_RATE, ac=TARGET_CHANNELS)
