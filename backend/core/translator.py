@@ -7,14 +7,15 @@ class StoryTranslator:
     def __init__(self, primary_provider: str = "groq", fallback_provider: str = "none",
                  translation_model: str = "qwen/qwen3.8-27b",
                  fallback_model: str = "openrouter/auto",
-                 batch_size: int = 20, max_retries: int = 2):
+                 batch_size: int = 20, max_retries: int = 2,
+                 api_key: str = None):
         self.batch_size = batch_size
         self.max_retries = max_retries
         self.providers = []
         self.validator_provider = None
         
         if primary_provider == "groq":
-            self.providers.append(GroqProvider(model=translation_model))
+            self.providers.append(GroqProvider(model=translation_model, api_key=api_key))
             validator_key = os.environ.get("GROQ_API_KEY_TWO")
             if validator_key:
                 self.validator_provider = GroqProvider(model=translation_model, api_key=validator_key)

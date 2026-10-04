@@ -17,6 +17,8 @@ from core.translator import StoryTranslator
 from core.tts import GeminiTTS
 from core.kokoro.provider import KokoroTTS
 from core.sync import AudioSynchronizer
+from core.metadata import MetadataGenerator
+from core.api_keys import ApiKeyManager
 import json
 
 app = FastAPI(title="Movie Recap Automation API")
@@ -64,6 +66,9 @@ job_status = {}
 
 def process_pipeline(job_id: str, request: VideoRequest):
     url = request.url
+    
+    key_manager = ApiKeyManager()
+    groq_api_key = key_manager.get_next_key()
     
     is_local_file = os.path.exists(url) and os.path.isfile(url)
     
@@ -126,7 +131,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 model_name=config.get("groq", {}).get("transcription_model", "whisper-large-v3-turbo"), 
                 output_dir=job_dir, 
                 chunk_minutes=config.get("transcription", {}).get("chunk_minutes", 10),
-                api_key=os.environ.get("GROQ_API_KEY")
+                api_key=groq_api_key
             )
             transcript_path = transcriber.transcribe(raw_audio_path, youtube_url=url)
             print(f"[JOB {job_id}] Transcription complete. JSON stored at: {transcript_path}")
@@ -144,7 +149,8 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
                 fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
                 translation_model=config.get("groq", {}).get("translation_model", "llama-3.1-70b-versatile"),
-                batch_size=config.get("translation", {}).get("batch_size", 20)
+                batch_size=config.get("translation", {}).get("batch_size", 20),
+                api_key=groq_api_key
             )
             script_path = translator.translate_transcript(transcript_path, target_language=target_lang, output_dir=job_dir)
             print(f"[JOB {job_id}] Script generation complete. JSON stored at: {script_path}")
@@ -197,10 +203,12 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 "audio_path": audio_path
             })
             
+        output_folder = os.path.join("output", video_id)
+        os.makedirs(output_folder, exist_ok=True)
+        final_output = os.path.join(output_folder, f"{video_id}_final.mp4")
+
         job_status[job_id] = "Rendering final video..."
         print(f"\n[JOB {job_id}] Step 6: Rendering Final Video...")
-        final_output = os.path.join(f"output", f"{job_id}_final.mp4")
-        os.makedirs("output", exist_ok=True)
         
         # Clear stale render artifacts so we always regenerate with current code.
         # (TTS WAVs and translation JSON are intentionally kept — they are expensive to regenerate.)
@@ -218,8 +226,14 @@ def process_pipeline(job_id: str, request: VideoRequest):
         
         sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark, text_watermark_settings=request.textWatermark, skip_intervals=request.skip_intervals)
         
+        job_status[job_id] = "Generating SEO Metadata..."
+        print(f"\n[JOB {job_id}] Step 7: Generating SEO Metadata...")
+        metadata_generator = MetadataGenerator(api_key=groq_api_key)
+        metadata_output = os.path.join(output_folder, f"{video_id}_metadata.json")
+        metadata_generator.generate(script_path, metadata_output, target_lang=target_lang)
+        
         job_status[job_id] = f"Completed: {final_output}"
-        print(f"\n[JOB {job_id}] ✅ DONE! Final video saved to {final_output}")
+        print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
         
     except ffmpeg.Error as e:
         err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
