@@ -71,8 +71,67 @@ class SnapshotRequest(BaseModel):
 # In-memory status store for MVP
 job_status = {}
 
+def send_webhook_with_n8n_autostart(webhook_url: str, payload: dict, max_retries: int = 3):
+    """
+    Checks if n8n is running on port 5678. If not running, launches n8n automatically
+    in a detached background session and waits for it to become ready before sending.
+    """
+    import socket
+    import subprocess
+    import time
+    import urllib.request
+    import urllib.error
+
+    def is_n8n_listening():
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.5)
+                return s.connect_ex(("127.0.0.1", 5678)) == 0
+        except Exception:
+            return False
+
+    # Only attempt auto-start if the destination is a local n8n instance
+    if ("5678" in webhook_url or "localhost" in webhook_url or "127.0.0.1" in webhook_url) and not is_n8n_listening():
+        print("\n  [Webhook] 🚀 n8n is not running on port 5678. Automatically launching n8n in background...")
+        cmd = "source ~/.nvm/nvm.sh 2>/dev/null && nvm use 20 && export N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false && n8n start"
+        try:
+            subprocess.Popen(
+                ["bash", "-c", cmd],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+            for attempt in range(15):
+                time.sleep(2)
+                if is_n8n_listening():
+                    print(f"  [Webhook] ✅ n8n is ready and listening on port 5678! (waited {attempt*2 + 2}s)")
+                    time.sleep(3)  # Brief buffer for n8n webhook routes to register
+                    break
+        except Exception as launch_err:
+            print(f"  [Webhook] ⚠️ Could not auto-launch n8n: {launch_err}")
+
+    print(f"  [Webhook] Sending completion POST to {webhook_url}...")
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                print("  [Webhook] ✅ Success! Dispatched to n8n.")
+                return True
+        except urllib.error.HTTPError as he:
+            print(f"  [Webhook] HTTP Error {he.code}: {he.reason}")
+            if he.code == 404:
+                print("  [Webhook Hint] 404 Not Found: Ensure your workflow in n8n is toggled to ACTIVE and uses the Production URL (/webhook/..., not /webhook-test/...).")
+            time.sleep(2)
+        except Exception as e:
+            print(f"  [Webhook] Attempt {attempt + 1} failed: {e}")
+            time.sleep(2)
+    return False
+
 def process_pipeline(job_id: str, request: VideoRequest):
     url = request.url
+    target_lang = getattr(request, 'target_language', 'hindi').lower()
     
     key_manager = ApiKeyManager()
     groq_api_key = key_manager.get_next_key()
@@ -94,38 +153,51 @@ def process_pipeline(job_id: str, request: VideoRequest):
     final_output = os.path.join(output_folder, f"{video_id}_final.mp4")
     metadata_output = os.path.join(output_folder, f"{video_id}_metadata.json")
     
-    if os.path.exists(final_output) and os.path.exists(metadata_output):
+    if os.path.exists(final_output):
         print(f"\n[JOB {job_id}] ⚡ FINAL VIDEO ALREADY EXISTS! Skipping generation and firing webhook directly.")
         job_status[job_id] = f"Completed: {final_output}"
         
+        # If metadata is missing, generate it or create fallback so webhook can proceed
+        if not os.path.exists(metadata_output):
+            script_path = f"temp/{video_id}/{video_id}_audio_english_transcript.json" if target_lang == "english" else f"temp/{video_id}/{video_id}_audio_transcript.json"
+            if os.path.exists(script_path):
+                try:
+                    groq_api_key = os.getenv("GROQ_API_KEY")
+                    metadata_generator = MetadataGenerator(api_key=groq_api_key)
+                    metadata_generator.generate(script_path, metadata_output, target_lang=target_lang)
+                    print(f"  [Metadata] Generated missing metadata: {metadata_output}")
+                except Exception as meta_err:
+                    print(f"  [Metadata] Could not generate metadata: {meta_err}")
+            
+            if not os.path.exists(metadata_output):
+                with open(metadata_output, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "title": f"Movie Recap - {video_id}",
+                        "description": f"Movie Recap and explanation for video {video_id}.",
+                        "keywords": ["movie recap", "movie explanation", "recap"]
+                    }, f, indent=2)
+                print(f"  [Metadata] Created fallback metadata: {metadata_output}")
+
         if request.webhook_url:
-            print(f"  [Webhook] Sending completion POST to {request.webhook_url}...")
-            try:
-                abs_video_path = os.path.abspath(final_output)
-                abs_metadata_path = os.path.abspath(metadata_output)
-                
-                with open(abs_metadata_path, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
-                
-                payload = {
-                    "job_id": job_id,
-                    "video_id": video_id,
-                    "status": "success",
-                    "final_video_path": abs_video_path,
-                    "metadata_path": abs_metadata_path,
-                    "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
-                    "url": url,
-                    "title": meta.get("title", f"Movie Recap {video_id}"),
-                    "description": meta.get("description", ""),
-                    "tags": meta.get("keywords", [])
-                }
-                
-                data = json.dumps(payload).encode('utf-8')
-                req = urllib.request.Request(request.webhook_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
-                urllib.request.urlopen(req, timeout=10)
-                print("  [Webhook] Success!")
-            except Exception as e:
-                print(f"  [Webhook] Failed to send webhook: {e}")
+            abs_video_path = os.path.abspath(final_output)
+            abs_metadata_path = os.path.abspath(metadata_output)
+            
+            with open(abs_metadata_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            
+            payload = {
+                "job_id": job_id,
+                "video_id": video_id,
+                "status": "success",
+                "final_video_path": abs_video_path,
+                "metadata_path": abs_metadata_path,
+                "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
+                "url": url,
+                "title": meta.get("title", f"Movie Recap {video_id}"),
+                "description": meta.get("description", ""),
+                "tags": meta.get("keywords", [])
+            }
+            send_webhook_with_n8n_autostart(request.webhook_url, payload)
         return
     
     try:
@@ -282,34 +354,26 @@ def process_pipeline(job_id: str, request: VideoRequest):
         print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
         
         if request.webhook_url:
-            print(f"  [Webhook] Sending completion POST to {request.webhook_url}...")
-            try:
-                abs_video_path = os.path.abspath(final_output)
-                abs_metadata_path = os.path.abspath(metadata_output)
-                
-                # Load metadata to send it directly in the webhook!
-                with open(abs_metadata_path, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
-                
-                payload = {
-                    "job_id": job_id,
-                    "video_id": video_id,
-                    "status": "success",
-                    "final_video_path": abs_video_path,
-                    "metadata_path": abs_metadata_path,
-                    "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
-                    "url": url,
-                    "title": meta.get("title", f"Movie Recap {video_id}"),
-                    "description": meta.get("description", ""),
-                    "tags": meta.get("keywords", [])
-                }
-                
-                data = json.dumps(payload).encode('utf-8')
-                req = urllib.request.Request(request.webhook_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
-                urllib.request.urlopen(req, timeout=10)
-                print("  [Webhook] Success!")
-            except Exception as e:
-                print(f"  [Webhook] Failed to send webhook: {e}")
+            abs_video_path = os.path.abspath(final_output)
+            abs_metadata_path = os.path.abspath(metadata_output)
+            
+            # Load metadata to send it directly in the webhook!
+            with open(abs_metadata_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            
+            payload = {
+                "job_id": job_id,
+                "video_id": video_id,
+                "status": "success",
+                "final_video_path": abs_video_path,
+                "metadata_path": abs_metadata_path,
+                "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
+                "url": url,
+                "title": meta.get("title", f"Movie Recap {video_id}"),
+                "description": meta.get("description", ""),
+                "tags": meta.get("keywords", [])
+            }
+            send_webhook_with_n8n_autostart(request.webhook_url, payload)
         
     except ffmpeg.Error as e:
         err_msg = e.stderr.decode('utf8') if e.stderr else str(e)

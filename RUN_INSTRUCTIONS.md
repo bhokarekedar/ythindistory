@@ -10,8 +10,12 @@ To run the entire suite, open 3 separate terminal tabs and paste these commands:
 
 **Terminal 1: Start n8n Publisher**
 ```bash
-export N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false && npx n8n
+nvm use 20 && export N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false && n8n start
 ```
+*(Note: n8n requires Node 20 LTS for its `isolated-vm` native engine. If you are on Node 22+, running `nvm use 20` prevents the `IsolatePool failed to create any bridges` crash).*
+
+*(⚡ **Automatic Fallback:** You can keep Terminal 1 running in the background, but if you forget to start it, the backend will now automatically launch n8n in the background when the video finishes, wait for it to start, and dispatch the webhook).*
+
 
 **Terminal 2: Start Python Backend**
 ```bash
@@ -30,7 +34,11 @@ cd /Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/frontend && npm run d
 The n8n workflow acts as a "Receiver". Once the Python backend finishes rendering a video, it automatically pings n8n. n8n then downloads the video over HTTP from the backend and pushes it to YouTube as a Private draft.
 
 - **Access n8n:** `http://localhost:5678`
-- **Workflow:** Ensure your "Receiver" workflow is toggled to **Active** in the top right corner.
+- **Workflow Toggle:** Open your receiver workflow (e.g. `yt_movies_explained_english`), click **Save**, and toggle the switch in the top right to **Active**.
+- **Webhook URL:** Always use the **Production URL**:
+  `http://localhost:5678/webhook/video-complete`
+  *(Do NOT use `webhook-test`, because test URLs only listen temporarily for manual clicks. If the workflow is not Active or uses `webhook-test`, the backend will get `HTTP Error 404: Not Found`).*
+- **If n8n UI shows `Cannot read properties of undefined (reading 'execute')`:** Do a hard refresh in your browser with `Cmd + Shift + R`, then click **Save** and toggle the workflow to **Active**.
 
 ### 🛠 Troubleshooting n8n Google Credentials
 If your YouTube upload node starts failing or saying "Credentials expired / Access Denied", you need to update or re-authorize your Google Cloud App.
@@ -39,12 +47,13 @@ If your YouTube upload node starts failing or saying "Credentials expired / Acce
    - Open your YouTube node in n8n.
    - Click the Credential dropdown and select your existing Google credential.
    - Click **Reconnect** or **Sign in with Google** again.
-2. **Google Cloud Console:** 
-   - If you get an "Error 403: access_denied" screen, go to the [Google Cloud Console](https://console.cloud.google.com/).
-   - Search for **Google Auth Platform** (or OAuth Consent Screen).
-   - Go to **Audience** (or Test Users) on the left sidebar.
-   - Ensure your exact YouTube email address is listed under **Test Users**.
-   - (Note: Because your app is in "Testing" mode, credentials may expire every 7 days. Just click "Sign in with Google" in n8n to refresh them, or click "Publish App" in Google Cloud to stop the 7-day expiration).
+2. **Stop the 7-day Expiration Permanently ("Publish App"):**
+   - By default, Google Cloud puts your app in **"Testing" mode**, which forces refresh tokens to expire every **7 days**.
+   - To make tokens **never expire**, go to [Google Cloud Console](https://console.cloud.google.com/).
+   - Navigate to **APIs & Services** -> **OAuth consent screen** (or Google Auth Platform).
+   - Under **Publishing status**, click **"PUBLISH APP"** and confirm.
+   - *(Note: You do NOT need verification from Google because you are only using this privately for your own channel).*
+   - Once published, reconnect in n8n once — and your YouTube credentials will **stay active forever** without expiring!
 
 ---
 

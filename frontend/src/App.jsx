@@ -3,7 +3,7 @@ import './App.css'
 
 function App() {
   const [url, setUrl] = useState('')
-  const [webhookUrl, setWebhookUrl] = useState('http://localhost:5678/webhook-test/video-complete')
+  const [webhookUrl, setWebhookUrl] = useState('http://localhost:5678/webhook/video-complete')
   const [jobId, setJobId] = useState(null)
   const [status, setStatus] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
