@@ -19,6 +19,7 @@ from core.kokoro.provider import KokoroTTS
 from core.sync import AudioSynchronizer
 from core.metadata import MetadataGenerator
 from core.api_keys import ApiKeyManager
+from core.image_generator import CloudflareImageGenerator
 import json
 import urllib.request
 app = FastAPI(title="Movie Recap Automation API")
@@ -58,6 +59,7 @@ class TimeRange(BaseModel):
 class VideoRequest(BaseModel):
     url: str
     target_language: str = "hindi"
+    channel_type: str = "movie_recap"  # "movie_recap" or "thriller_story"
     watermark: Optional[WatermarkSettings] = None
     textWatermark: Optional[WatermarkSettings] = None
     skip_intervals: Optional[List[TimeRange]] = None
@@ -65,6 +67,7 @@ class VideoRequest(BaseModel):
 
 class SnapshotRequest(BaseModel):
     url: str
+    channel_type: str = "movie_recap"
     watermark: WatermarkSettings
     textWatermark: Optional[WatermarkSettings] = None
 
@@ -132,6 +135,7 @@ def send_webhook_with_n8n_autostart(webhook_url: str, payload: dict, max_retries
 def process_pipeline(job_id: str, request: VideoRequest):
     url = request.url
     target_lang = getattr(request, 'target_language', 'hindi').lower()
+    channel_type = getattr(request, 'channel_type', 'movie_recap').lower()
     
     key_manager = ApiKeyManager()
     groq_api_key = key_manager.get_next_key()
@@ -150,8 +154,9 @@ def process_pipeline(job_id: str, request: VideoRequest):
     
     output_folder = f"output/{video_id}"
     os.makedirs(output_folder, exist_ok=True)
-    final_output = os.path.join(output_folder, f"{video_id}_final.mp4")
-    metadata_output = os.path.join(output_folder, f"{video_id}_metadata.json")
+    output_suffix = f"_{channel_type}" if channel_type == "thriller_story" else ""
+    final_output = os.path.join(output_folder, f"{video_id}{output_suffix}_final.mp4")
+    metadata_output = os.path.join(output_folder, f"{video_id}{output_suffix}_metadata.json")
     
     if os.path.exists(final_output):
         print(f"\n[JOB {job_id}] ⚡ FINAL VIDEO ALREADY EXISTS! Skipping generation and firing webhook directly.")
@@ -159,7 +164,9 @@ def process_pipeline(job_id: str, request: VideoRequest):
         
         # If metadata is missing, generate it or create fallback so webhook can proceed
         if not os.path.exists(metadata_output):
-            script_path = f"temp/{video_id}/{video_id}_audio_english_transcript.json" if target_lang == "english" else f"temp/{video_id}/{video_id}_audio_transcript.json"
+            script_path = f"temp/{video_id}/{video_id}_audio_{target_lang}{output_suffix}_transcript.json"
+            if not os.path.exists(script_path):
+                script_path = f"temp/{video_id}/{video_id}_audio_transcript.json"
             if os.path.exists(script_path):
                 try:
                     groq_api_key = os.getenv("GROQ_API_KEY")
@@ -172,9 +179,9 @@ def process_pipeline(job_id: str, request: VideoRequest):
             if not os.path.exists(metadata_output):
                 with open(metadata_output, "w", encoding="utf-8") as f:
                     json.dump({
-                        "title": f"Movie Recap - {video_id}",
-                        "description": f"Movie Recap and explanation for video {video_id}.",
-                        "keywords": ["movie recap", "movie explanation", "recap"]
+                        "title": f"Story - {video_id}",
+                        "description": f"Video explanation for {video_id}.",
+                        "keywords": ["story", "recap", "explanation"]
                     }, f, indent=2)
                 print(f"  [Metadata] Created fallback metadata: {metadata_output}")
 
@@ -187,13 +194,14 @@ def process_pipeline(job_id: str, request: VideoRequest):
             
             payload = {
                 "job_id": job_id,
+                "channel_type": channel_type,
                 "video_id": video_id,
                 "status": "success",
                 "final_video_path": abs_video_path,
                 "metadata_path": abs_metadata_path,
-                "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
+                "download_url": f"http://127.0.0.1:8000/output/{video_id}/{os.path.basename(final_output)}",
                 "url": url,
-                "title": meta.get("title", f"Movie Recap {video_id}"),
+                "title": meta.get("title", f"Video {video_id}"),
                 "description": meta.get("description", ""),
                 "tags": meta.get("keywords", [])
             }
@@ -256,13 +264,13 @@ def process_pipeline(job_id: str, request: VideoRequest):
             
         # Step 4: Translation / Script Rewrite
         target_lang = request.target_language.lower()
-        script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}_transcript.json")
+        script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}{output_suffix}_transcript.json")
         if os.path.exists(script_path):
             job_status[job_id] = f"Script generation skipped (using cache)"
             print(f"\n[JOB {job_id}] Step 4: {target_lang.capitalize()} script found in cache. Skipping.")
         else:
-            job_status[job_id] = f"Generating {target_lang} script..."
-            print(f"\n[JOB {job_id}] Step 4: Generating {target_lang} script...")
+            job_status[job_id] = f"Generating {target_lang} script ({channel_type})..."
+            print(f"\n[JOB {job_id}] Step 4: Generating {target_lang} script for {channel_type}...")
             translator = StoryTranslator(
                 primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
                 fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
@@ -270,7 +278,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 batch_size=config.get("translation", {}).get("batch_size", 20),
                 api_key=groq_api_key
             )
-            script_path = translator.translate_transcript(transcript_path, target_language=target_lang, output_dir=job_dir)
+            script_path = translator.translate_transcript(transcript_path, target_language=target_lang, output_dir=job_dir, channel_type=channel_type)
             print(f"[JOB {job_id}] Script generation complete. JSON stored at: {script_path}")
             
         # Step 5: TTS Generation
@@ -281,8 +289,6 @@ def process_pipeline(job_id: str, request: VideoRequest):
         if tts_provider == "kokoro":
             # For Hindi, default to hf_alpha. For English, default to af_heart
             default_voice = "hf_alpha" if target_lang == "hindi" else "af_heart"
-            # We override if the config specifically sets a voice, but maybe we should ignore config voice if it mismatches?
-            # Let's just use defaults based on language for now if not strictly configured for both.
             speaker = default_voice 
             lang_code_char = 'h' if target_lang == "hindi" else 'a'
             tts = KokoroTTS(output_dir=f"{job_dir}/segments", voice_name=speaker, lang_code=lang_code_char)
@@ -299,6 +305,26 @@ def process_pipeline(job_id: str, request: VideoRequest):
         with open(script_path, "r") as f:
             segments = json.load(f)
             
+        # Step 5B: Generate AI Visual Images via Cloudflare FLUX.1 if thriller story
+        if channel_type == "thriller_story":
+            print(f"\n[JOB {job_id}] Step 5B: Generating Cloudflare FLUX.1 AI Images for Tagged Segments...")
+            img_gen = CloudflareImageGenerator()
+            ai_dir = os.path.join(job_dir, "ai_images")
+            os.makedirs(ai_dir, exist_ok=True)
+            for seg in segments:
+                img_path = os.path.join(ai_dir, f"seg_{seg['id']:04d}.jpg")
+                if os.path.exists(img_path):
+                    seg["use_ai_image"] = True
+                    seg["ai_image_path"] = img_path
+                elif seg.get("use_ai_image") and seg.get("image_prompt"):
+                    if not os.path.exists(img_path):
+                        print(f"  [Cloudflare FLUX.1] Generating visual for segment {seg['id']}...")
+                        img_gen.generate_image(seg["image_prompt"], img_path)
+                    seg["ai_image_path"] = img_path
+
+            with open(script_path, "w", encoding="utf-8") as f:
+                json.dump(segments, f, indent=4, ensure_ascii=False)
+
         aligned_audio_segments = []
         for i, seg in enumerate(segments):
             text = seg.get(target_lang, "Error").strip()
@@ -318,15 +344,16 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 "id": seg["id"],
                 "start": seg["start"],
                 "end": seg["end"],
-                "audio_path": audio_path
+                "audio_path": audio_path,
+                "use_ai_image": seg.get("use_ai_image", False),
+                "ai_image_path": seg.get("ai_image_path", None)
             })
             
         output_folder = os.path.join("output", video_id)
         os.makedirs(output_folder, exist_ok=True)
-        final_output = os.path.join(output_folder, f"{video_id}_final.mp4")
 
-        job_status[job_id] = "Rendering final video..."
-        print(f"\n[JOB {job_id}] Step 6: Rendering Final Video...")
+        job_status[job_id] = f"Rendering final video ({channel_type})..."
+        print(f"\n[JOB {job_id}] Step 6: Rendering Final Video for {channel_type}...")
         
         # Clear stale render artifacts so we always regenerate with current code.
         # (TTS WAVs and translation JSON are intentionally kept — they are expensive to regenerate.)
@@ -342,12 +369,18 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 shutil.rmtree(p)
                 print(f"  [Cache] Removed stale dir: {stale_dir}/")
         
-        sync.build_timeline(aligned_audio_segments, video_path, final_output, job_dir=job_dir, watermark_settings=request.watermark, text_watermark_settings=request.textWatermark, skip_intervals=request.skip_intervals)
+        sync.build_timeline(
+            aligned_audio_segments, video_path, final_output,
+            job_dir=job_dir,
+            watermark_settings=request.watermark,
+            text_watermark_settings=request.textWatermark,
+            skip_intervals=request.skip_intervals,
+            channel_type=channel_type
+        )
         
         job_status[job_id] = "Generating SEO Metadata..."
         print(f"\n[JOB {job_id}] Step 7: Generating SEO Metadata...")
         metadata_generator = MetadataGenerator(api_key=groq_api_key)
-        metadata_output = os.path.join(output_folder, f"{video_id}_metadata.json")
         metadata_generator.generate(script_path, metadata_output, target_lang=target_lang)
         
         job_status[job_id] = f"Completed: {final_output}"
@@ -363,13 +396,14 @@ def process_pipeline(job_id: str, request: VideoRequest):
             
             payload = {
                 "job_id": job_id,
+                "channel_type": channel_type,
                 "video_id": video_id,
                 "status": "success",
                 "final_video_path": abs_video_path,
                 "metadata_path": abs_metadata_path,
-                "download_url": f"http://127.0.0.1:8000/output/{video_id}/{video_id}_final.mp4",
+                "download_url": f"http://127.0.0.1:8000/output/{video_id}/{os.path.basename(final_output)}",
                 "url": url,
-                "title": meta.get("title", f"Movie Recap {video_id}"),
+                "title": meta.get("title", f"Video {video_id}"),
                 "description": meta.get("description", ""),
                 "tags": meta.get("keywords", [])
             }
@@ -460,7 +494,13 @@ def generate_snapshot(request: SnapshotRequest):
             except Exception as e:
                 return {"error": f"Failed to download video: {str(e)}"}
             
-    watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
+    channel_type = getattr(request, 'channel_type', 'movie_recap').lower()
+    if channel_type == "thriller_story":
+        watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark thriller.png"
+        text_watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark_thriller.png"
+    else:
+        watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
+        text_watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
     
     try:
         # Extract 1 frame at 00:01:00 (explicitly grab the video stream)
@@ -471,7 +511,6 @@ def generate_snapshot(request: SnapshotRequest):
         vid = vid.filter("scale", 1280, 720).filter("setsar", 1)
         
         # Apply watermarks
-        text_watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
         out_stream = apply_watermarks_to_ffmpeg(vid, watermark_path, request.watermark)
         out_stream = apply_watermarks_to_ffmpeg(out_stream, text_watermark_path, request.textWatermark)
         
@@ -493,6 +532,77 @@ def generate_snapshot(request: SnapshotRequest):
         return {"error": f"FFmpeg error: {err}"}
     except Exception as e:
         return {"error": str(e)}
+
+class TestImageRequest(BaseModel):
+    prompt: Optional[str] = None
+
+@app.post("/api/test-generate-image")
+def test_generate_image(request: Optional[TestImageRequest] = None):
+    import random
+    import urllib.request
+    import json
+    
+    api_key = os.getenv("CLOUDFARE_API_KEY")
+    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+    
+    if not api_key:
+        return {"error": "CLOUDFARE_API_KEY is not set in backend/.env"}
+        
+    # Auto-discover Account ID if not set
+    if not account_id:
+        try:
+            req_acc = urllib.request.Request(
+                "https://api.cloudflare.com/client/v4/accounts",
+                headers={"Authorization": f"Bearer {api_key}"}
+            )
+            with urllib.request.urlopen(req_acc, timeout=10) as resp:
+                acc_data = json.loads(resp.read().decode('utf-8'))
+                if acc_data.get("result"):
+                    account_id = acc_data["result"][0]["id"]
+        except Exception as e:
+            return {"error": f"Failed to retrieve Cloudflare Account ID: {str(e)}"}
+            
+    if not account_id:
+        return {"error": "Could not determine Cloudflare Account ID."}
+        
+    random_prompts = [
+        "A cinematic moody 35mm film still of a dark abandoned police station at night, rain, neon reflection, 4k",
+        "A suspenseful thriller scene, mysterious detective examining evidence under a desk lamp, noir style, 8k",
+        "A hyper-realistic aerial view of a misty ancient mountain temple shrouded in fog, photorealistic, cinematic",
+        "A retro 80s movie poster style scene, dramatic lighting, synthwave aesthetic, high detail, masterpiece",
+        "An eerie empty interrogation room with single spotlight on a metal chair, cinematic atmosphere, 4k"
+    ]
+    
+    selected_prompt = (request.prompt if request and request.prompt else random.choice(random_prompts)).strip()
+    
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    payload = json.dumps({"prompt": selected_prompt}).encode("utf-8")
+    
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        method="POST"
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            if not data.get("success"):
+                return {"error": f"Cloudflare API error: {data.get('errors')}"}
+            
+            image_b64 = data["result"]["image"]
+            return {
+                "status": "success",
+                "prompt": selected_prompt,
+                "image": f"data:image/jpeg;base64,{image_b64}"
+            }
+    except Exception as e:
+        return {"error": f"Failed to call Cloudflare API: {str(e)}"}
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

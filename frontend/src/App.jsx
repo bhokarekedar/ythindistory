@@ -24,6 +24,7 @@ function App() {
   })
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
+  const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap' or 'thriller_story'
 
   const parseTimeToSeconds = (timeStr) => {
     if (!timeStr) return 0;
@@ -37,10 +38,10 @@ function App() {
     return parseFloat(timeStr) || 0;
   }
 
-  const handleSubmit = async (e, language) => {
+  const handleSubmit = async (e, language, channelType = 'movie_recap') => {
     e.preventDefault()
     if (!url) return
-    setStatus('Starting...')
+    setStatus(`Starting ${channelType === 'thriller_story' ? 'Thriller Story' : 'Movie Recap'}...`)
     
     const formattedSkipIntervals = skipIntervals
       .filter(s => s.start !== '' && s.end !== '')
@@ -58,6 +59,7 @@ function App() {
           watermark, 
           textWatermark, 
           target_language: language, 
+          channel_type: channelType,
           skip_intervals: formattedSkipIntervals,
           webhook_url: webhookUrl || undefined
         })
@@ -101,7 +103,7 @@ function App() {
       const res = await fetch('http://localhost:8000/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, watermark, textWatermark })
+        body: JSON.stringify({ url, watermark, textWatermark, channel_type: channelType })
       })
       const data = await res.json()
       if (data.error) {
@@ -157,6 +159,53 @@ function App() {
       <h1>Automated Movie Recap</h1>
       
       <form className="input-form">
+        {/* Channel Mode Switcher at Top */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '18px' }}>
+          <button
+            type="button"
+            onClick={() => { setChannelType('movie_recap'); setSnapshotImg(null); }}
+            style={{
+              flex: 1,
+              padding: '12px 14px',
+              borderRadius: '8px',
+              border: channelType === 'movie_recap' ? '2px solid #28a745' : '1px solid #ccc',
+              background: channelType === 'movie_recap' ? '#e8f7ec' : '#f9f9f9',
+              color: channelType === 'movie_recap' ? '#1e7e34' : '#666',
+              fontWeight: channelType === 'movie_recap' ? 'bold' : 'normal',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ fontSize: '15px' }}>🎬 Channel 1: Movie Recap Mode</div>
+            <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
+              Active Logo: <strong>watermark.png</strong> • 100% Video
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setChannelType('thriller_story'); setSnapshotImg(null); }}
+            style={{
+              flex: 1,
+              padding: '12px 14px',
+              borderRadius: '8px',
+              border: channelType === 'thriller_story' ? '2px solid #dc3545' : '1px solid #ccc',
+              background: channelType === 'thriller_story' ? '#fdeeed' : '#f9f9f9',
+              color: channelType === 'thriller_story' ? '#c82333' : '#666',
+              fontWeight: channelType === 'thriller_story' ? 'bold' : 'normal',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ fontSize: '15px' }}>🔥 Channel 2: Thriller Story Mode</div>
+            <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
+              Active Logo: <strong>watermark thriller.png</strong> • 70/30 AI
+            </div>
+          </button>
+        </div>
+
         <input 
           type="url" 
           placeholder="Enter YouTube URL" 
@@ -174,7 +223,20 @@ function App() {
         />
         
         <div className="watermark-settings">
-          <h3>Watermark Settings</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ margin: 0 }}>Watermark Settings</h3>
+            <span style={{ 
+              fontSize: '12px', 
+              padding: '3px 8px', 
+              borderRadius: '4px', 
+              background: channelType === 'thriller_story' ? '#fdeeed' : '#e8f7ec', 
+              color: channelType === 'thriller_story' ? '#c82333' : '#1e7e34', 
+              fontWeight: 'bold',
+              border: `1px solid ${channelType === 'thriller_story' ? '#f5c6cb' : '#c3e6cb'}`
+            }}>
+              Using: {channelType === 'thriller_story' ? 'watermark thriller.png' : 'watermark.png'}
+            </span>
+          </div>
           <div className="corners-grid">
             {['topLeft', 'topRight', 'bottomLeft', 'bottomRight'].map(corner => (
               <div key={corner} className="corner-box">
@@ -221,7 +283,7 @@ function App() {
           </div>
 
           <button type="button" onClick={handleSnapshot} disabled={snapshotLoading} className="snapshot-btn">
-            {snapshotLoading ? 'Generating Snapshot...' : 'Test Snapshot (1-min mark)'}
+            {snapshotLoading ? 'Generating Snapshot...' : `Test Snapshot (${channelType === 'thriller_story' ? 'Thriller Logo' : 'Movie Recap Logo'})`}
           </button>
         </div>
 
@@ -260,14 +322,52 @@ function App() {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
-          <button type="button" onClick={(e) => handleSubmit(e, 'hindi')} disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} className="main-btn">
-            Generate Hindi Video
-          </button>
-          
-          <button type="button" onClick={(e) => handleSubmit(e, 'english')} disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} className="main-btn" style={{ backgroundColor: '#28a745' }}>
-            Generate English Video
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px' }}>
+          {/* Channel 1: Movie Recap */}
+          <div style={{ padding: '14px', border: '1px solid #28a745', borderRadius: '8px', background: '#f8fff9' }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#1e7e34', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🎬 Channel 1: Movie Recap (100% Video Footage)</span>
+            </h4>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                type="button" 
+                onClick={(e) => handleSubmit(e, 'english', 'movie_recap')} 
+                disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                className="main-btn" 
+                style={{ backgroundColor: '#28a745', flex: 1 }}
+              >
+                Generate English Movie Recap
+              </button>
+              <button 
+                type="button" 
+                onClick={(e) => handleSubmit(e, 'hindi', 'movie_recap')} 
+                disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                className="main-btn"
+                style={{ flex: 1 }}
+              >
+                Generate Hindi Movie Recap
+              </button>
+            </div>
+          </div>
+
+          {/* Channel 2: Thriller Stories */}
+          <div style={{ padding: '14px', border: '1px solid #dc3545', borderRadius: '8px', background: '#fff5f5' }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#c82333', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🔥 Channel 2: Thriller Story (70% Video + 30% AI Images)</span>
+            </h4>
+            <p style={{ fontSize: '12px', color: '#666', margin: '0 0 10px 0' }}>
+              Uses suspenseful mystery narration, <code>intro_thriller.mp4</code>, thriller watermarks, and smart Cloudflare FLUX.1 scenes for climactic moments.
+            </p>
+            <button 
+              type="button" 
+              onClick={(e) => handleSubmit(e, 'english', 'thriller_story')} 
+              disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+              className="main-btn" 
+              style={{ backgroundColor: '#dc3545', width: '100%', fontWeight: 'bold', fontSize: '15px' }}
+            >
+              Generate Thriller Story (English + 30% FLUX.1 AI Visuals)
+            </button>
+          </div>
         </div>
       </form>
 

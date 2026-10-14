@@ -245,12 +245,16 @@ class AudioSynchronizer:
         return False
 
     def _build_video_timeline(self, timeline: list, original_video_path: str,
-                              total_audio_dur: float, job_dir: str, watermark_settings=None, text_watermark_settings=None, skip_intervals=None) -> str:
+                              total_audio_dur: float, job_dir: str, watermark_settings=None, text_watermark_settings=None, skip_intervals=None,
+                              watermark_path: str = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png",
+                              text_watermark_path: str = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png") -> str:
         """
         Produces a video-only MP4 retimed to exactly match the audio timeline.
 
         For each segment:
-          - The original video clip [seg.start, seg.end] is extracted and
+          - If the segment is tagged with use_ai_image and has a valid ai_image_path,
+            an animated Ken Burns zoom video chunk is rendered from the image.
+          - Otherwise, the original video clip [seg.start, seg.end] is extracted and
             time-scaled so its duration matches tts_dur (the audio duration).
           - This ensures audio and video are always in sync.
 
@@ -316,8 +320,6 @@ class AudioSynchronizer:
 
                 chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
                 if not os.path.exists(chunk_path):
-                    # Scale video speed to fill exactly gap_dur output time
-                    pts_scale = gap_extract_dur / gap_dur  
                     v = (
                         ffmpeg.input(original_video_path).video
                         .filter("trim", start=gap_extract_start, duration=gap_extract_dur)
@@ -326,8 +328,8 @@ class AudioSynchronizer:
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
-                    v = self._apply_watermarks(v, watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png")
-                    v = self._apply_watermarks(v, text_watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png")
+                    v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                    v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
                     a = ffmpeg.input(
                         "anullsrc=channel_layout=stereo:sample_rate=48000",
                         format="lavfi", t=gap_dur
@@ -335,6 +337,11 @@ class AudioSynchronizer:
                     out = ffmpeg.output(v, a, chunk_path,
                                         vcodec="libx264", acodec="aac",
                                         ac=2, ar=48000,
+                                        pix_fmt="yuv420p",
+                                        color_range="1",
+                                        colorspace="bt709",
+                                        color_primaries="bt709",
+                                        color_trc="bt709",
                                         **{"crf": "18", "preset": "fast"})
                     try:
                         ffmpeg.run(out, quiet=True, overwrite_output=True)
@@ -347,21 +354,37 @@ class AudioSynchronizer:
                 video_cursor = orig_start
                 audio_cursor = audio_start
 
-            # ── Segment chunk: original video retimed to match TTS ─────────
+            # ── Segment chunk: retimed video OR AI image with Ken Burns ─────────
             chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_seg.mp4")
             if not os.path.exists(chunk_path):
-                # PTS scale: orig_dur seconds of video → tts_dur seconds of output
-                pts_factor = tts_dur / seg_extract_dur   
-                v = (
-                    ffmpeg.input(original_video_path).video
-                    .filter("trim", start=seg_extract_start, duration=seg_extract_dur)
-                    .filter("setpts", "PTS-STARTPTS")
-                    .filter("setpts", f"{pts_factor}*PTS")
-                    .filter("scale", 1280, 720).filter("setsar", 1)
-                    .filter("fps", fps=30, round="near").filter("format", "yuv420p")
-                )
-                v = self._apply_watermarks(v, watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png")
-                v = self._apply_watermarks(v, text_watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png")
+                ai_img = entry.get("ai_image_path")
+                if entry.get("use_ai_image") and ai_img and os.path.exists(ai_img):
+                    print(f"  [Video] 🎨 Rendering smooth Ken Burns AI visual for segment {seg_id} ({tts_dur:.2f}s)...")
+                    total_frames = max(1, int(round(tts_dur * 30)))
+                    zoom_step = 0.15 / max(1, total_frames)
+                    v = (
+                        ffmpeg.input(ai_img)
+                        .filter("zoompan", z=f"min(zoom+{zoom_step:.6f},1.20)", d=total_frames, x="iw/2-(iw/zoom/2)", y="ih/2-(ih/zoom/2)", s="1280x720", fps=30)
+                        .filter("trim", duration=tts_dur)
+                        .filter("setpts", "PTS-STARTPTS")
+                        .filter("scale", 1280, 720, out_color_matrix="bt709", out_range="tv")
+                        .filter("setsar", 1)
+                        .filter("format", "yuv420p")
+                        .filter("fps", fps=30, round="near")
+                    )
+                else:
+                    # PTS scale: orig_dur seconds of video → tts_dur seconds of output
+                    pts_factor = tts_dur / seg_extract_dur   
+                    v = (
+                        ffmpeg.input(original_video_path).video
+                        .filter("trim", start=seg_extract_start, duration=seg_extract_dur)
+                        .filter("setpts", "PTS-STARTPTS")
+                        .filter("setpts", f"{pts_factor}*PTS")
+                        .filter("scale", 1280, 720).filter("setsar", 1)
+                        .filter("fps", fps=30, round="near").filter("format", "yuv420p")
+                    )
+                v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
                 a = ffmpeg.input(
                     "anullsrc=channel_layout=stereo:sample_rate=48000",
                     format="lavfi", t=tts_dur
@@ -369,6 +392,11 @@ class AudioSynchronizer:
                 out = ffmpeg.output(v, a, chunk_path,
                                     vcodec="libx264", acodec="aac",
                                     ac=2, ar=48000,
+                                    pix_fmt="yuv420p",
+                                    color_range="1",
+                                    colorspace="bt709",
+                                    color_primaries="bt709",
+                                    color_trc="bt709",
                                     **{"crf": "18", "preset": "fast"})
                 try:
                     ffmpeg.run(out, quiet=True, overwrite_output=True)
@@ -400,8 +428,8 @@ class AudioSynchronizer:
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
-                    v = self._apply_watermarks(v, watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png")
-                    v = self._apply_watermarks(v, text_watermark_settings, "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png")
+                    v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                    v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
                     a = ffmpeg.input(
                         "anullsrc=channel_layout=stereo:sample_rate=48000",
                         format="lavfi", t=trailing_dur
@@ -409,6 +437,11 @@ class AudioSynchronizer:
                     out = ffmpeg.output(v, a, chunk_path,
                                         vcodec="libx264", acodec="aac",
                                         ac=2, ar=48000,
+                                        pix_fmt="yuv420p",
+                                        color_range="1",
+                                        colorspace="bt709",
+                                        color_primaries="bt709",
+                                        color_trc="bt709",
                                         **{"crf": "18", "preset": "fast"})
                     ffmpeg.run(out, quiet=True, overwrite_output=True)
                 concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
@@ -435,7 +468,8 @@ class AudioSynchronizer:
     # ─────────────────────────────────────────────────────────────────────────
 
     def build_timeline(self, segments: list, original_video_path: str,
-                       output_path: str, job_dir: str = "temp", watermark_settings=None, text_watermark_settings=None, skip_intervals=None):
+                       output_path: str, job_dir: str = "temp", watermark_settings=None, text_watermark_settings=None, skip_intervals=None,
+                       channel_type: str = "movie_recap", intro_path: str = None, watermark_path: str = None, text_watermark_path: str = None):
         """
         Produces the final video:
           0. Compute audio timeline  → where each sentence starts/ends in output
@@ -447,6 +481,20 @@ class AudioSynchronizer:
         Both audio (A) and video (B) are driven by the SAME timeline computed
         in step 0. This guarantees A/V sync at every sentence boundary.
         """
+        # Select assets based on channel type
+        if channel_type == "thriller_story":
+            default_intro = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro_thriller.mp4"
+            default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark thriller.png"
+            default_twm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark_thriller.png"
+        else:
+            default_intro = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro.mp4"
+            default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
+            default_twm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
+
+        active_intro = intro_path or default_intro
+        active_wm = watermark_path or default_wm
+        active_twm = text_watermark_path or default_twm
+
         # ── Step 0: Shared timeline ───────────────────────────────────────
         print("\n[Sync] Step 0: Computing audio timeline (sentence pacing)...")
         timeline, total_audio_dur = self._compute_audio_timeline(segments, job_dir)
@@ -457,7 +505,11 @@ class AudioSynchronizer:
 
         # ── Step B: Video timeline ────────────────────────────────────────
         print("\n[Sync] Step B: Building retimed video timeline...")
-        video_only_path = self._build_video_timeline(timeline, original_video_path, total_audio_dur, job_dir, watermark_settings, text_watermark_settings, skip_intervals)
+        video_only_path = self._build_video_timeline(
+            timeline, original_video_path, total_audio_dur, job_dir,
+            watermark_settings, text_watermark_settings, skip_intervals,
+            watermark_path=active_wm, text_watermark_path=active_twm
+        )
 
         # ── Step C: Mux video + clean audio ──────────────────────────────
         print("\n[Sync] Step C: Muxing video + clean audio (single encode pass)...")
@@ -485,45 +537,61 @@ class AudioSynchronizer:
                 raise
 
         # ── Step D: Prepend Intro ─────────────────────────────────────────
-        intro_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro.mp4"
-        if os.path.exists(intro_path):
-            print("\n[Sync] Step D: Prepending intro with crossfade...")
-            intro = ffmpeg.input(intro_path)
-            intro_v = (
-                intro.video
-                .filter("scale", 1280, 720).filter("setsar", 1)
-                .filter("fps", fps=30, round="near").filter("format", "yuv420p")
-                .filter("settb", "1/30")
-            )
+        if active_intro and os.path.exists(active_intro):
+            print(f"\n[Sync] Step D: Prepending intro ({os.path.basename(active_intro)}) with smooth transition...")
+            intro_duration = self.get_video_duration(active_intro)
             
-            # Pad or trim intro audio to EXACTLY match video duration. 
-            # If intro audio is shorter than intro video, acrossfade triggers early and desyncs the main video!
-            intro_duration = self.get_video_duration(intro_path)
-            intro_a = intro.audio.filter("aresample", TARGET_RATE).filter("apad").filter("atrim", end=intro_duration)
-
-            main = ffmpeg.input(mixed_video_path)
-            main_v = (
-                main.video
+            fade_dur = 0.5
+            fade_st = max(0, intro_duration - fade_dur)
+            
+            intro_in = ffmpeg.input(active_intro)
+            intro_v = (
+                intro_in.video
+                .filter("scale", 1280, 720, out_color_matrix="bt709", out_range="tv")
+                .filter("setsar", 1)
                 .filter("fps", fps=30, round="near")
-                .filter("settb", "1/30")
+                .filter("format", "yuv420p")
+                .filter("setpts", "PTS-STARTPTS")
+                .filter("fade", type="out", start_time=fade_st, duration=fade_dur)
             )
-            main_a = main.audio
+            intro_a = (
+                intro_in.audio
+                .filter("aresample", TARGET_RATE)
+                .filter("asetpts", "PTS-STARTPTS")
+                .filter("apad")
+                .filter("atrim", end=intro_duration)
+                .filter("afade", type="out", start_time=fade_st, duration=fade_dur)
+            )
 
-            fade_duration = 1.0
-            intro_duration = self.get_video_duration(intro_path)
-            offset = max(0, intro_duration - fade_duration)
+            main_in = ffmpeg.input(mixed_video_path)
+            main_v = (
+                main_in.video
+                .filter("scale", 1280, 720, out_color_matrix="bt709", out_range="tv")
+                .filter("setsar", 1)
+                .filter("fps", fps=30, round="near")
+                .filter("format", "yuv420p")
+                .filter("setpts", "PTS-STARTPTS")
+                .filter("fade", type="in", start_time=0, duration=0.3)
+            )
+            main_a = (
+                main_in.audio
+                .filter("aresample", TARGET_RATE)
+                .filter("asetpts", "PTS-STARTPTS")
+            )
 
-            joined_v = ffmpeg.filter([intro_v, main_v], "xfade",
-                                     transition="fade", duration=fade_duration, offset=offset)
-            joined_a = ffmpeg.filter([intro_a, main_a], "acrossfade", d=fade_duration)
-
-            out = ffmpeg.output(joined_v, joined_a, output_path,
-                                vcodec="libx264", acodec="aac",
-                                ac=TARGET_CHANNELS, ar=TARGET_RATE)
+            joined_v = ffmpeg.concat(intro_v, main_v, v=1, a=0)
+            joined_a = ffmpeg.concat(intro_a, main_a, v=0, a=1)
+            out = ffmpeg.output(
+                joined_v, joined_a, output_path,
+                vcodec="libx264", acodec="aac",
+                ac=TARGET_CHANNELS, ar=TARGET_RATE,
+                pix_fmt="yuv420p",
+                **{"crf": "18", "preset": "fast"}
+            )
             try:
                 ffmpeg.run(out, quiet=True, overwrite_output=True)
             except ffmpeg.Error as e:
-                print("FFmpeg Error (crossfade):", e.stderr.decode("utf8") if e.stderr else str(e))
+                print("FFmpeg Error (intro concat):", e.stderr.decode("utf8") if e.stderr else str(e))
                 raise
         else:
             ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c="copy").run(
