@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
+const RECAP_WEBHOOK_URL = 'http://localhost:5678/webhook/video-complete'
+const THRILLER_WEBHOOK_URL = 'http://localhost:5678/webhook/2a1c46d4-d081-420d-af06-7cc5d94ddaa6'
+
 function App() {
   const [url, setUrl] = useState('')
-  const [webhookUrl, setWebhookUrl] = useState('http://localhost:5678/webhook/video-complete')
+  const [webhookUrl, setWebhookUrl] = useState(RECAP_WEBHOOK_URL)
   const [jobId, setJobId] = useState(null)
   const [status, setStatus] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
@@ -163,7 +166,11 @@ function App() {
         <div style={{ display: 'flex', gap: '12px', marginBottom: '18px' }}>
           <button
             type="button"
-            onClick={() => { setChannelType('movie_recap'); setSnapshotImg(null); }}
+            onClick={() => { 
+              setChannelType('movie_recap'); 
+              setSnapshotImg(null); 
+              setWebhookUrl(RECAP_WEBHOOK_URL);
+            }}
             style={{
               flex: 1,
               padding: '12px 14px',
@@ -185,7 +192,11 @@ function App() {
 
           <button
             type="button"
-            onClick={() => { setChannelType('thriller_story'); setSnapshotImg(null); }}
+            onClick={() => { 
+              setChannelType('thriller_story'); 
+              setSnapshotImg(null); 
+              setWebhookUrl(THRILLER_WEBHOOK_URL);
+            }}
             style={{
               flex: 1,
               padding: '12px 14px',
@@ -323,51 +334,66 @@ function App() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px' }}>
-          {/* Channel 1: Movie Recap */}
-          <div style={{ padding: '14px', border: '1px solid #28a745', borderRadius: '8px', background: '#f8fff9' }}>
-            <h4 style={{ margin: '0 0 10px 0', color: '#1e7e34', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>🎬 Channel 1: Movie Recap (100% Video Footage)</span>
-            </h4>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button 
-                type="button" 
-                onClick={(e) => handleSubmit(e, 'english', 'movie_recap')} 
-                disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
-                className="main-btn" 
-                style={{ backgroundColor: '#28a745', flex: 1 }}
-              >
-                Generate English Movie Recap
-              </button>
-              <button 
-                type="button" 
-                onClick={(e) => handleSubmit(e, 'hindi', 'movie_recap')} 
-                disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
-                className="main-btn"
-                style={{ flex: 1 }}
-              >
-                Generate Hindi Movie Recap
-              </button>
+          {/* Channel 1: Movie Recap Only */}
+          {channelType === 'movie_recap' && (
+            <div style={{ padding: '16px', border: '1px solid #28a745', borderRadius: '8px', background: '#f8fff9' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#1e7e34', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🎬 Channel 1: Movie Recap (100% Video Footage)</span>
+              </h4>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'english', 'movie_recap')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#28a745', flex: 1 }}
+                >
+                  Generate English Movie Recap
+                </button>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'hindi', 'movie_recap')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  className="main-btn"
+                  style={{ flex: 1 }}
+                >
+                  Generate Hindi Movie Recap
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Channel 2: Thriller Stories */}
-          <div style={{ padding: '14px', border: '1px solid #dc3545', borderRadius: '8px', background: '#fff5f5' }}>
-            <h4 style={{ margin: '0 0 10px 0', color: '#c82333', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>🔥 Channel 2: Thriller Story (70% Video + 30% AI Images)</span>
-            </h4>
-            <p style={{ fontSize: '12px', color: '#666', margin: '0 0 10px 0' }}>
-              Uses suspenseful mystery narration, <code>intro_thriller.mp4</code>, thriller watermarks, and smart Cloudflare FLUX.1 scenes for climactic moments.
-            </p>
-            <button 
-              type="button" 
-              onClick={(e) => handleSubmit(e, 'english', 'thriller_story')} 
-              disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
-              className="main-btn" 
-              style={{ backgroundColor: '#dc3545', width: '100%', fontWeight: 'bold', fontSize: '15px' }}
-            >
-              Generate Thriller Story (English + 30% FLUX.1 AI Visuals)
-            </button>
-          </div>
+          {/* Channel 2: Thriller Stories Only */}
+          {channelType === 'thriller_story' && (
+            <div style={{ padding: '16px', border: '1px solid #dc3545', borderRadius: '8px', background: '#fff5f5' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#c82333', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🔥 Channel 2: Thriller Story (70% Video + 30% AI Images)</span>
+              </h4>
+              <p style={{ fontSize: '12px', color: '#666', margin: '0 0 12px 0' }}>
+                Uses suspenseful mystery narration, <code>intro_thriller.mp4</code>, thriller watermarks, and smart Cloudflare FLUX.1 scenes for climactic moments.
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'english', 'thriller_story')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#dc3545', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
+                >
+                  Generate English Thriller Story (30% AI)
+                </button>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'hindi', 'thriller_story')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#6f42c1', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
+                >
+                  Generate Hindi Thriller Story (30% AI)
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </form>
 

@@ -34,9 +34,12 @@ cd /Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/frontend && npm run d
 The n8n workflow acts as a "Receiver". Once the Python backend finishes rendering a video, it automatically pings n8n. n8n then downloads the video over HTTP from the backend and pushes it to YouTube as a Private draft.
 
 - **Access n8n:** `http://localhost:5678`
-- **Workflow Toggle:** Open your receiver workflow (e.g. `yt_movies_explained_english`), click **Save**, and toggle the switch in the top right to **Active**.
-- **Webhook URL:** Always use the **Production URL**:
-  `http://localhost:5678/webhook/video-complete`
+- **Workflow Toggle:** Make sure both receiver workflows are saved and toggled to **Active** in the top right:
+  - `yt_movies_explained_english` (Channel 1: Movie Recap)
+  - `thriller_video_explained_english` (Channel 2: Thriller Story)
+- **Webhook URLs:** Always use the **Production URLs** (the UI auto-switches them when you click each mode):
+  - **Movie Recap:** `http://localhost:5678/webhook/video-complete`
+  - **Thriller Story:** `http://localhost:5678/webhook/2a1c46d4-d081-420d-af06-7cc5d94ddaa6`
   *(Do NOT use `webhook-test`, because test URLs only listen temporarily for manual clicks. If the workflow is not Active or uses `webhook-test`, the backend will get `HTTP Error 404: Not Found`).*
 - **If n8n UI shows `Cannot read properties of undefined (reading 'execute')`:** Do a hard refresh in your browser with `Cmd + Shift + R`, then click **Save** and toggle the workflow to **Active**.
 

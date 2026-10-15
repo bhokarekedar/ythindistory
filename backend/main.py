@@ -223,10 +223,13 @@ def process_pipeline(job_id: str, request: VideoRequest):
             print(f"\n[JOB {job_id}] Step 1: Using local video file: {video_path}")
         else:
             video_path = f"temp/videos/{video_id}.mp4"
-            if os.path.exists(video_path):
+            if os.path.exists(video_path) and os.path.getsize(video_path) >= 1024 * 1024:
                 job_status[job_id] = "Video download skipped (using cache)"
                 print(f"\n[JOB {job_id}] Step 1: Video found in cache. Skipping download.")
             else:
+                if os.path.exists(video_path):
+                    try: os.remove(video_path)
+                    except: pass
                 job_status[job_id] = "Downloading video..."
                 print(f"\n[JOB {job_id}] Step 1: Downloading Video from {url}")
                 downloader = YouTubeDownloader(output_dir="temp/videos")
@@ -486,7 +489,10 @@ def generate_snapshot(request: SnapshotRequest):
         video_id = video_id_match.group(1)
         
         video_path = f"temp/videos/{video_id}.mp4"
-        if not os.path.exists(video_path):
+        if not os.path.exists(video_path) or os.path.getsize(video_path) < 1024 * 1024:
+            if os.path.exists(video_path):
+                try: os.remove(video_path)
+                except: pass
             os.makedirs("temp/videos", exist_ok=True)
             downloader = YouTubeDownloader(output_dir="temp/videos")
             try:
@@ -503,8 +509,22 @@ def generate_snapshot(request: SnapshotRequest):
         text_watermark_path = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
     
     try:
-        # Extract 1 frame at 00:01:00 (explicitly grab the video stream)
-        vid = ffmpeg.input(video_path, ss="00:01:00").video
+        # Determine duration to safely seek without hitting EOF
+        try:
+            probe = ffmpeg.probe(video_path)
+            duration = float(probe.get('format', {}).get('duration', 0))
+        except:
+            duration = 0
+
+        if duration > 70:
+            seek_time = "00:01:00"
+        elif duration > 5:
+            seek_time = str(max(1, int(duration / 2)))
+        else:
+            seek_time = "0"
+
+        # Extract 1 frame at safe seek position
+        vid = ffmpeg.input(video_path, ss=seek_time).video
         
         # Scale to match the final video rendering dimensions (1280x720) 
         # so the X/Y coordinates in the snapshot exactly match the final video!

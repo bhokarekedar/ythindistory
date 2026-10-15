@@ -13,8 +13,9 @@ class YouTubeDownloader:
         """
 
         ydl_opts = {
-            # Let yt-dlp select the best available format
-            "format": "best",
+            # Select best video + best audio to avoid throttled format 18
+            "format": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[ext=mp4]/best",
+            "merge_output_format": "mp4",
 
             "outtmpl": os.path.join(
                 self.output_dir,
