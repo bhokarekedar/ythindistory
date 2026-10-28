@@ -80,7 +80,7 @@ Your task is to analyze fragmented subtitle text and determine which fragments s
 Rules:
 1. Return strictly a JSON object with a single key 'groups' containing a list of lists of the IDs that should be merged.
 2. Example Output: {"groups": [[1, 2], [3], [4, 5, 6]]}
-3. NEVER split a single sentence in half! A group MUST represent a complete thought. If a fragment ends abruptly without a terminating verb (like 'hai', 'tha', 'ho', 'gaya', 'diya') or ends with a conjunction, you MUST merge it with the next fragment.
+3. NEVER split a single sentence in half! A group MUST represent a complete thought. If a fragment ends abruptly without a terminating verb (like 'hai', 'tha', 'ho', 'gaya', 'diya') or ends with a conjunction/preposition (like 'ki', 'ka', 'ke', 'aur', 'lekin', 'to', 'mein', 'se'), you MUST merge it with the next fragment.
 4. CRITICAL VISUAL RULE (ACT AS A VIDEO EDITOR): You must NEVER merge fragments across hard visual cuts. A fragment MUST start a brand new group if it contains:
    - A Location/Scene Change (e.g., "अगले सीन में", "वही दूसरी तरफ", "पुलिस स्टेशन में")
    - A Time Jump or Flashback (e.g., "15 साल बाद", "अगले दिन", "फ्लैशबैक में")
@@ -133,6 +133,16 @@ Rules:
                 print("Warning: LLM Grouper failed for this batch. Using raw fragments as fallback.")
                 merged_segments.extend(batch)
                 
+        # Clean up any trailing dangling conjunctions/prepositions across segments
+        dangling_words = {"की", "का", "के", "और", "तथा", "या", "लेकिन", "कि", "तो", "में", "से", "पर"}
+        for i in range(len(merged_segments) - 1):
+            curr_text = merged_segments[i]["text"].strip()
+            words = curr_text.split()
+            if words and words[-1] in dangling_words:
+                trailing = words[-1]
+                merged_segments[i]["text"] = " ".join(words[:-1]).strip()
+                merged_segments[i+1]["text"] = f"{trailing} {merged_segments[i+1]['text']}".strip()
+
         # Re-assign sequential IDs
         for i, m in enumerate(merged_segments):
             m["id"] = i + 1

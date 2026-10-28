@@ -13,12 +13,12 @@ TARGET_CHANNELS = 2
 TARGET_SAMPWIDTH = 2  # 16-bit
 
 # Minimum silence gap enforced between any two consecutive TTS segments.
-# Prevents sentences from running together while keeping narration tight.
-MIN_PAUSE_S = 0.05
+# Ensures a natural human breath between sentences so speech never sounds rushed.
+MIN_PAUSE_S = 0.30
 
 # Maximum silence gap allowed between any two consecutive TTS segments.
-# Ensures the pacing is consistently engaging, skipping long original silences.
-MAX_PAUSE_S = 0.25
+# Preserves natural scene-change and dramatic pauses while preventing dead air.
+MAX_PAUSE_S = 0.65
 
 # Silence added after the last segment before audio ends.
 TRAILING_SILENCE_S = 1.0
