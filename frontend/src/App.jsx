@@ -186,7 +186,7 @@ function App() {
           >
             <div style={{ fontSize: '15px' }}>🎬 Channel 1: Movie Recap Mode</div>
             <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
-              Active Logo: <strong>watermark.png</strong> • 100% Video
+              Film Explanations • 100% Video • <strong>watermark.png</strong>
             </div>
           </button>
 
@@ -210,9 +210,9 @@ function App() {
               transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ fontSize: '15px' }}>🔥 Channel 2: Thriller Story Mode</div>
+            <div style={{ fontSize: '15px' }}>🔥 Channel 2: Real Stories Mode (Japan / Korea)</div>
             <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
-              Active Logo: <strong>watermark thriller.png</strong> • 70/30 AI
+              True Incidents (No movie terms) • 70/30 AI • <strong>watermark thriller.png</strong>
             </div>
           </button>
         </div>
