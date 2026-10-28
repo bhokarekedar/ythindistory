@@ -320,9 +320,11 @@ class AudioSynchronizer:
 
                 chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
                 if not os.path.exists(chunk_path):
+                    seek_point = max(0.0, gap_extract_start - 2.0)
+                    trim_offset = gap_extract_start - seek_point
                     v = (
-                        ffmpeg.input(original_video_path).video
-                        .filter("trim", start=gap_extract_start, duration=gap_extract_dur)
+                        ffmpeg.input(original_video_path, ss=seek_point).video
+                        .filter("trim", start=trim_offset, duration=gap_extract_dur)
                         .filter("setpts", "PTS-STARTPTS")
                         .filter("setpts", f"{gap_dur / gap_extract_dur}*PTS")
                         .filter("scale", 1280, 720).filter("setsar", 1)
@@ -375,9 +377,11 @@ class AudioSynchronizer:
                 else:
                     # PTS scale: orig_dur seconds of video → tts_dur seconds of output
                     pts_factor = tts_dur / seg_extract_dur   
+                    seek_point = max(0.0, seg_extract_start - 2.0)
+                    trim_offset = seg_extract_start - seek_point
                     v = (
-                        ffmpeg.input(original_video_path).video
-                        .filter("trim", start=seg_extract_start, duration=seg_extract_dur)
+                        ffmpeg.input(original_video_path, ss=seek_point).video
+                        .filter("trim", start=trim_offset, duration=seg_extract_dur)
                         .filter("setpts", "PTS-STARTPTS")
                         .filter("setpts", f"{pts_factor}*PTS")
                         .filter("scale", 1280, 720).filter("setsar", 1)
@@ -420,9 +424,11 @@ class AudioSynchronizer:
                 chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_trail.mp4")
                 if not os.path.exists(chunk_path):
                     pts_factor = trailing_dur / use_dur
+                    seek_point = max(0.0, video_cursor - 2.0)
+                    trim_offset = video_cursor - seek_point
                     v = (
-                        ffmpeg.input(original_video_path).video
-                        .filter("trim", start=video_cursor, duration=use_dur)
+                        ffmpeg.input(original_video_path, ss=seek_point).video
+                        .filter("trim", start=trim_offset, duration=use_dur)
                         .filter("setpts", "PTS-STARTPTS")
                         .filter("setpts", f"{pts_factor}*PTS")
                         .filter("scale", 1280, 720).filter("setsar", 1)
