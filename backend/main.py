@@ -330,11 +330,11 @@ def process_pipeline(job_id: str, request: VideoRequest):
 
         aligned_audio_segments = []
         for i, seg in enumerate(segments):
-            text = seg.get(target_lang, "Error").strip()
+            text = seg.get(target_lang, "").strip()
             
-            # Skip empty segments (filtered out by LLM)
-            if not text:
-                print(f"  [TTS] Skipping segment {seg['id']} (Empty text - likely filtered by LLM)")
+            # Skip empty segments or error placeholders to ensure TTS never speaks errors aloud
+            if not text or text.lower() in ["translation/rewrite failed", "error", "failed"]:
+                print(f"  [TTS] Skipping segment {seg['id']} (Empty text or error placeholder: '{text}')")
                 continue
 
             audio_path = os.path.join(f"{job_dir}/segments", f"{seg['id']:04d}.wav")

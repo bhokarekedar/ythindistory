@@ -262,6 +262,23 @@ RULES:
             
             if not valid_results:
                 valid_results = results
+
+            # Targeted single-segment recovery for any still-missing IDs
+            existing_ids = {int(item["id"]) for item in valid_results if "id" in item and str(item["id"]).isdigit()}
+            still_missing = batch_ids - existing_ids
+            if still_missing:
+                print(f"Attempting single-segment recovery for missing IDs: {still_missing}...")
+                for missing_id in sorted(still_missing):
+                    missing_seg = next((s for s in batch if int(s["id"]) == missing_id), None)
+                    if missing_seg:
+                        try:
+                            recovered = self._execute_translation([missing_seg], system_prompt, context="", target_language=lang_key)
+                            for r in recovered:
+                                if int(r.get("id", missing_id)) == missing_id:
+                                    valid_results.append(r)
+                                    print(f"  -> Successfully recovered translation for missing segment {missing_id}")
+                        except Exception as e:
+                            print(f"  -> Single-segment recovery failed for ID {missing_id}: {e}")
                 
             # --- Pass 2: Validation/Editing with GROQ_API_KEY_TWO ---
             if self.validator_provider and valid_results:
@@ -298,17 +315,27 @@ RULES:
             result_map = {}
             for item in valid_results:
                 try:
-                    result_map[int(item["id"])] = item.get("translated_text", item.get("hindi", item.get("text", "Error")))
+                    seg_id = int(item["id"])
+                    text_val = item.get("translated_text") or item.get(lang_key) or item.get("text")
+                    if text_val and text_val.strip().lower() not in ["translation/rewrite failed", "error"]:
+                        result_map[seg_id] = text_val.strip()
                 except (KeyError, ValueError):
                     pass
             
             for seg in batch:
+                seg_id = int(seg["id"])
+                final_text = result_map.get(seg_id)
+                if not final_text:
+                    # Fall back to original text so TTS speaks valid story text, NOT an error string!
+                    print(f"  [Fallback] Segment {seg_id} had no valid translation. Falling back to original text.")
+                    final_text = seg.get("text", "").strip()
+
                 translated_segments.append({
                     "id": seg["id"],
                     "start": seg["start"],
                     "end": seg["end"],
                     "original_text": seg["text"],
-                    lang_key: result_map.get(seg["id"], "Translation/Rewrite Failed")
+                    lang_key: final_text
                 })
             
         # If thriller story channel, smartly tag 30% AI visual moments
