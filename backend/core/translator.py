@@ -85,11 +85,14 @@ CRITICAL CORE RULE — THIS IS A REAL INCIDENT, NOT A FICTIONAL MOVIE:
    - Every segment MUST be a complete, grammatically sound, finished thought.
    - If a fragment is cut mid-sentence by subtitle chunking, use the surrounding context to reconstruct it into a polished, self-contained statement.
    - NEVER end a segment on a dangling word or conjunction ('and...', 'but...', 'because...', 'which...'). Always conclude the thought cleanly.
-4. INVESTIGATIVE TENSION & CADENCE:
+4. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
+   - AUDIO IS KING: Deliver the full story with complete emotional weight, suspense, and investigative detail. NEVER summarize or compress the narrative into a dry summary.
+   - STRICT CHRONOLOGY: Focus strictly on the events belonging to this segment. Do NOT prematurely narrate future plot revelations that belong to later segments.
+5. INVESTIGATIVE TENSION & CADENCE:
    - Make sentences punchy, atmospheric, and gripping when spoken aloud by a voice narrator.
    - Use commas (,) naturally where a speaker takes a brief breath between clauses. End every complete statement with a period (.).
    - Do NOT use colons, semicolons, or dashes as they confuse the TTS.
-5. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+6. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
 
         else:
             # ─────────────────────────────────────────────────────────────
@@ -113,20 +116,22 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
    - If an input fragment starts or ends abruptly mid-sentence (caused by subtitle chunking), reconstruct the complete intended thought using the surrounding story context.
    - NEVER end a segment on a dangling conjunction, postposition, or unfinished verb (e.g., 'और...', 'लेकिन...', 'कि...', 'की वजह से...', 'तभी...', 'होता...'). Always resolve and complete the sentence within the segment.
-4. NATURAL HUMAN CADENCE & BREATHING:
+4. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
+   - AUDIO IS KING: Deliver the full story with complete emotional weight, drama, and personal flair. NEVER summarize or compress the narrative into a dry summary.
+   - STRICT CHRONOLOGY: Focus strictly on the events belonging to this segment. Do NOT prematurely narrate future plot points that belong to later segments!
+5. NATURAL HUMAN CADENCE & BREATHING:
    - Make Hindi sound natural and conversational when spoken aloud by a voice narrator.
    - Use commas (,) naturally where a human narrator takes a brief breath between clauses.
    - End every sentence with a period (.). Do NOT use question marks, colons, semicolons, or dashes.
-5. CONVERSATIONAL HINDUSTANI:
+6. CONVERSATIONAL HINDUSTANI:
    - Avoid overly formal or archaic Hindi. Use conversational Hindi mixed naturally with familiar English words, exactly as modern YouTube movie narrators speak.
-6. ENGLISH WORDS IN LATIN SCRIPT: Keep character names, place names, movie titles, and common English loanwords in English Latin alphabet:
+7. ENGLISH WORDS IN LATIN SCRIPT: Keep character names, place names, movie titles, and common English loanwords in English Latin alphabet:
    - Character/person names (e.g., Jennifer, Hercule, Alex, Sarah)
    - Place names (e.g., New York, London, Jerusalem, Mumbai)
    - Everyday terms: police, hotel, hospital, doctor, station, train, office, cabin, coat, room, bag.
-   Reason: Google/Kokoro TTS pronounces English Latin script accurately. Writing them in Devanagari distorts pronunciation.
    CORRECT example: 'Hercule ने train manager को सारी बात समझाई.'
    WRONG example: 'हरकुल ने ट्रेन मैनेजर को सारी बात समझाई.'
-7. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+8. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
             else:
                 base_prompt = """You are a master YouTube movie-recap and storytelling narrator.
 Your task is NOT to translate word-for-word, but to RE-SCRIPT and ELEVATE the narrative into an engaging, polished, and personal storytelling experience!
@@ -145,12 +150,15 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
    - If an input fragment starts or ends abruptly mid-sentence, use the surrounding story context to reconstruct it into a polished, self-contained thought.
    - NEVER end a segment on an incomplete thought or dangling word like 'and', 'but', 'because', 'which', 'so', or 'then'. Always complete the sentence cleanly.
-4. NATURAL SPOKEN RHYTHM & PACING:
+4. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
+   - AUDIO IS KING: Deliver the full story with complete emotional weight, tension, and storytelling nuance. NEVER summarize or compress the narrative into a dry summary.
+   - STRICT CHRONOLOGY: Focus strictly on the events belonging to this segment. Do NOT pull in or narrate future plot points that belong to later segments!
+5. NATURAL SPOKEN RHYTHM & PACING:
    - Write sentences that sound natural, rhythmic, and captivating when read aloud by a Text-to-Speech narrator.
    - Use commas (,) naturally where a speaker takes a brief breath. End every complete sentence with a period (.).
    - Do NOT use complex punctuation like colons, semicolons, or dashes.
-5. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
-6. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+6. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
+7. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
         
         if glossary:
             base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos or ambiguous terms):\n{glossary}"
@@ -161,14 +169,14 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
         if not self.api_key and not os.environ.get("GROQ_API_KEY"):
             return ""
             
-        full_text = " ".join([s["text"] for s in segments])
-        full_text = full_text[:6000] # Truncate to save context
+        full_text = " ".join([s.get("text", "") for s in segments])
+        full_text = full_text[:8000] # Provide ample context
         
-        prompt = """You are an expert script editor. Read the following story and extract a glossary of:
-1. Character Names
-2. Important Objects or Locations
+        prompt = """You are an expert script editor. Read the following story transcript and extract a definitive reference glossary:
+1. Standard Character Names & Roles (resolve phonetic misspellings, e.g., 'Hercule / Poirot (Detective)', 'Richard / Ratchett (Victim)', 'Mrs. Hubbard / Howard (Grandmother)', 'The Doctor (Sharpshooter)', 'The Princess (Godmother)')
+2. Important Locations & Key Props ('Orient Express (Train)', 'Jerusalem', 'Embroidered Handkerchief', 'Attendant Uniform')
 
-Return ONLY a comma-separated list of these terms in English, like: "Maharaja (Character), Jyoti (Character), The Warehouse (Location)". Do not add any other text."""
+Return ONLY a clear, concise comma-separated list of standard names and roles to ensure 100% consistent spelling and terminology across all translated segments."""
         
         try:
             from groq import Groq

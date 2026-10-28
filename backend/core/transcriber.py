@@ -87,10 +87,14 @@ Rules:
    - A New Character Introduction / Victim / Suspect Discovery
    - A Sudden Action/Shocking Event (e.g., "तभी अचानक", "Suddenly", "갑자기")
    These represent massive visual shifts on screen. Merging them into the middle of a previous sentence will ruin the video sync!
-5. Make sure every single ID provided in the input is accounted for exactly once in the output groups.
+5. MERGE DEPENDENT TAILS & ORPHAN PARTICLES: If a fragment starts with a dependent conjunction or particle (e.g. 'भी', 'भी इस', 'and', 'also', 'too', 'also because') or is an incomplete dependent clause under 5 seconds, you MUST merge it with its preceding fragment so it is not left stranded as an orphan fragment.
+6. Make sure every single ID provided in the input is accounted for exactly once in the output groups.
 """
-            # Build input JSON
-            input_data = [{"id": s["id"], "text": s["text"]} for s in batch]
+            # Build input JSON with durations so LLM avoids creating tiny orphan cuts
+            input_data = []
+            for s in batch:
+                dur = round(float(s.get("end", 0)) - float(s.get("start", 0)), 1)
+                input_data.append({"id": s["id"], "duration_sec": dur, "text": s["text"]})
             user_content = f"Fragments:\n{json.dumps(input_data, ensure_ascii=False)}"
             
             import time

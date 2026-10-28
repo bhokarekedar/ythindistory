@@ -15,7 +15,7 @@ class OpenRouterProvider(LLMProvider):
             return []
 
         user_content = f"Context (do not translate this): {context}\n\nSegments to translate/rewrite:\n"
-        user_content += json.dumps([{"id": s["id"], "text": s["text"]} for s in segments], ensure_ascii=False)
+        user_content += json.dumps([{"id": s["id"], "text": s.get("text", "")} for s in segments], ensure_ascii=False)
         
         system_prompt += f"\n\nIMPORTANT: You must output ONLY a valid JSON object with a single key 'translations', containing a list of objects with 'id' and 'translated_text'. Exactly {len(segments)} objects must be returned, corresponding 1-to-1 to each input id. NEVER skip, combine, or omit any segment ID. Do not output markdown code blocks or any other text."
 
