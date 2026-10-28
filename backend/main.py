@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
+import time
+import shutil
+import threading
 import ffmpeg
 import yaml
 import re
@@ -131,6 +134,37 @@ def send_webhook_with_n8n_autostart(webhook_url: str, payload: dict, max_retries
             print(f"  [Webhook] Attempt {attempt + 1} failed: {e}")
             time.sleep(2)
     return False
+
+def cleanup_job_temp(video_id: str):
+    """Removes all heavy intermediate temp files (video chunks, resampled audio, mixed temp files) for this job."""
+    import shutil
+    try:
+        if video_id:
+            job_temp = os.path.join("temp", video_id)
+            if os.path.exists(job_temp):
+                shutil.rmtree(job_temp, ignore_errors=True)
+                print(f"  [Cleanup] 🧹 Cleared intermediate temp directory: {job_temp}")
+        raw_videos = "temp/videos"
+        if os.path.exists(raw_videos):
+            shutil.rmtree(raw_videos, ignore_errors=True)
+            os.makedirs(raw_videos, exist_ok=True)
+    except Exception as e:
+        print(f"  [Cleanup] Warning while clearing temp files: {e}")
+
+def schedule_delayed_output_cleanup(video_id: str, delay_seconds: int = 180):
+    """Gives n8n 3 minutes to finish reading/uploading the final output before deleting it."""
+    import threading
+    import shutil
+    
+    def worker():
+        time.sleep(delay_seconds)
+        output_dir = os.path.join("output", video_id)
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)
+            print(f"  [Cleanup] 🧹 Automatically cleared final output folder after n8n upload: {output_dir}")
+            
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
 
 def process_pipeline(job_id: str, request: VideoRequest):
     url = request.url
@@ -410,6 +444,13 @@ def process_pipeline(job_id: str, request: VideoRequest):
             }
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
         
+        # Immediately clean up heavy scratch files (video chunks, resampled audio, mixed temp files)
+        cleanup_job_temp(video_id)
+        
+        # If webhook was sent, schedule output folder deletion after n8n has finished uploading it (3 mins)
+        if request.webhook_url:
+            schedule_delayed_output_cleanup(video_id, delay_seconds=180)
+        
     except ffmpeg.Error as e:
         err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
         job_status[job_id] = f"FFmpeg Error: {err_msg}"
@@ -417,6 +458,70 @@ def process_pipeline(job_id: str, request: VideoRequest):
     except Exception as e:
         job_status[job_id] = f"Error: {str(e)}"
         print(f"\n[JOB {job_id}] Exception: {str(e)}")
+
+@app.get("/api/storage-stats")
+def get_storage_stats():
+    def get_dir_size(path):
+        if not os.path.exists(path):
+            return "0 MB"
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    total += os.path.getsize(fp)
+                except:
+                    pass
+        if total > 1024 * 1024 * 1024:
+            return f"{total / (1024 * 1024 * 1024):.2f} GB"
+        return f"{total / (1024 * 1024):.1f} MB"
+        
+    return {
+        "temp_size": get_dir_size("temp"),
+        "output_size": get_dir_size("output")
+    }
+
+@app.post("/api/cleanup")
+def cleanup_all():
+    """Immediately clears all files in temp/ and output/ to reclaim 100% of space."""
+    import shutil
+    cleared = []
+    if os.path.exists("temp"):
+        for item in os.listdir("temp"):
+            if item == "api_key_state.txt":
+                continue
+            p = os.path.join("temp", item)
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+                cleared.append(f"temp/{item}")
+            except Exception as e:
+                print(f"Error deleting {p}: {e}")
+                
+    if os.path.exists("output"):
+        for item in os.listdir("output"):
+            p = os.path.join("output", item)
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+                cleared.append(f"output/{item}")
+            except Exception as e:
+                print(f"Error deleting {p}: {e}")
+                
+    return {"status": "success", "cleared": cleared}
+
+@app.post("/api/cleanup/{video_id}")
+def cleanup_single(video_id: str):
+    import shutil
+    cleanup_job_temp(video_id)
+    out_dir = os.path.join("output", video_id)
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return {"status": "success", "message": f"Cleared {video_id} temp and output."}
 
 @app.post("/api/process")
 def process_video(request: VideoRequest, background_tasks: BackgroundTasks):

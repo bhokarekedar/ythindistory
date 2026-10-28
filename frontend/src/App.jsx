@@ -28,6 +28,36 @@ function App() {
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap' or 'thriller_story'
+  const [storageStats, setStorageStats] = useState({ temp_size: '...', output_size: '...' })
+  const [cleaning, setCleaning] = useState(false)
+
+  const fetchStorage = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/storage-stats')
+      const data = await res.json()
+      setStorageStats(data)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  useEffect(() => {
+    fetchStorage()
+  }, [status])
+
+  const handleClearStorage = async () => {
+    if (!window.confirm("Are you sure you want to delete all temporary and output cache files to free disk space?")) return
+    setCleaning(true)
+    try {
+      await fetch('http://localhost:8000/api/cleanup', { method: 'POST' })
+      await fetchStorage()
+      alert("All temp and output cache cleared successfully!")
+    } catch (err) {
+      alert("Cleanup failed: " + err.message)
+    } finally {
+      setCleaning(false)
+    }
+  }
 
   const parseTimeToSeconds = (timeStr) => {
     if (!timeStr) return 0;
@@ -159,7 +189,34 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Automated Movie Recap</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
+        <h1 style={{ margin: 0, fontSize: '26px' }}>Automated Video Studio</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#555', background: '#f1f3f5', padding: '6px 12px', borderRadius: '6px', border: '1px solid #dee2e6' }}>
+            💾 Temp: <b>{storageStats.temp_size}</b> | Output: <b>{storageStats.output_size}</b>
+          </span>
+          <button 
+            type="button" 
+            onClick={handleClearStorage} 
+            disabled={cleaning}
+            style={{ 
+              padding: '6px 12px', 
+              fontSize: '12px', 
+              background: '#6c757d', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '6px', 
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              transition: 'background 0.2s'
+            }}
+            onMouseOver={(e) => e.target.style.background = '#5a6268'}
+            onMouseOut={(e) => e.target.style.background = '#6c757d'}
+          >
+            {cleaning ? 'Cleaning...' : '🧹 Clear Storage'}
+          </button>
+        </div>
+      </div>
       
       <form className="input-form">
         {/* Channel Mode Switcher at Top */}
