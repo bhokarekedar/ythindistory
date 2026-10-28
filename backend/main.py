@@ -44,7 +44,7 @@ class WatermarkCorner(BaseModel):
     enabled: bool = False
     offsetX: int = 10
     offsetY: int = 10
-    size: int = 50
+    size: int = 180
 
 class WatermarkSettings(BaseModel):
     topLeft: Optional[WatermarkCorner] = None

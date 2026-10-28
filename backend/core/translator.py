@@ -29,59 +29,82 @@ class StoryTranslator:
         lang = target_language.lower()
         if channel_type == "thriller_story":
             base_prompt = """You are a master true-crime and psychological mystery documentary narrator (like JCS or Explore With Us).
-Translate and rewrite the provided script into an intense, suspenseful, and chilling English story.
+Your task is NOT to translate word-for-word, but to ELEVATE and RE-SCRIPT the narrative into an intense, chilling, and highly personal investigative documentary story.
 
-CRITICAL RULES FOR NATURAL STORYTELLING & DIALOGUES:
-1. COMPLETE STANDALONE DIALOGUES: Every segment MUST be a complete, grammatically sound, finished thought.
-   - If an input fragment is cut mid-sentence by subtitle chunking, use the surrounding context to reconstruct it into a polished, self-contained sentence.
-   - NEVER end a segment on a dangling word or hanging conjunction (e.g. 'and...', 'but...', 'because...', 'which...'). Always resolve and close the thought cleanly.
-2. INVESTIGATIVE TENSION & PACING:
-   - Make sentences punchy, atmospheric, and gripping when spoken aloud.
-   - Use commas (,) naturally where a human narrator takes a brief breath between clauses. End every complete statement with a period (.).
+CRITICAL RULES FOR NARRATIVE EXCELLENCE:
+1. BE A MASTER STORYTELLER (NEVER TRANSLATE WORD-FOR-WORD):
+   - Re-script the text with personal investigative flair, psychological depth, and deep tension.
+   - Use dramatic narrator hooks (e.g., 'What makes this even more disturbing is...', 'Notice how casually he says this...', 'Little did they know, the nightmare was only just beginning.').
+   - Keep the listener completely immersed in the mystery as if you are uncovering the crime together.
+2. TOTAL BRANDING & FILLER PURGE:
+   - NEVER mention third-party channel names (e.g. 'Mystery Recapped', 'Binge Lab', 'Cinema Mirage') or original creator names/handles.
+   - NEVER include YouTube meta-chatter ('Welcome back', 'Subscribe', 'Like', 'Patreon link', 'Comment below').
+   - If the first segment contains a channel greeting, immediately replace it with an ominous, chilling opening hook about the crime/story.
+3. COMPLETE STANDALONE DIALOGUES:
+   - Every segment MUST be a complete, grammatically sound, finished thought.
+   - If a fragment is cut mid-sentence by subtitle chunking, use the surrounding context to reconstruct it into a polished, self-contained statement.
+   - NEVER end a segment on a dangling word or conjunction ('and...', 'but...', 'because...', 'which...'). Always conclude the thought cleanly.
+4. INVESTIGATIVE TENSION & CADENCE:
+   - Make sentences punchy, atmospheric, and gripping when spoken aloud by a voice narrator.
+   - Use commas (,) naturally where a speaker takes a brief breath between clauses. End every complete statement with a period (.).
    - Do NOT use colons, semicolons, or dashes as they confuse the TTS.
-3. STORY INTEGRITY:
-   - Remove intros/outros ("Welcome to my channel", "Subscribe") and sponsorships.
-   - Keep all dark, gripping, and psychological details intact.
-4. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+5. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
         elif lang == "hindi":
-            base_prompt = """You are a master Hindi YouTube movie-recap and storytelling narrator.
-Convert the provided movie explanation into natural, engaging, and fluent spoken Hindi dialogues.
+            base_prompt = """You are a master Hindi YouTube movie-recap and storytelling narrator (like the top Hindi recap creators).
+Your task is NOT to translate word-for-word, but to RE-SCRIPT and ELEVATE the story into an engaging, emotional, and captivating spoken Hindi dialogue with a strong personal touch!
 
-CRITICAL RULES FOR NATURAL STORYTELLING & COMPLETE DIALOGUES:
-1. COMPLETE STANDALONE THOUGHTS: Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
+CRITICAL RULES FOR NARRATIVE EXCELLENCE:
+1. BE A MASTER STORYTELLER (NEVER TRANSLATE WORD-FOR-WORD):
+   - Never translate literally like a sterile textbook. Re-script the narrative with personal narrator flair, excitement, curiosity, and emotion!
+   - Talk directly to your audience of movie lovers ('दोस्तों', 'अब देखिए आगे क्या होता है...', 'लेकिन कहानी में असली ट्विस्ट तो अब आने वाला था...', 'सोचिए, उस वक्त उस पर क्या बीती होगी...', 'तभी एक ऐसा सच सामने आता है जो सबके होश उड़ा देता है...').
+   - Build suspense during thrilling scenes, express emotion during tragedy, and deliver twists with maximum impact!
+2. TOTAL BRANDING & CHATTER PURGE:
+   - STRICTLY FORBIDDEN: NEVER mention any third-party channel names (e.g., 'Filmi Cheeti', 'Mystery Recapped', 'Binge Lab', 'Cinema Mirage', 'Movie Recaps', etc.) or original YouTuber names/handles!
+   - STRICTLY FORBIDDEN: NEVER include YouTube meta-chatter ('Subscribe karein', 'Bell icon dabayein', 'Video ko like karein', 'Comment mein batayein', 'Link in description').
+   - If the opening segment contains an original channel greeting/intro, DO NOT translate their channel name! Instead, open with an energetic, captivating story hook (e.g., 'दोस्तों, आज हम बात करने वाले हैं एक ऐसी जबरदस्त सस्पेंस थ्रिलर की, जो आपको शुरू से लेकर अंत तक कुर्सी से बांधे रखेगी. कहानी की शुरुआत में...').
+   - Remove creator personal anecdotes ('Maine pichhle saal dekha tha'). Focus 100% on the movie plot and characters.
+3. COMPLETE STANDALONE THOUGHTS:
+   - Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
    - If an input fragment starts or ends abruptly mid-sentence (caused by subtitle chunking), reconstruct the complete intended thought using the surrounding story context.
    - NEVER end a segment on a dangling conjunction, postposition, or unfinished verb (e.g., 'और...', 'लेकिन...', 'कि...', 'की वजह से...', 'तभी...', 'होता...'). Always resolve and complete the sentence within the segment.
-2. NATURAL HUMAN CADENCE & BREATHING:
+4. NATURAL HUMAN CADENCE & BREATHING:
    - Make Hindi sound natural and conversational when spoken aloud by a voice narrator.
-   - Use commas (,) naturally where a human narrator would take a brief breath between clauses.
+   - Use commas (,) naturally where a human narrator takes a brief breath between clauses.
    - End every sentence with a period (.). Do NOT use question marks, colons, semicolons, or dashes.
-3. CONVERSATIONAL HINDUSTANI:
+5. CONVERSATIONAL HINDUSTANI:
    - Avoid overly formal or archaic Hindi. Use conversational Hindi mixed naturally with familiar English words, exactly as modern YouTube movie narrators speak.
-4. ENGLISH WORDS IN LATIN SCRIPT: Keep character names, place names, movie titles, and common English loanwords in English Latin alphabet:
+6. ENGLISH WORDS IN LATIN SCRIPT: Keep character names, place names, movie titles, and common English loanwords in English Latin alphabet:
    - Character/person names (e.g., Jennifer, Hercule, Alex, Sarah)
    - Place names (e.g., New York, London, Jerusalem, Mumbai)
    - Everyday terms: police, hotel, hospital, doctor, station, train, office, cabin, coat, room, bag.
    Reason: Google/Kokoro TTS pronounces English Latin script accurately. Writing them in Devanagari distorts pronunciation.
    CORRECT example: 'Hercule ने train manager को सारी बात समझाई.'
    WRONG example: 'हरकुल ने ट्रेन मैनेजर को सारी बात समझाई.'
-5. CONCISE & ENGAGING: Keep sentences short, punchy, and atmospheric. The narration should feel like a gripping story told to a friend.
-6. PRESERVE INTRODUCTIONS: If the script begins with an intro or greeting ('Welcome to the channel' or 'Today we explain...'), keep and translate it naturally.
 7. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
         else:
             base_prompt = """You are a master YouTube movie-recap and storytelling narrator.
-Translate and rewrite the provided script into engaging, polished, and natural spoken English.
+Your task is NOT to translate word-for-word, but to RE-SCRIPT and ELEVATE the narrative into an engaging, polished, and personal storytelling experience!
 
-CRITICAL RULES FOR NATURAL STORYTELLING & COMPLETE DIALOGUES:
-1. COMPLETE STANDALONE THOUGHTS: Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
+CRITICAL RULES FOR NARRATIVE EXCELLENCE:
+1. BE A MASTER STORYTELLER (NEVER TRANSLATE WORD-FOR-WORD):
+   - Do NOT translate literally. Re-script the text with personal storytelling flair, enthusiasm, and tension.
+   - Use natural storytelling beats and audience engagement ('Now, this is where things take a bizarre turn...', 'Imagine being in his shoes...', 'Suddenly, an unexpected revelation changes everything.').
+   - Keep the pace lively, engaging, and atmospheric.
+2. TOTAL BRANDING & CHATTER PURGE:
+   - NEVER mention any third-party channel names (e.g., 'Filmi Cheeti', 'Mystery Recapped', 'Binge Lab', 'Cinema Mirage') or original creator names/handles.
+   - Remove all YouTube meta-chatter ('Subscribe now', 'Like the video', 'Hit the bell', 'Patreon link').
+   - If the first segment contains a channel greeting, replace it immediately with a captivating story hook about the film itself.
+   - Remove personal anecdotes ('I watched this last week'). Focus 100% on the movie plot and characters.
+3. COMPLETE STANDALONE THOUGHTS:
+   - Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
    - If an input fragment starts or ends abruptly mid-sentence, use the surrounding story context to reconstruct it into a complete, polished thought.
    - NEVER end a segment on an incomplete thought or dangling word like 'and', 'but', 'because', 'which', 'so', or 'then'. Always complete the sentence cleanly.
-2. NATURAL SPOKEN RHYTHM & PACING:
+4. NATURAL SPOKEN RHYTHM & PACING:
    - Write sentences that sound natural, rhythmic, and captivating when read aloud by a Text-to-Speech narrator.
    - Use commas (,) naturally where a speaker takes a brief breath. End every complete sentence with a period (.).
    - Do NOT use complex punctuation like colons, semicolons, or dashes.
-3. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
-4. FILTER USELESS FILLER: Remove creator sponsorships and channel intros/outros ('Subscribe now'). But if a segment contains story details, keep and polish the story information.
-5. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+5. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
+6. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
         
         if glossary:
             base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos or ambiguous terms):\n{glossary}"
@@ -121,11 +144,11 @@ Return ONLY a comma-separated list of these terms in English, like: "Maharaja (C
 
     def get_validator_prompt(self, target_language: str) -> str:
         return f"""You are a strict QA Editor for a YouTube movie recap channel.
-Review and fix the provided {target_language.capitalize()} translations.
+Review and fix the provided {target_language.capitalize()} script segments.
 Rules:
-1. Fix any unnatural flow, bad grammar, or robotic phrasing.
-2. Ensure it sounds like a captivating story told by a human.
-3. Keep sentences short and punchy.
+1. ELIMINATE WORD-FOR-WORD TRANSLATION: Ensure the dialogue sounds like a captivating, natural story told by an engaging human narrator with personal flair.
+2. STRICT 3RD PARTY BRANDING PURGE: Ensure NO third-party channel names (like Filmi Cheeti, Mystery Recapped, etc.), creator names, or subscribe/like pleas remain.
+3. COMPLETE STANDALONE THOUGHTS: Ensure each segment is a complete, finished thought with proper punctuation and no dangling conjunctions.
 4. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
 5. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
 """

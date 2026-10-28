@@ -14,16 +14,16 @@ function App() {
   const [skipIntervals, setSkipIntervals] = useState([{ start: '', end: '' }])
   
   const [watermark, setWatermark] = useState({
-    topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
-    topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
-    bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
-    bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 }
+    topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 180 },
+    topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 180 },
+    bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 180 },
+    bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 180 }
   })
   const [textWatermark, setTextWatermark] = useState({
-    topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
-    topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
-    bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 50 },
-    bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 50 }
+    topLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 180 },
+    topRight: { enabled: false, offsetX: 10, offsetY: 10, size: 180 },
+    bottomLeft: { enabled: false, offsetX: 10, offsetY: 10, size: 180 },
+    bottomRight: { enabled: false, offsetX: 10, offsetY: 10, size: 180 }
   })
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
