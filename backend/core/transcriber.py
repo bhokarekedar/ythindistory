@@ -4,10 +4,8 @@ from groq import Groq
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
 class Transcriber:
-    def __init__(self, model_name: str = "whisper-large-v3-turbo", output_dir: str = "temp", chunk_minutes: int = 10, api_key: str = None):
-        self.model_name = model_name
+    def __init__(self, output_dir: str = "temp", api_key: str = None):
         self.output_dir = output_dir
-        self.chunk_minutes = chunk_minutes
         os.makedirs(self.output_dir, exist_ok=True)
         self.client = Groq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
 
@@ -59,7 +57,7 @@ class Transcriber:
             
             return segments
         except Exception as e:
-            print(f"YouTube Transcript Fetch Failed: {e}. Falling back to Whisper...")
+            print(f"YouTube Transcript Fetch Failed: {e}")
             return None
 
     def _llm_merge_segments(self, segments: list, batch_size: int = 50) -> list:
@@ -143,57 +141,27 @@ Rules:
 
     def transcribe(self, audio_path: str, language: str = None, youtube_url: str = None) -> str:
         """
-        Transcribes the audio. First tries to fetch official YouTube transcript if url is provided.
-        Falls back to Groq Whisper API if no transcript exists.
+        Transcribes the video by fetching official/auto subtitles directly from YouTube.
         Saves a timestamped JSON file.
         """
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")
 
         segments = None
-        
-        # 1. Fast Path: Try Official YouTube Transcript first
         if youtube_url:
             segments = self.fetch_youtube_transcript(youtube_url)
             
-        # 2. Fallback Path: Groq Whisper
         if not segments:
-            print(f"Transcribing {audio_path} via Groq Whisper...")
-            with open(audio_path, "rb") as file:
-                kwargs = {
-                    "file": (os.path.basename(audio_path), file.read()),
-                    "model": self.model_name,
-                    "response_format": "verbose_json",
-                    "temperature": 0.0,
-                    "prompt": "यह एक कहानी है। स्वागत है दोस्तों।", # Conditions the model to output proper Hindi and reduces gibberish
-                }
-                if language:
-                    kwargs["language"] = language
-                else:
-                    # Force Hindi language detection to prevent Whisper from outputting Urdu/Arabic script
-                    # This fixes the issue where the raw transcript had Urdu characters instead of Devanagari/English!
-                    kwargs["language"] = "hi"
-                
-                transcription = self.client.audio.transcriptions.create(**kwargs)
-            
-            segments = []
-            for i, segment in enumerate(transcription.segments):
-                segments.append({
-                    "id": i + 1,
-                    "start": segment["start"],
-                    "end": segment["end"],
-                    "text": segment["text"].strip()
-                })
+            raise RuntimeError(
+                f"Could not retrieve YouTube transcript for '{youtube_url}'. "
+                "Please verify that the YouTube video has closed captions / subtitles available."
+            )
         
         # Merge fragments into complete sentences via LLM for perfect TTS flow
-        if segments:
-            print(f"Original segments: {len(segments)}")
-            segments = self._llm_merge_segments(segments)
-            print(f"Merged into {len(segments)} highly accurate groups.")
+        print(f"Original segments: {len(segments)}")
+        segments = self._llm_merge_segments(segments)
+        print(f"Merged into {len(segments)} highly accurate groups.")
             
-        base_name = os.path.splitext(os.path.basename(audio_path))[0]
-        output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")
-        
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(segments, f, indent=4, ensure_ascii=False)
             

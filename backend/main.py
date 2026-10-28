@@ -254,16 +254,14 @@ def process_pipeline(job_id: str, request: VideoRequest):
             job_status[job_id] = "Transcription skipped (using cache)"
             print(f"\n[JOB {job_id}] Step 3: Transcript found in cache. Skipping.")
         else:
-            job_status[job_id] = "Transcribing audio..."
-            print(f"\n[JOB {job_id}] Step 3: Transcribing Audio (Trying YouTube API first, then Groq Whisper)...")
+            job_status[job_id] = "Fetching YouTube transcript..."
+            print(f"\n[JOB {job_id}] Step 3: Fetching Official YouTube Transcript...")
             transcriber = Transcriber(
-                model_name=config.get("groq", {}).get("transcription_model", "whisper-large-v3-turbo"), 
                 output_dir=job_dir, 
-                chunk_minutes=config.get("transcription", {}).get("chunk_minutes", 10),
                 api_key=groq_api_key
             )
             transcript_path = transcriber.transcribe(raw_audio_path, youtube_url=url)
-            print(f"[JOB {job_id}] Transcription complete. JSON stored at: {transcript_path}")
+            print(f"[JOB {job_id}] YouTube Transcript ready. JSON stored at: {transcript_path}")
             
         # Step 4: Translation / Script Rewrite
         target_lang = request.target_language.lower()

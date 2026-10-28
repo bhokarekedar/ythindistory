@@ -3,7 +3,6 @@ llm:
   fallback_provider: none
 
 groq:
-  transcription_model: whisper-large-v3-turbo
   translation_model: qwen/qwen3.8-27b
 
 translation:
@@ -15,9 +14,6 @@ tts:
 
 kokoro:
   voice: hf_alpha
-
-transcription:
-  chunk_minutes: 10
 
 sync:
   max_retries: 3
