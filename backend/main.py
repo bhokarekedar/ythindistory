@@ -135,13 +135,104 @@ def send_webhook_with_n8n_autostart(webhook_url: str, payload: dict, max_retries
             time.sleep(2)
     return False
 
+TRAINING_DATASET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_dataset")
+os.makedirs(TRAINING_DATASET_DIR, exist_ok=True)
+
+def archive_training_script(video_id: str, channel_type: str, target_lang: str, script_path: str, transcript_path: str = None):
+    """
+    Permanently archives the source transcript and LLM-generated script in 'training_dataset/'
+    for future LLM fine-tuning and training. This directory is NEVER deleted by temp/output cleanup.
+    """
+    import datetime
+    try:
+        archive_dir = os.path.join(TRAINING_DATASET_DIR, video_id)
+        os.makedirs(archive_dir, exist_ok=True)
+        
+        # 1. Copy the raw translated script JSON
+        if os.path.exists(script_path):
+            dst_script = os.path.join(archive_dir, f"{video_id}_{channel_type}_{target_lang}_script.json")
+            shutil.copy2(script_path, dst_script)
+            
+            with open(script_path, "r", encoding="utf-8") as f:
+                segments = json.load(f)
+                
+            # 2. Build paired fine-tuning dataset (JSON and JSONL format for HuggingFace / Unsloth)
+            paired_data = {
+                "video_id": video_id,
+                "channel_type": channel_type,
+                "target_language": target_lang,
+                "created_at": datetime.datetime.now().isoformat(),
+                "total_segments": len(segments),
+                "pairs": []
+            }
+            
+            jsonl_entries = []
+            for s in segments:
+                orig = s.get("original_text", "").strip()
+                trans = s.get(target_lang, "").strip()
+                if orig and trans:
+                    paired_data["pairs"].append({
+                        "id": s.get("id"),
+                        "start": s.get("start"),
+                        "end": s.get("end"),
+                        "source_script": orig,
+                        "llm_script": trans
+                    })
+                    # Standard instruction format for fine-tuning LLMs
+                    jsonl_entries.append({
+                        "instruction": f"Translate and elevate this {channel_type.replace('_', ' ')} segment into high-energy spoken {target_lang.capitalize()} narration.",
+                        "input": orig,
+                        "output": trans
+                    })
+                    
+            paired_path = os.path.join(archive_dir, f"{video_id}_{channel_type}_{target_lang}_pairs.json")
+            with open(paired_path, "w", encoding="utf-8") as f:
+                json.dump(paired_data, f, indent=2, ensure_ascii=False)
+                
+            jsonl_path = os.path.join(archive_dir, f"{video_id}_{channel_type}_{target_lang}_finetune.jsonl")
+            with open(jsonl_path, "w", encoding="utf-8") as f:
+                for entry in jsonl_entries:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                    
+            # 3. Build a clean human-readable script text file (.txt)
+            txt_path = os.path.join(archive_dir, f"{video_id}_{channel_type}_{target_lang}_full_script.txt")
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(f"=== {channel_type.upper()} ({target_lang.upper()}) SCRIPT - {video_id} ===\n\n")
+                f.write("FULL CONTINUOUS NARRATION:\n")
+                f.write(" ".join([s.get(target_lang, "").strip() for s in segments if s.get(target_lang)]))
+                f.write("\n\n" + "="*50 + "\n\n")
+                f.write("SEGMENT-BY-SEGMENT PAIRS (SOURCE vs LLM GENERATED):\n\n")
+                for s in segments:
+                    f.write(f"[{s.get('id')}] ({s.get('start', 0):.2f}s - {s.get('end', 0):.2f}s)\n")
+                    f.write(f"SOURCE : {s.get('original_text', '').strip()}\n")
+                    f.write(f"LLM    : {s.get(target_lang, '').strip()}\n\n")
+
+            print(f"  [Dataset Archive] 📚 Permanently archived training script and finetune pairs to: {archive_dir}")
+
+        # 4. Copy original transcript if available
+        if transcript_path and os.path.exists(transcript_path):
+            dst_orig = os.path.join(archive_dir, f"{video_id}_source_transcript.json")
+            shutil.copy2(transcript_path, dst_orig)
+
+    except Exception as e:
+        print(f"  [Dataset Archive] ⚠️ Failed to archive training script: {e}")
+
 def cleanup_job_temp(video_id: str):
     """Removes all heavy intermediate temp files (video chunks, resampled audio, mixed temp files) for this job."""
-    import shutil
     try:
         if video_id:
             job_temp = os.path.join("temp", video_id)
             if os.path.exists(job_temp):
+                # Safety guard: ensure any transcripts inside job_temp are saved to training_dataset before wiping
+                for fname in os.listdir(job_temp):
+                    if fname.endswith("_transcript.json"):
+                        fpath = os.path.join(job_temp, fname)
+                        archive_dir = os.path.join(TRAINING_DATASET_DIR, video_id)
+                        os.makedirs(archive_dir, exist_ok=True)
+                        dst = os.path.join(archive_dir, fname)
+                        if not os.path.exists(dst):
+                            shutil.copy2(fpath, dst)
+                
                 shutil.rmtree(job_temp, ignore_errors=True)
                 print(f"  [Cleanup] 🧹 Cleared intermediate temp directory: {job_temp}")
         raw_videos = "temp/videos"
@@ -153,9 +244,6 @@ def cleanup_job_temp(video_id: str):
 
 def schedule_delayed_output_cleanup(video_id: str, delay_seconds: int = 180):
     """Gives n8n 3 minutes to finish reading/uploading the final output before deleting it."""
-    import threading
-    import shutil
-    
     def worker():
         time.sleep(delay_seconds)
         output_dir = os.path.join("output", video_id)
@@ -315,6 +403,9 @@ def process_pipeline(job_id: str, request: VideoRequest):
             )
             script_path = translator.translate_transcript(transcript_path, target_language=target_lang, output_dir=job_dir, channel_type=channel_type)
             print(f"[JOB {job_id}] Script generation complete. JSON stored at: {script_path}")
+            
+        # Archive script permanently for LLM training dataset before any cleanup can occur
+        archive_training_script(video_id, channel_type, target_lang, script_path, transcript_path)
             
         # Step 5: TTS Generation
         tts_provider = config.get("tts", {}).get("provider", "gemini")
@@ -533,6 +624,30 @@ def process_video(request: VideoRequest, background_tasks: BackgroundTasks):
 @app.get("/api/status/{job_id}")
 def get_status(job_id: str):
     return {"job_id": job_id, "status": job_status.get(job_id, "Not found")}
+
+@app.get("/api/training-datasets")
+def list_training_datasets():
+    """Lists all archived LLM training datasets and paired scripts."""
+    datasets = []
+    if os.path.exists(TRAINING_DATASET_DIR):
+        for video_id in sorted(os.listdir(TRAINING_DATASET_DIR)):
+            vpath = os.path.join(TRAINING_DATASET_DIR, video_id)
+            if os.path.isdir(vpath):
+                files = os.listdir(vpath)
+                pairs_file = next((f for f in files if f.endswith("_pairs.json")), None)
+                total_pairs = 0
+                if pairs_file:
+                    try:
+                        with open(os.path.join(vpath, pairs_file), "r", encoding="utf-8") as pf:
+                            total_pairs = json.load(pf).get("total_segments", 0)
+                    except:
+                        pass
+                datasets.append({
+                    "video_id": video_id,
+                    "files": files,
+                    "total_pairs": total_pairs
+                })
+    return {"datasets": datasets, "total_datasets": len(datasets), "directory": TRAINING_DATASET_DIR}
 
 def apply_watermarks_to_ffmpeg(stream, watermark_path, settings: WatermarkSettings, main_w="main_w", main_h="main_h"):
     """Helper to apply the watermark to an ffmpeg video stream at multiple corners."""

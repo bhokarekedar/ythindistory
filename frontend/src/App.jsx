@@ -29,6 +29,7 @@ function App() {
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap' or 'thriller_story'
   const [storageStats, setStorageStats] = useState({ temp_size: '...', output_size: '...' })
+  const [datasetCount, setDatasetCount] = useState(0)
   const [cleaning, setCleaning] = useState(false)
 
   const fetchStorage = async () => {
@@ -41,8 +42,19 @@ function App() {
     }
   }
 
+  const fetchDatasets = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/training-datasets')
+      const data = await res.json()
+      setDatasetCount(data.total_datasets || 0)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   useEffect(() => {
     fetchStorage()
+    fetchDatasets()
   }, [status])
 
   const handleClearStorage = async () => {
@@ -192,6 +204,9 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 style={{ margin: 0, fontSize: '26px' }}>Automated Video Studio</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#155724', background: '#d4edda', padding: '6px 12px', borderRadius: '6px', border: '1px solid #c3e6cb' }} title="Permanently saved scripts for LLM fine-tuning (never cleared by temp/output cleanup)">
+            📚 Datasets: <b>{datasetCount}</b>
+          </span>
           <span style={{ fontSize: '12px', color: '#555', background: '#f1f3f5', padding: '6px 12px', borderRadius: '6px', border: '1px solid #dee2e6' }}>
             💾 Temp: <b>{storageStats.temp_size}</b> | Output: <b>{storageStats.output_size}</b>
           </span>
