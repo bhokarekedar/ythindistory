@@ -8,31 +8,29 @@ class ApiKeyManager:
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
         
     def get_next_key(self) -> str:
-        key1 = os.environ.get("GROQ_API_KEY")
-        key2 = os.environ.get("GROQ_API_KEY_TWO")
-        
-        if not key1 and not key2:
-            return None
-        if key1 and not key2:
-            return key1
-        if key2 and not key1:
-            return key2
-            
-        # Both keys exist, read state
-        last_used = "1"
-        if os.path.exists(self.state_file):
-            with open(self.state_file, "r") as f:
-                last_used = f.read().strip()
+        keys = []
+        for name in ["GROQ_API_KEY", "GROQ_API_KEY_TWO", "GROQ_API_KEY_THREE", "GROQ_API_KEY_FOUR"]:
+            val = os.environ.get(name)
+            if val and val not in keys:
+                keys.append(val)
                 
-        if last_used == "1":
-            next_key_str = "2"
-            key_to_use = key2
-        else:
-            next_key_str = "1"
-            key_to_use = key1
+        if not keys:
+            return None
             
-        with open(self.state_file, "w") as f:
-            f.write(next_key_str)
+        last_idx = 0
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, "r") as f:
+                    last_idx = int(f.read().strip())
+            except:
+                last_idx = 0
+                
+        next_idx = (last_idx + 1) % len(keys)
+        try:
+            with open(self.state_file, "w") as f:
+                f.write(str(next_idx))
+        except:
+            pass
             
-        print(f"[API KEY] Using GROQ_API_KEY_{'TWO' if next_key_str == '2' else 'ONE'}")
-        return key_to_use
+        print(f"[API KEY] Using Groq Key #{next_idx + 1} of {len(keys)}")
+        return keys[next_idx]

@@ -4,10 +4,113 @@ from groq import Groq
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
 class Transcriber:
-    def __init__(self, output_dir: str = "temp", api_key: str = None):
+    def __init__(self, output_dir: str = "temp", api_key: str = None, api_keys: list = None):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-        self.client = Groq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
+        
+        # Collect all valid Groq API keys into pool
+        keys = []
+        if api_keys:
+            keys.extend([k for k in api_keys if k])
+        if api_key and api_key not in keys:
+            keys.append(api_key)
+        for ek in [os.environ.get("GROQ_API_KEY"), os.environ.get("GROQ_API_KEY_TWO"), os.environ.get("GROQ_API_KEY_THREE"), os.environ.get("GROQ_API_KEY_FOUR")]:
+            if ek and ek not in keys:
+                keys.append(ek)
+                
+        self.api_keys = keys
+        self.current_idx = 0
+        if self.api_keys:
+            self.client = Groq(api_key=self.api_keys[0])
+            print(f"  [Transcriber Pool] 🔑 Loaded {len(self.api_keys)} Groq API key(s) for transcript processing.")
+        else:
+            self.client = None
+            print("  [Transcriber Pool] ⚠️ Initialized Transcriber without Groq API keys.")
+
+    def _rotate_client(self):
+        if not self.api_keys or len(self.api_keys) <= 1:
+            return False
+        prev_idx = self.current_idx
+        self.current_idx = (self.current_idx + 1) % len(self.api_keys)
+        next_key = self.api_keys[self.current_idx]
+        print(f"  [Transcriber Pool] ⚠️ Key #{prev_idx + 1} reached quota/rate limit. Rotating to Key #{self.current_idx + 1} of {len(self.api_keys)}...")
+        self.client = Groq(api_key=next_key)
+        return True
+
+    def _smart_rule_based_merge(self, segments: list, min_dur: float = 3.5, max_dur: float = 7.0) -> list:
+        """
+        High-speed deterministic linguistic merger. Groups micro-fragments into complete
+        sentences based on punctuation, pause gaps, and duration with ZERO token cost.
+        """
+        if not segments:
+            return []
+            
+        merged = []
+        curr = []
+        dangling_words = {
+            "and", "but", "or", "because", "with", "to", "in", "of", "that", "so", "then",
+            "की", "का", "के", "और", "तथा", "या", "लेकिन", "कि", "तो", "में", "से", "पर", "भी"
+        }
+        
+        for s in segments:
+            if not curr:
+                curr.append(s)
+                continue
+                
+            prev = curr[-1]
+            gap = float(s.get("start", 0)) - float(prev.get("end", 0))
+            curr_dur = float(s.get("end", 0)) - float(curr[0].get("start", 0))
+            prev_text = prev.get("text", "").strip()
+            last_word = prev_text.split()[-1].lower() if prev_text.split() else ""
+            
+            # Scene change / long pause (> 1.2s gap)
+            if gap > 1.2 and curr_dur >= min_dur and last_word not in dangling_words:
+                merged.append({
+                    "id": curr[0]["id"],
+                    "start": curr[0]["start"],
+                    "end": prev["end"],
+                    "text": " ".join(x.get("text", "").strip() for x in curr)
+                })
+                curr = [s]
+                continue
+                
+            # Sentence-ending punctuation
+            has_terminal = any(prev_text.endswith(p) for p in ('.', '!', '?', '।', '॥'))
+            if has_terminal and curr_dur >= min_dur and last_word not in dangling_words:
+                merged.append({
+                    "id": curr[0]["id"],
+                    "start": curr[0]["start"],
+                    "end": prev["end"],
+                    "text": " ".join(x.get("text", "").strip() for x in curr)
+                })
+                curr = [s]
+                continue
+                
+            # Max duration threshold reached
+            if curr_dur >= max_dur and last_word not in dangling_words:
+                merged.append({
+                    "id": curr[0]["id"],
+                    "start": curr[0]["start"],
+                    "end": prev["end"],
+                    "text": " ".join(x.get("text", "").strip() for x in curr)
+                })
+                curr = [s]
+                continue
+                
+            curr.append(s)
+            
+        if curr:
+            merged.append({
+                "id": curr[0]["id"],
+                "start": curr[0]["start"],
+                "end": curr[-1]["end"],
+                "text": " ".join(x.get("text", "").strip() for x in curr)
+            })
+            
+        for i, m in enumerate(merged):
+            m["id"] = i + 1
+            
+        return merged
 
     def fetch_youtube_transcript(self, url: str) -> list:
         """
@@ -62,8 +165,8 @@ class Transcriber:
 
     def _llm_merge_segments(self, segments: list, batch_size: int = 50) -> list:
         """
-        Uses an LLM to read the fragments and return the exact IDs that should be merged.
-        This guarantees perfect grammatical groupings without messing up the timestamps.
+        Uses an LLM with multi-key pool rotation to group fragments into complete sentences.
+        If all LLM keys reach daily rate limits, automatically falls back to smart linguistic merging.
         """
         if not segments:
             return []
@@ -71,7 +174,13 @@ class Transcriber:
         print("Grouping segments via LLM to preserve perfect video sync...")
         merged_segments = []
         
+        # If we have no LLM client, use smart rule-based merger immediately
+        if not self.client:
+            print("  [Grouper] No Groq client available. Using high-speed linguistic merger...")
+            return self._smart_rule_based_merge(segments)
+        
         # Process in batches to avoid API context limits
+        all_batches_failed = True
         for i in range(0, len(segments), batch_size):
             batch = segments[i:i+batch_size]
             
@@ -80,17 +189,10 @@ Your task is to analyze fragmented subtitle text and determine which fragments s
 Rules:
 1. Return strictly a JSON object with a single key 'groups' containing a list of lists of the IDs that should be merged.
 2. Example Output: {"groups": [[1, 2], [3], [4, 5, 6]]}
-3. NEVER split a single sentence in half! A group MUST represent a complete thought. If a fragment ends abruptly without terminating punctuation or a concluding verb (e.g., Hindi 'hai', 'tha', 'ho', 'gaya'; Japanese 'です', 'ます', 'た', 'だ'; Korean '다', '요', '었다'), or ends with a conjunction/particle/preposition (e.g., Hindi 'ki', 'ka', 'aur'; Japanese 'の', 'と', 'が', 'を', 'に', 'で'; Korean '의', '와', '과', '을', '를', '에'; English 'and', 'but', 'because', 'with', 'to'), you MUST merge it with the next fragment.
-4. CRITICAL VISUAL RULE (ACT AS A VIDEO EDITOR): You must NEVER merge fragments across hard visual cuts. A fragment MUST start a brand new group if it contains:
-   - A Location/Scene Change (e.g., "अगले सीन में", "पुलिस स्टेशन में", "Meanwhile in Tokyo", "다음 날", "その頃")
-   - A Time Jump or Flashback (e.g., "15 साल बाद", "अगले दिन", "Years later", "10년 후", "翌日")
-   - A New Character Introduction / Victim / Suspect Discovery
-   - A Sudden Action/Shocking Event (e.g., "तभी अचानक", "Suddenly", "갑자기")
-   These represent massive visual shifts on screen. Merging them into the middle of a previous sentence will ruin the video sync!
-5. MERGE DEPENDENT TAILS & ORPHAN PARTICLES: If a fragment starts with a dependent conjunction or particle (e.g. 'भी', 'भी इस', 'and', 'also', 'too', 'also because') or is an incomplete dependent clause under 5 seconds, you MUST merge it with its preceding fragment so it is not left stranded as an orphan fragment.
-6. Make sure every single ID provided in the input is accounted for exactly once in the output groups.
-"""
-            # Build input JSON with durations so LLM avoids creating tiny orphan cuts
+3. NEVER split a single sentence in half! A group MUST represent a complete thought.
+4. CRITICAL VISUAL RULE: NEVER merge fragments across hard visual cuts or scene changes.
+5. Account for every single ID exactly once."""
+
             input_data = []
             for s in batch:
                 dur = round(float(s.get("end", 0)) - float(s.get("start", 0)), 1)
@@ -98,10 +200,12 @@ Rules:
             user_content = f"Fragments:\n{json.dumps(input_data, ensure_ascii=False)}"
             
             import time
-            for attempt in range(3):
+            batch_success = False
+            for attempt in range(max(1, len(self.api_keys))):
                 try:
+                    # Use llama-3.1-8b-instant for fast, low-token grouping if available, or current model
                     completion = self.client.chat.completions.create(
-                        model="qwen/qwen3.8-27b",
+                        model="llama-3.1-8b-instant",
                         messages=[
                             {"role": "system", "content": prompt},
                             {"role": "user", "content": user_content}
@@ -114,28 +218,33 @@ Rules:
                     parsed = json.loads(response_text)
                     groups = parsed.get("groups", [])
                     
-                    # Execute the merge based on the returned groups
                     for group in groups:
                         if not group:
                             continue
-                        
                         group_segs = [s for s in batch if s["id"] in group]
                         if not group_segs:
                             continue
-                            
                         merged_segments.append({
-                            "id": group_segs[0]["id"], # Temporary ID, re-indexed later
+                            "id": group_segs[0]["id"],
                             "start": group_segs[0]["start"],
                             "end": group_segs[-1]["end"],
                             "text": " ".join([s["text"] for s in group_segs])
                         })
-                    break # Success, break out of retry loop
+                    batch_success = True
+                    all_batches_failed = False
+                    break
                 except Exception as e:
+                    err_str = str(e).lower()
                     print(f"LLM Grouper attempt {attempt+1} failed: {e}")
-                    time.sleep(2)
-            else:
-                print("Warning: LLM Grouper failed for this batch. Using raw fragments as fallback.")
-                merged_segments.extend(batch)
+                    is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tpd" in err_str or "tokens per day" in err_str
+                    if is_rate_limit and self._rotate_client():
+                        continue
+                    time.sleep(1)
+            
+            if not batch_success:
+                # Use smart rule-based merger for this batch instead of raw disconnected fragments!
+                print("  [Grouper] LLM Grouper hit rate limits for this batch. Using smart linguistic merger...")
+                merged_segments.extend(self._smart_rule_based_merge(batch))
                 
         # Clean up any trailing dangling conjunctions/prepositions across segments
         dangling_words = {
