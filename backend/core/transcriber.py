@@ -20,6 +20,7 @@ class Transcriber:
                 
         self.api_keys = keys
         self.current_idx = 0
+        self.cooldowns = {i: 0.0 for i in range(len(self.api_keys))}
         if self.api_keys:
             self.client = Groq(api_key=self.api_keys[0])
             print(f"  [Transcriber Pool] 🔑 Loaded {len(self.api_keys)} Groq API key(s) for transcript processing.")
@@ -27,15 +28,48 @@ class Transcriber:
             self.client = None
             print("  [Transcriber Pool] ⚠️ Initialized Transcriber without Groq API keys.")
 
-    def _rotate_client(self):
-        if not self.api_keys or len(self.api_keys) <= 1:
+    def _parse_cooldown_seconds(self, err_str: str) -> float:
+        import re
+        m_min_sec = re.search(r'try again in\s+(\d+(?:\.\d+)?)m\s*(\d+(?:\.\d+)?)s', err_str, re.IGNORECASE)
+        if m_min_sec:
+            return float(m_min_sec.group(1)) * 60 + float(m_min_sec.group(2))
+        m_min = re.search(r'try again in\s+(\d+(?:\.\d+)?)m\b', err_str, re.IGNORECASE)
+        if m_min:
+            return float(m_min.group(1)) * 60
+        m_sec = re.search(r'try again in\s+(\d+(?:\.\d+)?)s', err_str, re.IGNORECASE)
+        if m_sec:
+            return float(m_sec.group(1))
+        return 30.0
+
+    def _rotate_client(self, err_str: str = ""):
+        import time
+        if not self.api_keys:
             return False
+            
+        cd_sec = self._parse_cooldown_seconds(err_str) if err_str else 30.0
+        self.cooldowns[self.current_idx] = time.time() + cd_sec
         prev_idx = self.current_idx
-        self.current_idx = (self.current_idx + 1) % len(self.api_keys)
-        next_key = self.api_keys[self.current_idx]
-        print(f"  [Transcriber Pool] ⚠️ Key #{prev_idx + 1} reached quota/rate limit. Rotating to Key #{self.current_idx + 1} of {len(self.api_keys)}...")
-        self.client = Groq(api_key=next_key)
-        return True
+        
+        # Check if another key is ready
+        now = time.time()
+        available = [i for i in range(len(self.api_keys)) if i != prev_idx and self.cooldowns.get(i, 0) <= now]
+        if available:
+            self.current_idx = available[0]
+            self.client = Groq(api_key=self.api_keys[self.current_idx])
+            print(f"  [Transcriber Pool] ⚠️ Key #{prev_idx + 1} on cooldown ({int(cd_sec)}s). Rotating immediately to Key #{self.current_idx + 1} of {len(self.api_keys)}.")
+            return True
+            
+        # All keys in cooldown: find soonest
+        soonest_idx = min(self.cooldowns, key=self.cooldowns.get)
+        wait_sec = max(1.0, self.cooldowns[soonest_idx] - now)
+        if wait_sec <= 60: # For transcriber grouper, wait up to 60s
+            print(f"  [Transcriber Pool] ⏳ All keys on cooldown. Waiting {int(wait_sec)}s for Key #{soonest_idx + 1}...")
+            time.sleep(wait_sec + 1)
+            self.current_idx = soonest_idx
+            self.client = Groq(api_key=self.api_keys[self.current_idx])
+            return True
+            
+        return False
 
     def _smart_rule_based_merge(self, segments: list, min_dur: float = 3.5, max_dur: float = 7.0) -> list:
         """
@@ -237,7 +271,7 @@ Rules:
                     err_str = str(e).lower()
                     print(f"LLM Grouper attempt {attempt+1} failed: {e}")
                     is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tpd" in err_str or "tokens per day" in err_str
-                    if is_rate_limit and self._rotate_client():
+                    if is_rate_limit and self._rotate_client(str(e)):
                         continue
                     time.sleep(1)
             
