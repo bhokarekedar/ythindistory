@@ -4,8 +4,9 @@ from groq import Groq
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
 class Transcriber:
-    def __init__(self, output_dir: str = "temp", api_key: str = None, api_keys: list = None):
+    def __init__(self, output_dir: str = "temp", api_key: str = None, api_keys: list = None, model: str = "qwen/qwen3.8-27b"):
         self.output_dir = output_dir
+        self.model = model
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Collect all valid Groq API keys into pool
@@ -237,9 +238,8 @@ Rules:
             batch_success = False
             for attempt in range(max(1, len(self.api_keys))):
                 try:
-                    # Use llama-3.1-8b-instant for fast, low-token grouping if available, or current model
                     completion = self.client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
+                        model=self.model,
                         messages=[
                             {"role": "system", "content": prompt},
                             {"role": "user", "content": user_content}
@@ -317,10 +317,10 @@ Rules:
                 "Please verify that the YouTube video has closed captions / subtitles available."
             )
         
-        # Merge fragments into complete sentences via LLM for perfect TTS flow
-        print(f"Original segments: {len(segments)}")
-        segments = self._llm_merge_segments(segments)
-        print(f"Merged into {len(segments)} highly accurate groups.")
+        # Merge fragments into complete sentences via high-speed linguistic merger
+        print(f"Original subtitle fragments: {len(segments)}")
+        segments = self._smart_rule_based_merge(segments)
+        print(f"Linguistically merged into {len(segments)} complete sentence groups (0 Groq tokens used).")
             
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(segments, f, indent=4, ensure_ascii=False)
