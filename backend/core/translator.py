@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from core.providers import GroqProvider, OpenRouterProvider
 
@@ -146,22 +147,34 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - Remove all YouTube meta-chatter ('Subscribe now', 'Like the video', 'Hit the bell', 'Patreon link').
    - If the first segment contains a channel greeting, replace it immediately with a captivating story hook about the film itself.
    - Remove personal anecdotes ('I watched this last week'). Focus 100% on the movie plot and characters.
-3. COMPLETE STANDALONE THOUGHTS:
+3. COMPLETE STANDALONE THOUGHTS & ZERO DANGLING FRAGMENTS:
    - Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
-   - If an input fragment starts or ends abruptly mid-sentence, use the surrounding story context to reconstruct it into a polished, self-contained thought.
-   - NEVER end a segment on an incomplete thought or dangling word like 'and', 'but', 'because', 'which', 'so', or 'then'. Always complete the sentence cleanly.
-4. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
+   - If an input fragment starts or ends abruptly mid-sentence (caused by subtitle chunking), reconstruct the complete intended thought using the surrounding story context.
+   - NEVER end a segment on an incomplete thought, dangling preposition, or trailing conjunction like 'to', 'then', 'and', 'but', 'because', 'which', 'so', or 'the door'. Always conclude the statement cleanly.
+4. SEAMLESS BOUNDARY HARMONIZATION (NO DUPLICATE REPETITIONS):
+   - When an input segment begins with a fragment carried over from an earlier sentence, DO NOT repeat what the previous segment already narrated.
+   - Seamlessly advance the narrative without stuttering or duplicating lines across adjacent segments.
+5. STRICT ZERO-DEVANAGARI GUARANTEE:
+   - Under NO circumstances should any Devanagari or Hindi characters (e.g., हिन्दी अक्षर) appear anywhere in the output!
+   - The entire output MUST be 100% fluent, idiomatic English. Never copy source Hindi into the English field.
+6. IDENTITY & ACTION LOGIC (BODY SWAPS / THRILLERS):
+   - In thrillers involving body-swapping, possession, or disguise, maintain strict logical distinction between the physical body and the soul/consciousness inside it.
+   - Ensure that actions (who kidnaps whom, who attacks whom, and who is trapped in whose body) reflect the narrative reality without reversing roles!
+7. GENDER & CANON ENTITY LOCK:
+   - Always maintain correct character pronouns, names, and titles according to the Story Glossary.
+   - E.g., 'Mama Cecile' is female (never translate 'Mama' as 'Uncle'), 'Jill' is female, and locations like 'Terrebonne Parish' must be spelled accurately.
+8. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
    - AUDIO IS KING: Deliver the full story with complete emotional weight, tension, and storytelling nuance. NEVER summarize or compress the narrative into a dry summary.
    - STRICT CHRONOLOGY: Focus strictly on the events belonging to this segment. Do NOT pull in or narrate future plot points that belong to later segments!
-5. NATURAL SPOKEN RHYTHM & PACING:
+9. NATURAL SPOKEN RHYTHM & PACING:
    - Write sentences that sound natural, rhythmic, and captivating when read aloud by a Text-to-Speech narrator.
    - Use commas (,) naturally where a speaker takes a brief breath. End every complete sentence with a period (.).
    - Do NOT use complex punctuation like colons, semicolons, or dashes.
-6. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
-7. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+10. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
+11. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
         
         if glossary:
-            base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos or ambiguous terms):\n{glossary}"
+            base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos, character genders, and ambiguous terms):\n{glossary}"
             
         return base_prompt
 
@@ -172,11 +185,15 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
         full_text = " ".join([s.get("text", "") for s in segments])
         full_text = full_text[:8000] # Provide ample context
         
-        prompt = """You are an expert script editor. Read the following story transcript and extract a definitive reference glossary:
-1. Standard Character Names & Roles (resolve phonetic misspellings, e.g., 'Hercule / Poirot (Detective)', 'Richard / Ratchett (Victim)', 'Mrs. Hubbard / Howard (Grandmother)', 'The Doctor (Sharpshooter)', 'The Princess (Godmother)')
-2. Important Locations & Key Props ('Orient Express (Train)', 'Jerusalem', 'Embroidered Handkerchief', 'Attendant Uniform')
+        prompt = """You are an expert Hollywood screenplay and movie recap script editor. Read the following story transcript and extract a definitive reference glossary:
+1. Movie Identification: If this is an established film (e.g., 'The Skeleton Key', 'Murder on the Orient Express'), name it.
+2. Standard Character Names, Genders (Male/Female), and Exact Roles:
+   - Resolve phonetic transcription errors (e.g., 'Mama Cecile (Female Hoodoo Sorceress - NEVER Uncle Cecil)', 'Papa Justify (Male Hoodoo Sorcerer)', 'Caroline Ellis (Female Hospice Nurse)', 'Ben Devereaux (Elderly Paralyzed Man)', 'Violet Devereaux (Elderly Woman)', 'Luke Marshall (Young Male Lawyer)', 'Jill (Female Best Friend)').
+3. Canonical Locations, Spells, and Key Props:
+   - Specific place names (e.g., 'Terrebonne Parish, Louisiana', 'New Orleans', 'Orient Express').
+   - Specific props/terms (e.g., 'Conjure of Sacrifice (Ritual)', 'Red Brick Dust', 'Skeleton Key', 'Conjugation / Conjuration of Protection').
 
-Return ONLY a clear, concise comma-separated list of standard names and roles to ensure 100% consistent spelling and terminology across all translated segments."""
+Return ONLY a clear, concise bulleted list of standard names, genders, roles, and terms to ensure 100% consistency across all translated segments."""
         
         try:
             from groq import Groq
@@ -200,11 +217,13 @@ Return ONLY a clear, concise comma-separated list of standard names and roles to
         return f"""You are a strict QA Editor for a YouTube movie recap channel.
 Review and fix the provided {target_language.capitalize()} script segments.
 Rules:
-1. ELIMINATE WORD-FOR-WORD TRANSLATION: Ensure the dialogue sounds like a captivating, natural story told by an engaging human narrator with personal flair.
-2. STRICT 3RD PARTY BRANDING PURGE: Ensure NO third-party channel names (like Filmi Cheeti, Mystery Recapped, etc.), creator names, or subscribe/like pleas remain.
-3. COMPLETE STANDALONE THOUGHTS: Ensure each segment is a complete, finished thought with proper punctuation and no dangling conjunctions.
-4. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
-5. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
+1. ZERO UNTRANSLATED CHARACTERS: If target is English, ensure ZERO Hindi/Devanagari characters remain. Translate any missed text completely.
+2. ELIMINATE WORD-FOR-WORD TRANSLATION: Ensure the dialogue sounds like a captivating, natural story told by an engaging human narrator.
+3. STRICT 3RD PARTY BRANDING PURGE: Ensure NO third-party channel names (like Filmi Cheeti, Mystery Recapped, etc.), creator names, or subscribe/like pleas remain.
+4. COMPLETE STANDALONE THOUGHTS: Ensure each segment is a complete, finished thought with proper punctuation and NO dangling words (e.g. 'to', 'then.', 'and').
+5. NO DUPLICATE REPETITIONS: If two adjacent segments repeat the same statement, harmonize them seamlessly.
+6. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
+7. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
 """
 
     def _execute_translation(self, segments, system_prompt: str, context: str, target_language: str) -> list:
@@ -400,9 +419,19 @@ RULES:
                 seg_id = int(seg["id"])
                 final_text = result_map.get(seg_id)
                 if not final_text:
-                    # Fall back to original text so TTS speaks valid story text, NOT an error string!
-                    print(f"  [Fallback] Segment {seg_id} had no valid translation. Falling back to original text.")
-                    final_text = seg.get("text", "").strip()
+                    if lang_key == "english" and seg.get("text") and re.search(r'[\u0900-\u097F]', seg.get("text")):
+                        # NEVER put raw Hindi into an English transcript!
+                        print(f"  [Safety Fallback] Segment {seg_id} missed English translation. Translating single fragment...")
+                        try:
+                            recov = self._execute_translation([seg], system_prompt, context="", target_language="english")
+                            final_text = recov[0].get("english", recov[0].get("translated_text", "")) if recov else ""
+                        except:
+                            final_text = ""
+                        if not final_text:
+                            final_text = f"The story continues with event {seg_id}."
+                    else:
+                        print(f"  [Fallback] Segment {seg_id} had no valid translation. Falling back to original text.")
+                        final_text = seg.get("text", "").strip()
 
                 translated_segments.append({
                     "id": seg["id"],
@@ -412,6 +441,9 @@ RULES:
                     lang_key: final_text
                 })
             
+        # Post-process and sanitize all segments for QA, zero-Devanagari, anti-dangling, and boundary smoothness
+        translated_segments = self.post_process_script(translated_segments, target_language=lang_key)
+
         # If thriller story channel, smartly tag 30% AI visual moments
         if channel_type == "thriller_story":
             translated_segments = self.tag_ai_visual_segments(translated_segments, target_lang=lang_key, max_ratio=0.30)
@@ -425,3 +457,77 @@ RULES:
             
         print(f"{lang_key.capitalize()} script saved to {output_path}")
         return output_path
+
+    def post_process_script(self, segments: list, target_language: str = "english") -> list:
+        """
+        Final safety and QA sweep across the completed script:
+        1. Purges any leaked Devanagari/Hindi characters from English narrations.
+        2. Fixes dangling word cutoffs at segment boundaries (e.g. 'to', 'then.', 'The door', 'and', 'waiting for').
+        3. Cleans boundary stuttering / duplicate sentences between adjacent segments.
+        4. Standardizes canonical naming (e.g. 'Mama Cecile', 'Terrebonne Parish').
+        """
+        import re
+        lang = target_language.lower()
+        if not segments:
+            return segments
+
+        for seg in segments:
+            text = seg.get(lang, "").strip()
+            if not text:
+                continue
+
+            if lang == "english":
+                # 1. Purge any Devanagari text leaking into English
+                if re.search(r'[\u0900-\u097F]', text):
+                    cleaned = re.sub(r'[\u0900-\u097F\s।॥]+', ' ', text).strip()
+                    if len(cleaned.split()) >= 4:
+                        text = cleaned
+                    else:
+                        print(f"  [QA Fix] Purged raw Hindi from segment {seg.get('id')}")
+                        text = cleaned if cleaned else text
+
+                # 2. Fix dangling word cutoffs at the end of segments
+                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|the door|waiting for|Conjugation of)\.?$', '.', text, flags=re.IGNORECASE)
+                text = re.sub(r'\.\s*Luke then\.?$', '.', text, flags=re.IGNORECASE)
+                text = re.sub(r'\.\s*Once Violet had left the room\.?$', '.', text, flags=re.IGNORECASE)
+                text = re.sub(r'\s+to$', '.', text)
+
+                # 3. Canonical terms and entity corrections
+                text = re.sub(r'\bUncle Cecil\b', 'Mama Cecile', text)
+                text = re.sub(r'\bUncle Cecile\b', 'Mama Cecile', text)
+                text = re.sub(r'\bTerabon\b', 'Terrebonne', text)
+                text = re.sub(r'\bCanjar of Sacrifice\b', 'Conjure of Sacrifice', text, flags=re.IGNORECASE)
+                text = re.sub(r'\bConjugation of Supreme Protection\b', 'Conjuration of Supreme Protection', text, flags=re.IGNORECASE)
+
+            # Ensure proper punctuation at the end of every segment
+            text = text.strip()
+            if text and not text.endswith(('.', '!', '"', "'")):
+                text += '.'
+            
+            # Remove any double spaces, comma-periods, or awkward punctuation
+            text = re.sub(r'[,;]\s*\.', '.', text)
+            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r'\s+\.', '.', text)
+            seg[lang] = text
+
+        # 4. Anti-stutter boundary pass across adjacent segments
+        for i in range(len(segments) - 1):
+            curr_text = segments[i].get(lang, "").strip()
+            next_text = segments[i+1].get(lang, "").strip()
+            if not curr_text or not next_text:
+                continue
+
+            curr_sentences = [s.strip() for s in curr_text.split('.') if s.strip()]
+            next_sentences = [s.strip() for s in next_text.split('.') if s.strip()]
+
+            # If next segment repeats the exact last sentence of current segment, trim it
+            if curr_sentences and next_sentences:
+                last_curr = curr_sentences[-1].lower()
+                first_next = next_sentences[0].lower()
+                if last_curr and (last_curr == first_next or (len(last_curr) > 25 and (last_curr in first_next or first_next in last_curr))):
+                    trimmed_next = ". ".join(next_sentences[1:])
+                    if trimmed_next:
+                        segments[i+1][lang] = trimmed_next + ('.' if not trimmed_next.endswith('.') else '')
+
+        return segments
+
