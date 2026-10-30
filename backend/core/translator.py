@@ -344,8 +344,27 @@ RULES:
         with open(transcript_path, "r", encoding="utf-8") as f:
             segments = json.load(f)
             
-        translated_segments = []
         lang_key = target_language.lower()
+        base_name = os.path.splitext(os.path.basename(transcript_path))[0].replace("_transcript", "")
+        suffix = f"_{channel_type}" if channel_type == "thriller_story" else ""
+        output_path = os.path.join(output_dir, f"{base_name}_{lang_key}{suffix}_transcript.json")
+        checkpoint_path = os.path.join(output_dir, f"{base_name}_{lang_key}{suffix}_checkpoint.json")
+        
+        # Load progress from checkpoint if a previous run was paused/interrupted
+        translated_map = {}
+        if os.path.exists(checkpoint_path):
+            try:
+                with open(checkpoint_path, "r", encoding="utf-8") as cf:
+                    saved_list = json.load(cf)
+                    for s in saved_list:
+                        val = s.get(lang_key, "").strip()
+                        if val and val.lower() not in ["translation/rewrite failed", "error"]:
+                            translated_map[int(s["id"])] = s
+                if translated_map:
+                    print(f"  [Resume] ⏩ Found checkpoint! Loaded {len(translated_map)}/{len(segments)} already translated segments from: {checkpoint_path}")
+            except Exception as e:
+                print(f"  [Resume] Warning reading checkpoint: {e}")
+                translated_map = {}
         
         print(f"Extracting contextual glossary for {lang_key} translation...")
         glossary = self._extract_glossary(segments)
@@ -355,6 +374,12 @@ RULES:
         # Process in batches
         for i in range(0, len(segments), self.batch_size):
             batch = segments[i:i+self.batch_size]
+            batch_ids = {int(seg["id"]) for seg in batch}
+            
+            # If every segment in this batch was already completed in the checkpoint, skip immediately!
+            if batch_ids.issubset(translated_map.keys()):
+                print(f"  [Resume] ⏩ Skipping batch {i // self.batch_size + 1} (Segments {min(batch_ids)}-{max(batch_ids)} already translated in checkpoint).")
+                continue
             
             # Build context (1 sentence before and 1 after the batch)
             prev_context = segments[i-1]["text"] if i > 0 else ""
@@ -362,7 +387,6 @@ RULES:
             next_context = segments[next_idx]["text"] if next_idx < len(segments) else ""
             context = f"{prev_context} [...] {next_context}"
             
-            batch_ids = {int(seg["id"]) for seg in batch}
             valid_results = []
             
             # --- Pass 1: Translation with retry loop for missing IDs ---
@@ -465,13 +489,25 @@ RULES:
                         print(f"  [Fallback] Segment {seg_id} had no valid translation. Falling back to original text.")
                         final_text = seg.get("text", "").strip()
 
-                translated_segments.append({
+                translated_map[seg_id] = {
                     "id": seg["id"],
                     "start": seg["start"],
                     "end": seg["end"],
                     "original_text": seg["text"],
                     lang_key: final_text
-                })
+                }
+
+            # Incrementally persist checkpoint to disk after every batch
+            try:
+                sorted_checkpoint = [translated_map[s["id"]] for s in segments if s["id"] in translated_map]
+                with open(checkpoint_path, "w", encoding="utf-8") as cf:
+                    json.dump(sorted_checkpoint, cf, indent=2, ensure_ascii=False)
+                print(f"  [Checkpoint] 💾 Saved progress: {len(sorted_checkpoint)}/{len(segments)} segments safely persisted.")
+            except Exception as e:
+                print(f"  [Checkpoint] Warning writing checkpoint: {e}")
+            
+        # Reconstruct full list in original segment order
+        translated_segments = [translated_map[s["id"]] for s in segments if s["id"] in translated_map]
             
         # Post-process and sanitize all segments for QA, zero-Devanagari, anti-dangling, and boundary smoothness
         # 1. Automated self-review and improvement loop
@@ -482,12 +518,15 @@ RULES:
         if channel_type == "thriller_story":
             translated_segments = self.tag_ai_visual_segments(translated_segments, target_lang=lang_key, max_ratio=0.30)
             
-        base_name = os.path.splitext(os.path.basename(transcript_path))[0].replace("_transcript", "")
-        suffix = f"_{channel_type}" if channel_type == "thriller_story" else ""
-        output_path = os.path.join(output_dir, f"{base_name}_{lang_key}{suffix}_transcript.json")
-        
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(translated_segments, f, indent=4, ensure_ascii=False)
+            
+        # Clean up checkpoint on complete success
+        if os.path.exists(checkpoint_path):
+            try:
+                os.remove(checkpoint_path)
+            except:
+                pass
             
         print(f"{lang_key.capitalize()} script saved to {output_path}")
         return output_path

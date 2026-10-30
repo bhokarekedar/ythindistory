@@ -75,13 +75,17 @@ class GroqProvider(LLMProvider):
                     # All keys are on cooldown: wait for the one that unlocks soonest
                     soonest_idx = min(self.cooldowns, key=self.cooldowns.get)
                     wait_sec = max(1.0, self.cooldowns[soonest_idx] - now)
-                    if wait_sec <= 300:  # Respect cooldown up to 5 minutes
-                        print(f"\n  [Groq Pool] ⏳ All {len(self.api_keys)} keys are in cooldown. Respecting cooldown: waiting {int(wait_sec)}s for Key #{soonest_idx + 1} to unlock...")
-                        time.sleep(wait_sec + 1)
+                    if wait_sec <= 600:  # Respect cooldown up to 10 minutes
+                        print(f"\n  [Groq Pool] ⏳ All {len(self.api_keys)} keys are in cooldown. Waiting {int(wait_sec)}s for Key #{soonest_idx + 1} to unlock (all progress is safely saved on disk)...")
+                        remaining = wait_sec + 1
+                        while remaining > 0:
+                            chunk = min(15.0, remaining)
+                            time.sleep(chunk)
+                            remaining -= chunk
                         self.current_idx = soonest_idx
                         self.client = Groq(api_key=self.api_keys[self.current_idx])
                     else:
-                        print(f"\n  [Groq Pool] ⚠️ All keys on prolonged cooldown (>5m). Aborting attempt.")
+                        print(f"\n  [Groq Pool] ⚠️ All keys on prolonged cooldown (>10m). Progress is safely saved on disk. You can restart anytime to resume.")
                         break
 
             try:
