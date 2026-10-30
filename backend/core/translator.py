@@ -429,9 +429,24 @@ RULES:
                         except Exception as e:
                             print(f"  -> Single-segment recovery failed for ID {missing_id}: {e}")
                 
-            # --- Pass 2: Validation/Editing with GROQ_API_KEY_TWO ---
+            # --- Pass 2: Smart Conditional Validation ---
+            # Only run validation pass if the batch contains defects (saves 50% API calls and prevents rate limits)
+            needs_validation = False
             if self.validator_provider and valid_results:
-                print(f"Validating batch {i // self.batch_size + 1} with second API key...")
+                for r in valid_results:
+                    val_text = r.get("translated_text", r.get(lang_key, r.get("text", ""))).strip()
+                    if lang_key == "english" and re.search(r'[\u0900-\u097F]', val_text):
+                        needs_validation = True
+                        break
+                    if re.search(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|the door|waiting for)\.?$', val_text, re.IGNORECASE):
+                        needs_validation = True
+                        break
+                    if val_text.endswith("...") or len(val_text.split()) < 3:
+                        needs_validation = True
+                        break
+
+            if needs_validation:
+                print(f"Validating batch {i // self.batch_size + 1} with second API key (defects detected)...")
                 validator_prompt = self.get_validator_prompt(lang_key)
                 
                 # Format for the validator (it expects 'text' to translate/fix)
@@ -696,6 +711,9 @@ CRITICAL INSTRUCTIONS:
                 text = re.sub(r'\s+to$', '.', text)
 
                 # 3. Canonical terms and entity corrections
+                text = re.sub(r'\s*\.{3,}$', '.', text)
+                text = re.sub(r'\bbungalow\b', 'mansion', text, flags=re.IGNORECASE)
+                text = re.sub(r'\bbungalows\b', 'mansions', text, flags=re.IGNORECASE)
                 text = re.sub(r'\bUncle Cecil\b', 'Mama Cecile', text)
                 text = re.sub(r'\bUncle Cecile\b', 'Mama Cecile', text)
                 text = re.sub(r'\bTerabon\b', 'Terrebonne', text)
@@ -723,7 +741,7 @@ CRITICAL INSTRUCTIONS:
             curr_sentences = [s.strip() for s in curr_text.split('.') if s.strip()]
             next_sentences = [s.strip() for s in next_text.split('.') if s.strip()]
 
-            # If next segment repeats the exact last sentence of current segment, trim it
+            # 4a. Exact sentence boundary overlap
             if curr_sentences and next_sentences:
                 last_curr = curr_sentences[-1].lower()
                 first_next = next_sentences[0].lower()
@@ -731,6 +749,17 @@ CRITICAL INSTRUCTIONS:
                     trimmed_next = ". ".join(next_sentences[1:])
                     if trimmed_next:
                         segments[i+1][lang] = trimmed_next + ('.' if not trimmed_next.endswith('.') else '')
+                        continue
+
+            # 4b. Fuzzy overlap ratio across adjacent segments to catch subtitle split duplication
+            w1 = set(re.findall(r'\b[a-z]{3,}\b', curr_text.lower()))
+            w2 = set(re.findall(r'\b[a-z]{3,}\b', next_text.lower()))
+            overlap = len(w1 & w2) / max(1, min(len(w1), len(w2)))
+            if overlap >= 0.70 and len(w1) >= 4 and len(w2) >= 4:
+                if next_sentences and len(next_sentences) > 1:
+                    segments[i+1][lang] = ". ".join(next_sentences[1:]) + "."
+                elif curr_sentences and len(curr_sentences) > 1:
+                    segments[i][lang] = ". ".join(curr_sentences[:-1]) + "."
 
         return segments
 
