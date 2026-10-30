@@ -18,10 +18,18 @@ class StoryTranslator:
         self.validator_provider = None
         
         if primary_provider == "groq":
-            self.providers.append(GroqProvider(model=translation_model, api_key=api_key))
-            validator_key = os.environ.get("GROQ_API_KEY_TWO")
-            if validator_key:
-                self.validator_provider = GroqProvider(model=translation_model, api_key=validator_key)
+            groq_keys = []
+            if api_key: groq_keys.append(api_key)
+            k1 = os.environ.get("GROQ_API_KEY")
+            if k1 and k1 not in groq_keys: groq_keys.append(k1)
+            k2 = os.environ.get("GROQ_API_KEY_TWO")
+            if k2 and k2 not in groq_keys: groq_keys.append(k2)
+            k3 = os.environ.get("GROQ_API_KEY_THREE")
+            if k3 and k3 not in groq_keys: groq_keys.append(k3)
+
+            self.providers.append(GroqProvider(model=translation_model, api_keys=groq_keys))
+            if k2:
+                self.validator_provider = GroqProvider(model=translation_model, api_keys=[k2] + [k for k in groq_keys if k != k2])
         
         if fallback_provider == "openrouter":
             self.providers.append(OpenRouterProvider(model=fallback_model))
@@ -179,7 +187,13 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
         return base_prompt
 
     def _extract_glossary(self, segments) -> str:
-        if not self.api_key and not os.environ.get("GROQ_API_KEY"):
+        groq_keys = []
+        if self.api_key: groq_keys.append(self.api_key)
+        for k in [os.environ.get("GROQ_API_KEY"), os.environ.get("GROQ_API_KEY_TWO"), os.environ.get("GROQ_API_KEY_THREE")]:
+            if k and k not in groq_keys:
+                groq_keys.append(k)
+                
+        if not groq_keys:
             return ""
             
         full_text = " ".join([s.get("text", "") for s in segments])
@@ -195,23 +209,28 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
 
 Return ONLY a clear, concise bulleted list of standard names, genders, roles, and terms to ensure 100% consistency across all translated segments."""
         
-        try:
-            from groq import Groq
-            client = Groq(api_key=self.api_key or os.environ.get("GROQ_API_KEY"))
-            completion = client.chat.completions.create(
-                model=self.model if hasattr(self, 'model') else "qwen/qwen3.8-27b",
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": full_text}
-                ],
-                temperature=0.3
-            )
-            glossary = completion.choices[0].message.content.strip()
-            print(f"--- Extracted Glossary: {glossary} ---")
-            return glossary
-        except Exception as e:
-            print(f"Glossary extraction failed: {e}")
-            return ""
+        for k_idx, key in enumerate(groq_keys):
+            try:
+                from groq import Groq
+                client = Groq(api_key=key)
+                completion = client.chat.completions.create(
+                    model=self.model if hasattr(self, 'model') else "qwen/qwen3.8-27b",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": full_text}
+                    ],
+                    temperature=0.3
+                )
+                glossary = completion.choices[0].message.content.strip()
+                print(f"--- Extracted Glossary (using Key #{k_idx+1}): {glossary} ---")
+                return glossary
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "rate_limit" in err_str:
+                    print(f"  [Glossary] Key #{k_idx+1} hit rate limit (429). Trying next key...")
+                    continue
+                print(f"Glossary extraction failed on Key #{k_idx+1}: {e}")
+        return ""
 
     def get_validator_prompt(self, target_language: str) -> str:
         return f"""You are a strict QA Editor for a YouTube movie recap channel.
@@ -276,36 +295,49 @@ RULES:
   ]
 }}"""
 
-        try:
-            from groq import Groq
-            client = Groq(api_key=self.api_key or os.environ.get("GROQ_API_KEY"))
-            completion = client.chat.completions.create(
-                model=self.model if hasattr(self, 'model') else "qwen/qwen3.8-27b",
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": json.dumps(summary_items, ensure_ascii=False)}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.4
-            )
-            data = json.loads(completion.choices[0].message.content)
-            ai_map = {item["id"]: item.get("prompt", "") for item in data.get("ai_segments", [])}
-            
-            tagged_count = 0
-            for seg in segments:
-                if seg["id"] in ai_map and ai_map[seg["id"]]:
-                    seg["use_ai_image"] = True
-                    seg["image_prompt"] = ai_map[seg["id"]]
-                    tagged_count += 1
-                else:
-                    seg["use_ai_image"] = False
+        groq_keys = []
+        if self.api_key: groq_keys.append(self.api_key)
+        for k in [os.environ.get("GROQ_API_KEY"), os.environ.get("GROQ_API_KEY_TWO"), os.environ.get("GROQ_API_KEY_THREE"), os.environ.get("GROQ_API_KEY_FOUR")]:
+            if k and k not in groq_keys:
+                groq_keys.append(k)
 
-            print(f"  [AI Director] ✅ Tagged {tagged_count}/{len(segments)} segments for Cloudflare FLUX.1 generation.")
-        except Exception as e:
-            print(f"  [AI Director] Warning: Failed to tag AI segments ({e}). Falling back to 100% video.")
-            for seg in segments:
-                seg["use_ai_image"] = False
+        for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
+            try:
+                from groq import Groq
+                client = Groq(api_key=key)
+                completion = client.chat.completions.create(
+                    model=self.model if hasattr(self, 'model') else "qwen/qwen3.8-27b",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": json.dumps(summary_items, ensure_ascii=False)}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.4
+                )
+                data = json.loads(completion.choices[0].message.content)
+                ai_map = {item["id"]: item.get("prompt", "") for item in data.get("ai_segments", [])}
+                
+                tagged_count = 0
+                for seg in segments:
+                    if seg["id"] in ai_map and ai_map[seg["id"]]:
+                        seg["use_ai_image"] = True
+                        seg["image_prompt"] = ai_map[seg["id"]]
+                        tagged_count += 1
+                    else:
+                        seg["use_ai_image"] = False
 
+                print(f"  [AI Director] ✅ Tagged {tagged_count}/{len(segments)} segments for Cloudflare FLUX.1 generation (using Key #{k_idx+1}).")
+                return segments
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "rate_limit" in err_str:
+                    print(f"  [AI Director] Key #{k_idx+1} hit rate limit (429). Trying next key...")
+                    continue
+                print(f"  [AI Director] Warning: Failed to tag AI segments on Key #{k_idx+1} ({e}). Falling back to 100% video.")
+                break
+
+        for seg in segments:
+            seg["use_ai_image"] = False
         return segments
 
     def translate_transcript(self, transcript_path: str, target_language: str = "hindi", output_dir: str = "temp", channel_type: str = "movie_recap") -> str:
@@ -442,7 +474,9 @@ RULES:
                 })
             
         # Post-process and sanitize all segments for QA, zero-Devanagari, anti-dangling, and boundary smoothness
-        translated_segments = self.post_process_script(translated_segments, target_language=lang_key)
+        # 1. Automated self-review and improvement loop
+        reviewed_segments = self.self_review_and_improve(translated_segments, target_language=lang_key)
+        translated_segments = self.post_process_script(reviewed_segments, target_language=lang_key)
 
         # If thriller story channel, smartly tag 30% AI visual moments
         if channel_type == "thriller_story":
@@ -457,6 +491,136 @@ RULES:
             
         print(f"{lang_key.capitalize()} script saved to {output_path}")
         return output_path
+
+    def self_review_and_improve(self, segments: list, target_language: str = "english") -> list:
+        """
+        Automated self-review and narrative elevation loop:
+        1. Analyzes the drafted script for dangling thoughts, fragmented cutoffs, leaked characters,
+           repetition, and awkward pacing.
+        2. Targets flagged segments along with their immediate narrative neighbors.
+        3. Prompts the LLM (using the multi-key pool) to refine and elevate these segments into
+           flawless, captivating audio narrations while preserving segment IDs and timing.
+        """
+        if not segments:
+            return segments
+
+        lang = target_language.lower()
+        print(f"\n  [Self-Review] 🧐 Scanning {len(segments)} segments for narrative flow, cutoffs, and quality defects...")
+        
+        # 1. Flag segments with defects
+        flagged_ids = set()
+        dangling_pattern = re.compile(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|the door|waiting for)\.?$', re.IGNORECASE)
+        meta_pattern = re.compile(r'\b(subscribe|like the video|filmi cheeti|mystery recapped|binge lab|bell icon|welcome back)\b', re.IGNORECASE)
+
+        for i, seg in enumerate(segments):
+            text = seg.get(lang, "").strip()
+            if not text:
+                flagged_ids.add(int(seg["id"]))
+                continue
+
+            # Check 1: Leaked Devanagari in English
+            if lang == "english" and re.search(r'[\u0900-\u097F]', text):
+                flagged_ids.add(int(seg["id"]))
+                continue
+
+            # Check 2: Dangling words at end of segment
+            if dangling_pattern.search(text) or text.endswith((" to.", " to")):
+                flagged_ids.add(int(seg["id"]))
+                continue
+
+            # Check 3: Short unfinished fragments (< 4 words)
+            if len(text.split()) < 4:
+                flagged_ids.add(int(seg["id"]))
+                continue
+
+            # Check 4: Unwanted channel branding / meta phrases
+            if meta_pattern.search(text):
+                flagged_ids.add(int(seg["id"]))
+                continue
+
+            # Check 5: Stutter / duplicate sentences between adjacent segments
+            if i > 0:
+                prev_text = segments[i-1].get(lang, "").strip()
+                if prev_text and (prev_text.lower() in text.lower() or text.lower() in prev_text.lower()):
+                    if len(text.split()) > 4:
+                        flagged_ids.add(int(seg["id"]))
+                        flagged_ids.add(int(segments[i-1]["id"]))
+
+        if not flagged_ids:
+            print("  [Self-Review] ✨ All segments passed quality screening! No issues detected.")
+            return segments
+
+        print(f"  [Self-Review] ⚠️ Flagged {len(flagged_ids)} segment(s) needing narrative refinement: {sorted(list(flagged_ids))[:15]}...")
+
+        # 2. Expand flagged set to include neighboring segments for narrative context
+        expanded_ids = set()
+        seg_id_to_idx = {int(s["id"]): idx for idx, s in enumerate(segments)}
+        for fid in flagged_ids:
+            idx = seg_id_to_idx.get(fid)
+            if idx is not None:
+                expanded_ids.add(fid)
+                if idx > 0:
+                    expanded_ids.add(int(segments[idx-1]["id"]))
+                if idx < len(segments) - 1:
+                    expanded_ids.add(int(segments[idx+1]["id"]))
+
+        # Group into contiguous review chunks of at most 8 segments
+        sorted_review_ids = sorted(list(expanded_ids))
+        chunks = []
+        current_chunk = []
+        for sid in sorted_review_ids:
+            if not current_chunk:
+                current_chunk.append(sid)
+            else:
+                if sid - current_chunk[-1] <= 2 and len(current_chunk) < 8:
+                    current_chunk.append(sid)
+                else:
+                    chunks.append(current_chunk)
+                    current_chunk = [sid]
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        review_prompt = f"""You are a master YouTube script doctor and high-retention audio editor.
+Your task is to REVIEW and ELEVATE the provided {lang.capitalize()} story segments into compelling, professional narration.
+
+CRITICAL INSTRUCTIONS:
+1. STANDALONE & COMPLETE THOUGHTS: Fix all dangling word cutoffs (e.g. 'and', 'to', 'then', 'because'). Every segment must be a complete, grammatically sound sentence.
+2. SEAMLESS NARRATIVE FLOW: Ensure natural transitions between segments. The narration should feel like an engaging storyteller speaking naturally.
+3. PURGE JUNK & REPETITION: Remove any stuttering, duplicate phrasing, channel branding, or untranslated characters.
+4. STRICT TIMING INTEGRITY: Do NOT combine or remove segments. You MUST return a JSON object with a single key 'translations' containing EXACTLY the same segment IDs with polished text.
+"""
+
+        # 3. Process review chunks using the multi-key pool / execute translation
+        result_map = {}
+        for chunk_idx, chunk_ids in enumerate(chunks):
+            chunk_segments = [{"id": sid, "text": segments[seg_id_to_idx[sid]].get(lang, "")} for sid in chunk_ids]
+            print(f"  [Self-Review] 🔄 Refining chunk {chunk_idx + 1}/{len(chunks)} (Segments {chunk_ids})...")
+            try:
+                # Use validator provider if available, or fall back to primary provider
+                provider = self.validator_provider or (self.providers[0] if self.providers else None)
+                if provider:
+                    refined = provider.translate_segments(chunk_segments, review_prompt, context="Self-review script enhancement", target_language=lang)
+                    for item in refined:
+                        try:
+                            rid = int(item["id"])
+                            text_val = item.get("translated_text") or item.get(lang) or item.get("text")
+                            if text_val and text_val.strip():
+                                result_map[rid] = text_val.strip()
+                        except:
+                            pass
+            except Exception as e:
+                print(f"  [Self-Review] Warning: Chunk {chunk_idx + 1} refinement failed ({e}). Keeping original text.")
+
+        # 4. Apply refined text back to segments
+        improved_count = 0
+        for seg in segments:
+            sid = int(seg["id"])
+            if sid in result_map and result_map[sid]:
+                seg[lang] = result_map[sid]
+                improved_count += 1
+
+        print(f"  [Self-Review] ✅ Successfully polished {improved_count} segments with automated review loop.")
+        return segments
 
     def post_process_script(self, segments: list, target_language: str = "english") -> list:
         """
