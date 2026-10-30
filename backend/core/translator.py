@@ -155,10 +155,13 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - Remove all YouTube meta-chatter ('Subscribe now', 'Like the video', 'Hit the bell', 'Patreon link').
    - If the first segment contains a channel greeting, replace it immediately with a captivating story hook about the film itself.
    - Remove personal anecdotes ('I watched this last week'). Focus 100% on the movie plot and characters.
-3. COMPLETE STANDALONE THOUGHTS & ZERO DANGLING FRAGMENTS:
-   - Every single segment MUST be a complete, grammatically sound, finished sentence or dialogue.
-   - If an input fragment starts or ends abruptly mid-sentence (caused by subtitle chunking), reconstruct the complete intended thought using the surrounding story context.
-   - NEVER end a segment on an incomplete thought, dangling preposition, or trailing conjunction like 'to', 'then', 'and', 'but', 'because', 'which', 'so', or 'the door'. Always conclude the statement cleanly.
+3. ABSOLUTE STANDALONE SENTENCES & KOKORO TTS AUDIO RULES:
+   - CRITICAL: NEVER SLICE OR CHOP A SINGLE SENTENCE ACROSS MULTIPLE IDS!
+   - Kokoro Text-to-Speech (TTS) makes bizarre glitched breathing noises when sentences end abruptly on clauses or conjunctions.
+   - Every single segment MUST be a complete, grammatically sound, finished standalone sentence or dialogue ending strictly with a period (.), exclamation point (!), or question mark (?).
+   - NEVER start a segment with a lowercase continuation word (e.g., 'inside to look', 'and her', 'began to clean'). Always capitalize the first word.
+   - NEVER end a segment on a comma (,), an unfinished preposition, or a trailing conjunction (e.g., 'when she went', 'and her', 'it then', 'just then', 'and', 'but', 'because', 'so', 'to').
+   - If the input Hindi subtitle chunk is short (3-5 words) or cut off mid-thought, DO NOT translate it literally as a half-sentence fragment. Use the story context to complete the full, independent thought cleanly within that segment!
 4. SEAMLESS BOUNDARY HARMONIZATION (NO DUPLICATE REPETITIONS):
    - When an input segment begins with a fragment carried over from an earlier sentence, DO NOT repeat what the previous segment already narrated.
    - Seamlessly advance the narrative without stuttering or duplicating lines across adjacent segments.
@@ -239,7 +242,10 @@ Rules:
 1. ZERO UNTRANSLATED CHARACTERS: If target is English, ensure ZERO Hindi/Devanagari characters remain. Translate any missed text completely.
 2. ELIMINATE WORD-FOR-WORD TRANSLATION: Ensure the dialogue sounds like a captivating, natural story told by an engaging human narrator.
 3. STRICT 3RD PARTY BRANDING PURGE: Ensure NO third-party channel names (like Filmi Cheeti, Mystery Recapped, etc.), creator names, or subscribe/like pleas remain.
-4. COMPLETE STANDALONE THOUGHTS: Ensure each segment is a complete, finished thought with proper punctuation and NO dangling words (e.g. 'to', 'then.', 'and').
+4. KOKORO TTS COMPLETION RULE (NO CHOPPED OR SLICED SENTENCES):
+   - Every single segment MUST be a self-contained, grammatically complete sentence ending strictly with a period (.), exclamation point (!), or question mark (?).
+   - NEVER allow a sentence to be sliced or chopped across two segments (e.g., segment A ending with 'and her', 'when she went', or 'it then', and segment B starting with lowercase).
+   - If a segment is an incomplete fragment or clause, rewrite it into a full, finished, independent sentence.
 5. NO DUPLICATE REPETITIONS: If two adjacent segments repeat the same statement, harmonize them seamlessly.
 6. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
 7. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
@@ -438,7 +444,17 @@ RULES:
                     if lang_key == "english" and re.search(r'[\u0900-\u097F]', val_text):
                         needs_validation = True
                         break
-                    if re.search(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|the door|waiting for)\.?$', val_text, re.IGNORECASE):
+                    # Water-tight check for Kokoro TTS audio quality:
+                    # 1. Missing terminal sentence punctuation or ending with a comma
+                    if not re.search(r'[.!?]["\']?$', val_text) or val_text.endswith(','):
+                        needs_validation = True
+                        break
+                    # 2. Dangling trailing conjunctions, prepositions, or cutoffs
+                    if re.search(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|as well as|the door|waiting for)\.?$', val_text, re.IGNORECASE):
+                        needs_validation = True
+                        break
+                    # 3. Starting with lowercase continuation word
+                    if val_text and val_text[0].islower():
                         needs_validation = True
                         break
                     if val_text.endswith("...") or len(val_text.split()) < 3:
@@ -563,7 +579,7 @@ RULES:
         
         # 1. Flag segments with defects
         flagged_ids = set()
-        dangling_pattern = re.compile(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|the door|waiting for)\.?$', re.IGNORECASE)
+        dangling_pattern = re.compile(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|as well as|the door|waiting for)\.?$', re.IGNORECASE)
         meta_pattern = re.compile(r'\b(subscribe|like the video|filmi cheeti|mystery recapped|binge lab|bell icon|welcome back)\b', re.IGNORECASE)
 
         for i, seg in enumerate(segments):
@@ -577,8 +593,13 @@ RULES:
                 flagged_ids.add(int(seg["id"]))
                 continue
 
-            # Check 2: Dangling words at end of segment
-            if dangling_pattern.search(text) or text.endswith((" to.", " to")):
+            # Check 2: Missing terminal punctuation, trailing comma, or dangling words (Kokoro TTS protection)
+            if not re.search(r'[.!?]["\']?$', text) or text.endswith(',') or dangling_pattern.search(text) or text.endswith((" to.", " to")):
+                flagged_ids.add(int(seg["id"]))
+                continue
+
+            # Check 2b: Starts with lowercase (continuation fragment)
+            if text and text[0].islower():
                 flagged_ids.add(int(seg["id"]))
                 continue
 
@@ -704,11 +725,12 @@ CRITICAL INSTRUCTIONS:
                         print(f"  [QA Fix] Purged raw Hindi from segment {seg.get('id')}")
                         text = cleaned if cleaned else text
 
-                # 2. Fix dangling word cutoffs at the end of segments
-                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|the door|waiting for|Conjugation of)\.?$', '.', text, flags=re.IGNORECASE)
+                # 2. Fix dangling word cutoffs at the end of segments for Kokoro TTS
+                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for|Conjugation of)\.?$', '.', text, flags=re.IGNORECASE)
                 text = re.sub(r'\.\s*Luke then\.?$', '.', text, flags=re.IGNORECASE)
                 text = re.sub(r'\.\s*Once Violet had left the room\.?$', '.', text, flags=re.IGNORECASE)
                 text = re.sub(r'\s+to$', '.', text)
+                text = re.sub(r',\s*$', '.', text)
 
                 # 3. Canonical terms and entity corrections
                 text = re.sub(r'\s*\.{3,}$', '.', text)
@@ -720,8 +742,10 @@ CRITICAL INSTRUCTIONS:
                 text = re.sub(r'\bCanjar of Sacrifice\b', 'Conjure of Sacrifice', text, flags=re.IGNORECASE)
                 text = re.sub(r'\bConjugation of Supreme Protection\b', 'Conjuration of Supreme Protection', text, flags=re.IGNORECASE)
 
-            # Ensure proper punctuation at the end of every segment
+            # Ensure proper capitalization and punctuation at the end of every segment for Kokoro TTS
             text = text.strip()
+            if text and text[0].islower():
+                text = text[0].upper() + text[1:]
             if text and not text.endswith(('.', '!', '"', "'")):
                 text += '.'
             
