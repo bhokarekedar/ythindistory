@@ -167,7 +167,7 @@ class Transcriber:
 
             print(f"Fetching official YouTube transcript for video {video_id}...")
             
-            # Fetch transcripts, prioritizing english and hindi
+            # Fetch transcripts, prioritizing official/auto English caption track, then Hindi
             transcript_list = YouTubeTranscriptApi().list(video_id)
             
             try:

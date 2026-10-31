@@ -42,7 +42,7 @@ class StoryTranslator:
         if fallback_provider == "openrouter":
             self.providers.append(OpenRouterProvider(model=fallback_model))
 
-    def get_system_prompt(self, target_language: str, glossary: str = "", channel_type: str = "movie_recap") -> str:
+    def get_system_prompt(self, target_language: str, glossary: str = "", channel_type: str = "movie_recap", is_source_english: bool = False) -> str:
         lang = target_language.lower()
         is_real_story = channel_type in ["thriller_story", "real_story"]
         
@@ -149,6 +149,32 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    CORRECT example: 'Hercule ने train manager को सारी बात समझाई.'
    WRONG example: 'हरकुल ने ट्रेन मैनेजर को सारी बात समझाई.'
 8. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+            elif is_source_english and lang == "english":
+                base_prompt = """You are an elite Hollywood screenplay and YouTube movie recap script editor.
+The input consists of raw auto-generated English captions from a YouTube movie breakdown. Because of subtitle timing and chunking, these captions are sliced mid-thought every 3-5 seconds, contain transcription errors, and include creator chatter.
+
+Your mission is NOT to summarize, but to ELEVATE and POLISH these captions into a flawless, captivating English voiceover narration script.
+
+CRITICAL EDITORIAL RULES:
+1. STANDALONE & COMPLETE SENTENCES (KOKORO TTS AUDIO RULE):
+   - Every single segment MUST be a self-contained, grammatically complete sentence ending strictly with a period (.), exclamation point (!), or question mark (?).
+   - If an input fragment ends abruptly mid-thought (e.g., 'and then he went', 'because the killer was'), reconstruct the complete intended thought using the surrounding story context.
+   - NEVER start a segment with lowercase continuation words (e.g. 'and her', 'began to clean'). Capitalize the first word.
+   - NEVER end a segment on a trailing preposition or conjunction ('to', 'and', 'but', 'because', 'so').
+2. TOTAL BRANDING, FILLER & CHATTER PURGE:
+   - STRICTLY FORBIDDEN: NEVER mention third-party channel names (e.g. Filmi Cheeti, Mystery Recapped, Binge Lab, Cinema Mirage) or original creator handles!
+   - Purge all YouTube meta-chatter ('Subscribe now', 'Hit the bell icon', 'Leave a like', 'Stay tuned', 'In the next episode', 'Link in description').
+   - Purge stray non-story vocalizations or sign-offs (e.g., 'Om', 'Om.', 'Shanti').
+   - If the first segment contains a channel greeting, open immediately with an intense story hook about the film itself.
+3. PRESERVE ACCURACY, FACTS & CHRONOLOGY (NO SUMMARIZING):
+   - AUDIO IS KING: Deliver the full story with complete emotional weight, mystery, and suspense.
+   - NEVER compress multiple segments into a brief summary. Maintain 1-to-1 narrative progression.
+   - Preserve all character names, dates (e.g., 1988), case facts, and sequence of events as described.
+4. NATURAL SPOKEN RHYTHM & PACING:
+   - Write sentences that sound punchy, tense, and captivating when read aloud by a Text-to-Speech narrator.
+   - End declarative statements with a period (.). Never use malformed marks ('?.', '!.', '..').
+5. STRICT TIMING & ID PRESERVATION:
+   - Return exactly one polished translation object for every input ID. Do not merge, skip, or delete IDs."""
             else:
                 base_prompt = """You are a master YouTube movie-recap and storytelling narrator.
 Your task is NOT to translate word-for-word, but to RE-SCRIPT and ELEVATE the narrative into an engaging, polished, and personal storytelling experience!
@@ -194,7 +220,7 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
             
         return base_prompt
 
-    def _extract_glossary(self, segments, metadata_path: str = "") -> str:
+    def _extract_glossary(self, segments, metadata_path: str = "", is_source_english: bool = False) -> str:
         """
         Layer 1: Generic Dynamic Structured Grounding.
         Extracts structured JSON metadata (movie_title, characters, key_terms) for ANY film/incident
@@ -225,30 +251,31 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
         full_text = " ".join([s.get("text", "") for s in segments[:120]])
         full_text = full_text[:8000] # Provide ample context
         
-        prompt = """You are an expert Hollywood screenplay and movie recap script analyst.
-Analyze the following Hindi/Hinglish movie recap transcript and extract a definitive, structured JSON entity guide.
+        lang_desc = "English YouTube" if is_source_english else "Hindi/Hinglish"
+        prompt = f"""You are an expert Hollywood screenplay and movie recap script analyst.
+Analyze the following {lang_desc} movie recap transcript and extract a definitive, structured JSON entity guide.
 
 Return a STRICT JSON object with these exact keys:
-{
+{{
   "movie_title": "Title of the movie or real incident",
   "genre": "Genre (e.g. Horror, Mystery Thriller, True Crime)",
   "characters": [
-    {
+    {{
       "canonical_name": "Full English Character Name (e.g. Caroline Ellis)",
       "aliases": ["Caroline", "Nurse"],
       "gender": "female" or "male",
       "role_summary": "Brief 1-line description of role in the story",
-      "hindi_phonetic_spellings": ["कैरोलाइन", "केरोलिन"]
-    }
+      "hindi_phonetic_spellings": ["Phonetic spellings if applicable, or []"]
+    }}
   ],
   "key_terms": [
-    {
+    {{
       "canonical_term": "English Term or Location (e.g. Terrebonne Parish)",
-      "hindi_phonetic_spellings": ["टेरेबोन", "टेरेबॉन"],
+      "hindi_phonetic_spellings": ["Phonetic spellings if applicable, or []"],
       "meaning": "Brief explanation"
-    }
+    }}
   ]
-}
+}}
 Identify all characters, villains, victims, and crucial props/locations. Be thorough and accurate."""
 
         for k_idx, key in enumerate(groq_keys):
@@ -328,6 +355,13 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         for char in self.movie_metadata.get("characters", []):
             spellings = char.get("hindi_phonetic_spellings", [])
             matched_spellings = [sp for sp in spellings if sp and sp in batch_text]
+            if not matched_spellings:
+                cname = char.get("canonical_name", "")
+                aliases = char.get("aliases", [])
+                for n in [cname] + aliases:
+                    if len(n) > 2 and re.search(rf'\b{re.escape(n)}\b', batch_text, re.IGNORECASE):
+                        matched_spellings.append(n)
+                        break
             if matched_spellings:
                 active_characters.append((char, matched_spellings))
 
@@ -335,6 +369,10 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         for term in self.movie_metadata.get("key_terms", []):
             spellings = term.get("hindi_phonetic_spellings", [])
             matched_spellings = [sp for sp in spellings if sp and sp in batch_text]
+            if not matched_spellings:
+                tname = term.get("canonical_term", "")
+                if tname and re.search(rf'\b{re.escape(tname)}\b', batch_text, re.IGNORECASE):
+                    matched_spellings.append(tname)
             if matched_spellings:
                 active_terms.append((term, matched_spellings))
 
@@ -350,15 +388,15 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
             pronouns = "he / him / his" if gender == "male" else ("she / her / hers" if gender == "female" else "they / them")
             spellings_str = ", ".join([f"'{s}'" for s in spellings])
             binding_lines.append(
-                f"- Hindi ASR: {spellings_str} -> CANONICAL CHARACTER: '{cname}' ({gender.capitalize()}, Pronouns: {pronouns}). Role: {char.get('role_summary', '')}."
-                f"\n  STRICT: Translate this person as '{cname}'. NEVER substitute unrelated phonetic words or confuse identities!"
+                f"- Entity Reference: {spellings_str} -> CANONICAL CHARACTER: '{cname}' ({gender.capitalize()}, Pronouns: {pronouns}). Role: {char.get('role_summary', '')}."
+                f"\n  STRICT: Maintain this character as '{cname}'. NEVER substitute unrelated phonetic words or confuse identities!"
             )
 
         for term, spellings in active_terms:
             tname = term.get("canonical_term")
             spellings_str = ", ".join([f"'{s}'" for s in spellings])
             binding_lines.append(
-                f"- Hindi ASR: {spellings_str} -> CANONICAL TERM: '{tname}' ({term.get('meaning', '')}). Translate strictly as '{tname}'."
+                f"- Term Reference: {spellings_str} -> CANONICAL TERM: '{tname}' ({term.get('meaning', '')}). Maintain strictly as '{tname}'."
             )
 
         return "\n".join(binding_lines)
@@ -367,9 +405,9 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         """
         Layer 3: Generic Source-to-Target Entity Consistency Check (Automated QA).
         Algorithmic check across all segments in the batch:
-        If any character from self.movie_metadata is found in the source Hindi text via
-        hindi_phonetic_spellings, verifies that the character's canonical name, alias,
-        or gender-appropriate pronoun is present in the translated text.
+        If any character from self.movie_metadata is found in the source text (via
+        hindi_phonetic_spellings or English names), verifies that the character's
+        canonical name, alias, or gender-appropriate pronoun is present in the output text.
         Zero hardcoded names — 100% dynamically resolved from Layer 1.
         Returns: dict mapping segment ID -> list of defect messages.
         """
@@ -403,12 +441,19 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
 
             for char in characters:
                 spellings = char.get("hindi_phonetic_spellings", [])
-                matched_spellings = [sp for sp in spellings if sp and sp in src_text]
-                if matched_spellings:
-                    cname = char.get("canonical_name", "")
-                    aliases = char.get("aliases", [])
-                    gender = char.get("gender", "").lower()
+                cname = char.get("canonical_name", "")
+                aliases = char.get("aliases", [])
+                gender = char.get("gender", "").lower()
 
+                # Check if character was mentioned in source
+                matched_spellings = [sp for sp in spellings if sp and sp in src_text]
+                if not matched_spellings and cname:
+                    for n in [cname] + aliases:
+                        if len(n) > 2 and re.search(rf'\b{re.escape(n)}\b', src_text, re.IGNORECASE):
+                            matched_spellings.append(n)
+                            break
+
+                if matched_spellings:
                     # Check for canonical name or alias match
                     names_to_search = [cname.lower()] + [a.lower() for a in aliases if len(a) > 2]
                     name_present = any(n in trans_text.lower() for n in names_to_search if n)
@@ -605,10 +650,16 @@ RULES:
                 print(f"  [Resume] Warning reading checkpoint: {e}")
                 translated_map = {}
         
-        print(f"Extracting contextual glossary for {lang_key} translation...")
-        glossary = self._extract_glossary(segments, metadata_path=metadata_path)
+        # Automatically detect if source transcript is already English
+        sample_text = " ".join([s.get("text", "") for s in segments[:30]])
+        has_devanagari = bool(re.search(r'[\u0900-\u097F]', sample_text))
+        is_source_english = not has_devanagari and len(re.findall(r'[a-zA-Z]', sample_text)) > 50
+
+        mode_desc = "English Script Elevation" if (is_source_english and lang_key == "english") else f"{lang_key.capitalize()} translation"
+        print(f"Extracting contextual glossary for {mode_desc}...")
+        glossary = self._extract_glossary(segments, metadata_path=metadata_path, is_source_english=is_source_english)
         
-        system_prompt = self.get_system_prompt(lang_key, glossary, channel_type=channel_type)
+        system_prompt = self.get_system_prompt(lang_key, glossary, channel_type=channel_type, is_source_english=is_source_english)
         
         # Process in batches
         for i in range(0, len(segments), self.batch_size):
@@ -984,23 +1035,43 @@ CRITICAL INSTRUCTIONS:
         # Layer 4: Universal Outro / YouTube Meta-Chatter Purge for final 5%
         tail_idx_threshold = max(0, int(len(segments) * 0.95))
         yt_tail_pattern = re.compile(
-            r'\b(subscribe|subscribing|channel|bell icon|notification|leave a like|hit like|comment below|thanks for watching|see you in the next|share this video|share with your friends)\b'
-            r'|[\u0900-\u097F]*(?:सब्सक्राइब|लाइक|घंटी|बेल|शेयर|कमेंट|चैनल)[\u0900-\u097F]*',
+            r'\b(subscribe|subscribing|channel|bell icon|notification|leave a like|hit like|comment below|thanks for watching|see you in the next|share this video|share with your friends|stay tuned|keep watching|watch the rest|watch the series)\b'
+            r'|[\u0900-\u097F]*(?:सब्सक्राइब|लाइक|घंटी|बेल|शेयर|कमेंट|चैनल|ॐ|ओम)[\u0900-\u097F]*'
+            r'|^\s*(?:om|shanti|namaste|peace|bye|thanks)\b\.?$',
             re.IGNORECASE
         )
+
+        outro_beats = [
+            "The mystery finally draws to a close, leaving behind questions that may never be answered.",
+            "Every clue in this case has pushed the boundaries of what the detectives thought was real.",
+            "The deeper the investigation went, the darker the truth became.",
+            "As the case concludes, dark questions linger in the cold silence.",
+            "The secrets of this investigation remain buried deep within the shadows.",
+            "The truth remains elusive, waiting to be uncovered in time.",
+            "Until our next journey into the darkness, stay curious and vigilant.",
+            "And with that, our story reaches its thrilling conclusion. Thank you for watching."
+        ]
+
+        # Scan and tag all outro chatter or micro-fragments (< 3 words) in the tail
+        chatter_indices = []
+        for i in range(tail_idx_threshold, len(segments)):
+            t = segments[i].get(lang, "").strip()
+            orig = segments[i].get("original_text", "")
+            if yt_tail_pattern.search(t) or yt_tail_pattern.search(orig) or len(t.split()) < 3:
+                chatter_indices.append(i)
+
+        if chatter_indices:
+            total_chatter = len(chatter_indices)
+            for c_pos, idx in enumerate(chatter_indices):
+                dist_from_end = total_chatter - 1 - c_pos
+                beat_idx = max(0, len(outro_beats) - 1 - dist_from_end)
+                segments[idx][lang] = outro_beats[beat_idx]
 
         for i, seg in enumerate(segments):
             text = seg.get(lang, "").strip()
             orig = seg.get("original_text", "")
             if not text:
                 continue
-
-            # Layer 4: Universal Outro replacement
-            if i >= tail_idx_threshold and (yt_tail_pattern.search(text) or yt_tail_pattern.search(orig)):
-                if i == len(segments) - 1:
-                    text = "And with that, our story reaches its thrilling conclusion. Thank you for watching."
-                else:
-                    text = "The mystery finally draws to a close, leaving behind questions that may never be answered."
 
             if lang == "english":
                 # 1. Purge any Devanagari text leaking into English
