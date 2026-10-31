@@ -525,6 +525,68 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
             glitches.append("Repeated commas or semicolons (e.g. ',,')")
         return glitches
 
+    @classmethod
+    def sanitize_segment_text(cls, text: str, target_language: str = "english") -> str:
+        """
+        Sanitizes and normalizes segment text for Kokoro TTS audio hygiene:
+        - Resolves mixed punctuation marks ('?.', '!.', '.?') into single clean marks ('?', '!').
+        - Eliminates repeated marks ('??', '!!', '..').
+        - Fixes dangling conjunctions or trailing commas.
+        - Capitalizes the first character.
+        - Ensures every segment ends with valid terminal punctuation (., !, ?, etc.)
+          WITHOUT appending an unwanted period to question marks or exclamation marks.
+        """
+        if not text:
+            return ""
+        import re
+        lang = target_language.lower()
+        
+        # 1. Purge any Devanagari text leaking into English
+        if lang == "english" and re.search(r'[\u0900-\u097F]', text):
+            cleaned = re.sub(r'[\u0900-\u097F\s।॥]+', ' ', text).strip()
+            if len(cleaned.split()) >= 4:
+                text = cleaned
+            elif cleaned:
+                text = cleaned
+
+        # 2. Fix dangling word cutoffs at the end of segments for Kokoro TTS
+        text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for)\.?$', '.', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s+to$', '.', text)
+        text = re.sub(r',\s*$', '.', text)
+
+        # 3. Punctuation collision / glitch removal
+        text = re.sub(r'\?+\s*\.+', '?', text)              # '?.', '?..' -> '?'
+        text = re.sub(r'!+\s*\.+', '!', text)               # '!.', '!..' -> '!'
+        text = re.sub(r'\.+\s*\?+', '?', text)              # '.?' -> '?'
+        text = re.sub(r'\.+\s*!+', '!', text)               # '.!' -> '!'
+        text = re.sub(r'\?{2,}', '?', text)                 # '??' -> '?'
+        text = re.sub(r'!{2,}', '!', text)                  # '!!' -> '!'
+        text = re.sub(r'\.{2,}', '.', text)                 # '..', '...', '....' -> '.'
+        text = re.sub(r'[,;:–—-]\s*([.!?])', r'\1', text)   # ',.', ';.', '-.' -> '.', '?', '!'
+        text = re.sub(r'([.!?])\s*[,;:–—-]', r'\1', text)   # '.,', '?:' -> '.', '?'
+        text = re.sub(r'[,;]{2,}', ',', text)               # ',,', ';;' -> ','
+        text = re.sub(r'[,;:–—-]\s*$', '.', text)           # Trailing comma, semicolon, dash -> '.'
+        text = re.sub(r'\s+([.,!?])', r'\1', text)          # Space before punctuation -> remove
+
+        # 4. Ensure proper capitalization
+        text = text.strip()
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
+
+        # 5. Ensure terminal punctuation without corrupting '?' or '!'
+        valid_terminals = ('.', '!', '?', '"', "'", '।', '॥')
+        if text and not text.endswith(valid_terminals):
+            text += '.'
+
+        # 6. Post-pass safety cleanup for any mixed marks (guarantees zero '?.')
+        text = re.sub(r'\?\s*\.+', '?', text)               # Guaranteed cleanup of '?.', '?..' -> '?'
+        text = re.sub(r'!\s*\.+', '!', text)                # Guaranteed cleanup of '!.', '!..' -> '!'
+        text = re.sub(r'[,;]\s*\.', '.', text)
+        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'\s+\.', '.', text)
+
+        return text.strip()
+
     def get_validator_prompt(self, target_language: str, qa_defects: dict = None) -> str:
         prompt = f"""You are a strict QA Editor for a YouTube movie recap channel.
 Review and fix the provided {target_language.capitalize()} script segments.
@@ -1132,27 +1194,7 @@ CRITICAL INSTRUCTIONS:
                                 text = text.replace(spelling, canon_term)
 
             # 4. Comprehensive Punctuation & Syntax Sanitization
-            text = re.sub(r'[\?!]+\s*\.+', '.', text)          # '?.', '!.' -> '.'
-            text = re.sub(r'\.+\s*[\?!]+', '.', text)          # '.?', '.!' -> '.'
-            text = re.sub(r'[?!]{2,}', '.', text)              # '?!', '!?', '??', '!!' -> '.'
-            text = re.sub(r'\.{2,}', '.', text)                # '..', '...', '....' -> '.'
-            text = re.sub(r'[,;:–—-]\s*[.!?]', '.', text)      # ',.', ';.', ':.', '-.' -> '.'
-            text = re.sub(r'[.!?]\s*[,;:–—-]', '.', text)      # '.,', '.:' -> '.'
-            text = re.sub(r'[,;]{2,}', ',', text)              # ',,', ';;' -> ','
-            text = re.sub(r'[,;:–—-]\s*$', '.', text)          # Trailing comma, semicolon, dash -> '.'
-            text = re.sub(r'\s+([.,!?])', r'\1', text)         # Space before punctuation -> remove
-
-            # Ensure proper capitalization and punctuation at the end of every segment for Kokoro TTS
-            text = text.strip()
-            if text and text[0].islower():
-                text = text[0].upper() + text[1:]
-            if text and not text.endswith(('.', '!', '"', "'")):
-                text += '.'
-            
-            # Remove any double spaces, comma-periods, or awkward punctuation
-            text = re.sub(r'[,;]\s*\.', '.', text)
-            text = re.sub(r'\s+', ' ', text)
-            text = re.sub(r'\s+\.', '.', text)
+            text = self.sanitize_segment_text(text, target_language=lang)
             seg[lang] = text
 
         # 4. Anti-stutter boundary pass across adjacent segments
@@ -1172,7 +1214,7 @@ CRITICAL INSTRUCTIONS:
                 if last_curr and (last_curr == first_next or (len(last_curr) > 25 and (last_curr in first_next or first_next in last_curr))):
                     trimmed_next = ". ".join(next_sentences[1:])
                     if trimmed_next:
-                        segments[i+1][lang] = trimmed_next + ('.' if not trimmed_next.endswith('.') else '')
+                        segments[i+1][lang] = self.sanitize_segment_text(trimmed_next, target_language=lang)
                         continue
 
             # 4b. Fuzzy overlap ratio across adjacent segments to catch subtitle split duplication

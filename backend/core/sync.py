@@ -298,17 +298,23 @@ class AudioSynchronizer:
             # Calculate natural duration from original footage
             raw_extract_dur = max(natural_end - seg_extract_start, 0.5)
 
-            # Cap pts_factor between 0.85 and 1.25 to prevent 3x slow-motion or fast-forward!
-            # If tts_dur needs more visual time than raw_extract_dur * 1.20, expand seg_extract_dur
-            # so the movie footage naturally continues playing at normal human speed (~1.0x).
-            seg_extract_dur = raw_extract_dur
-            if tts_dur > seg_extract_dur * 1.20:
-                available_footage = max(0.5, total_video_dur - seg_extract_start)
-                seg_extract_dur = min(tts_dur, available_footage)
-                seg_extract_dur = max(seg_extract_dur, 0.5)
+            # Determine natural playback speed ratio (tts_dur / raw_extract_dur).
+            # Clamp target_pts between 0.85 and 1.20 to keep video playing at natural human speed (~1.0x)
+            # without extreme slow-motion or high-speed fast forward.
+            desired_speed = tts_dur / raw_extract_dur
+            target_pts = max(0.85, min(1.20, desired_speed))
+
+            # Calculate source footage needed so that output duration is EXACTLY tts_dur:
+            # (seg_extract_dur * pts_factor == tts_dur) -> seg_extract_dur = tts_dur / target_pts
+            seg_extract_dur = tts_dur / target_pts
+
+            # Ensure we do not exceed available source video footage
+            available_footage = max(0.5, total_video_dur - seg_extract_start)
+            if seg_extract_dur > available_footage:
+                seg_extract_dur = available_footage
+                target_pts = tts_dur / seg_extract_dur
 
             pts_factor = tts_dur / seg_extract_dur
-            pts_factor = max(0.80, min(1.30, pts_factor))
             
             gap_extract_start = video_cursor
             gap_extract_dur = max(seg_extract_start - video_cursor, 0.0)
@@ -351,6 +357,7 @@ class AudioSynchronizer:
                         .filter("trim", start=trim_offset, duration=gap_extract_dur)
                         .filter("setpts", "PTS-STARTPTS")
                         .filter("setpts", f"{gap_dur / gap_extract_dur}*PTS")
+                        .filter("trim", duration=gap_dur)
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
@@ -361,6 +368,7 @@ class AudioSynchronizer:
                         format="lavfi", t=gap_dur
                     ).audio
                     out = ffmpeg.output(v, a, chunk_path,
+                                        t=gap_dur,
                                         vcodec="libx264", acodec="aac",
                                         ac=2, ar=48000,
                                         pix_fmt="yuv420p",
@@ -406,6 +414,7 @@ class AudioSynchronizer:
                         .filter("trim", start=trim_offset, duration=seg_extract_dur)
                         .filter("setpts", "PTS-STARTPTS")
                         .filter("setpts", f"{pts_factor}*PTS")
+                        .filter("trim", duration=tts_dur)
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
@@ -416,6 +425,7 @@ class AudioSynchronizer:
                     format="lavfi", t=tts_dur
                 ).audio
                 out = ffmpeg.output(v, a, chunk_path,
+                                    t=tts_dur,
                                     vcodec="libx264", acodec="aac",
                                     ac=2, ar=48000,
                                     pix_fmt="yuv420p",
@@ -453,6 +463,7 @@ class AudioSynchronizer:
                         .filter("trim", start=trim_offset, duration=use_dur)
                         .filter("setpts", "PTS-STARTPTS")
                         .filter("setpts", f"{pts_factor}*PTS")
+                        .filter("trim", duration=trailing_dur)
                         .filter("scale", 1280, 720).filter("setsar", 1)
                         .filter("fps", fps=30, round="near").filter("format", "yuv420p")
                     )
@@ -463,6 +474,7 @@ class AudioSynchronizer:
                         format="lavfi", t=trailing_dur
                     ).audio
                     out = ffmpeg.output(v, a, chunk_path,
+                                        t=trailing_dur,
                                         vcodec="libx264", acodec="aac",
                                         ac=2, ar=48000,
                                         pix_fmt="yuv420p",

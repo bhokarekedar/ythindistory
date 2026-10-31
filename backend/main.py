@@ -460,6 +460,8 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 print(f"  [TTS] Skipping segment {seg['id']} (Empty text or error placeholder: '{text}')")
                 continue
 
+            text = StoryTranslator.sanitize_segment_text(text, target_language=target_lang)
+
             audio_path = os.path.join(f"{job_dir}/segments", f"{seg['id']:04d}.wav")
             
             if not os.path.exists(audio_path):

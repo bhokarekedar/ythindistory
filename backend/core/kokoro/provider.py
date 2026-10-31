@@ -36,8 +36,18 @@ class KokoroTTS:
         """
         output_path = os.path.join(self.output_dir, f"{segment_id:04d}.wav")
         
+        # Sanitize any accidental punctuation glitches before TTS synthesis
+        import re
+        clean_text = text.strip()
+        if clean_text:
+            clean_text = re.sub(r'\?\s*\.+', '?', clean_text)
+            clean_text = re.sub(r'!\s*\.+', '!', clean_text)
+            clean_text = re.sub(r'\.{2,}', '.', clean_text)
+            clean_text = re.sub(r'\s+([.,!?])', r'\1', clean_text)
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
         # The generator yields (graphemes, phonemes, audio)
-        generator = self.pipeline(text, voice=self.voice_name, speed=1) if text.strip() else []
+        generator = self.pipeline(clean_text, voice=self.voice_name, speed=1) if clean_text else []
         
         audio_chunks = []
         for i, (gs, ps, audio) in enumerate(generator):
