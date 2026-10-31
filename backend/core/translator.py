@@ -2,6 +2,13 @@ import json
 import os
 import re
 import time
+
+try:
+    import dotenv
+    dotenv.load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+except Exception:
+    pass
+
 from core.providers import GroqProvider, OpenRouterProvider
 
 class StoryTranslator:
@@ -16,6 +23,7 @@ class StoryTranslator:
         self.max_retries = max_retries
         self.providers = []
         self.validator_provider = None
+        self.movie_metadata = {}  # Dynamic entity metadata extracted in Layer 1
         
         if primary_provider == "groq":
             groq_keys = []
@@ -170,26 +178,41 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - The entire output MUST be 100% fluent, idiomatic English. Never copy source Hindi into the English field.
 6. IDENTITY & ACTION LOGIC (BODY SWAPS / THRILLERS):
    - In thrillers involving body-swapping, possession, or disguise, maintain strict logical distinction between the physical body and the soul/consciousness inside it.
-   - Ensure that actions (who kidnaps whom, who attacks whom, and who is trapped in whose body) reflect the narrative reality without reversing roles!
+   - Ensure that actions reflect the narrative reality without reversing roles!
 7. GENDER & CANON ENTITY LOCK:
    - Always maintain correct character pronouns, names, and titles according to the Story Glossary.
-   - E.g., 'Mama Cecile' is female (never translate 'Mama' as 'Uncle'), 'Jill' is female, and locations like 'Terrebonne Parish' must be spelled accurately.
 8. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
-   - AUDIO IS KING: Deliver the full story with complete emotional weight, tension, and storytelling nuance. NEVER summarize or compress the narrative into a dry summary.
-   - STRICT CHRONOLOGY: Focus strictly on the events belonging to this segment. Do NOT pull in or narrate future plot points that belong to later segments!
+   - Deliver the full story with complete emotional weight, tension, and storytelling nuance. NEVER summarize into a dry summary.
+   - Strictly narrate events belonging to this segment. Do not jump ahead.
 9. NATURAL SPOKEN RHYTHM & PACING:
-   - Write sentences that sound natural, rhythmic, and captivating when read aloud by a Text-to-Speech narrator.
-   - Use commas (,) naturally where a speaker takes a brief breath. End every complete sentence with a period (.).
-   - Do NOT use complex punctuation like colons, semicolons, or dashes.
-10. FIX TRANSCRIPTION TYPOS: The original text is generated from audio and may contain phonetic errors. Use the story context to correct them.
+   - Write sentences that sound natural, rhythmic, and captivating for a voiceover narrator. End complete sentences with a period (.).
+10. FIX TRANSCRIPTION TYPOS: Correct phonetic transcription errors using context.
 11. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
-        
+
         if glossary:
             base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos, character genders, and ambiguous terms):\n{glossary}"
             
         return base_prompt
 
-    def _extract_glossary(self, segments) -> str:
+    def _extract_glossary(self, segments, metadata_path: str = "") -> str:
+        """
+        Layer 1: Generic Dynamic Structured Grounding.
+        Extracts structured JSON metadata (movie_title, characters, key_terms) for ANY film/incident
+        using Groq with response_format={"type": "json_object"}.
+        Persists to metadata_path if provided, and stores in self.movie_metadata.
+        Returns a rich Markdown glossary string for general prompt grounding.
+        """
+        # If metadata was already cached to disk for this video, load it instantly!
+        if metadata_path and os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    self.movie_metadata = json.load(f)
+                if self.movie_metadata and "characters" in self.movie_metadata:
+                    print(f"  [Layer 1 Grounding] ⏩ Loaded cached entity metadata from: {metadata_path}")
+                    return self._format_glossary_markdown(self.movie_metadata)
+            except Exception as e:
+                print(f"  [Layer 1 Grounding] Warning loading cached metadata: {e}")
+
         groq_keys = []
         if self.api_key: groq_keys.append(self.api_key)
         for k in [os.environ.get("GROQ_API_KEY"), os.environ.get("GROQ_API_KEY_TWO"), os.environ.get("GROQ_API_KEY_THREE")]:
@@ -199,19 +222,35 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
         if not groq_keys:
             return ""
             
-        full_text = " ".join([s.get("text", "") for s in segments])
+        full_text = " ".join([s.get("text", "") for s in segments[:120]])
         full_text = full_text[:8000] # Provide ample context
         
-        prompt = """You are an expert Hollywood screenplay and movie recap script editor. Read the following story transcript and extract a definitive reference glossary:
-1. Movie Identification: If this is an established film (e.g., 'The Skeleton Key', 'Murder on the Orient Express'), name it.
-2. Standard Character Names, Genders (Male/Female), and Exact Roles:
-   - Resolve phonetic transcription errors (e.g., 'Mama Cecile (Female Hoodoo Sorceress - NEVER Uncle Cecil)', 'Papa Justify (Male Hoodoo Sorcerer)', 'Caroline Ellis (Female Hospice Nurse)', 'Ben Devereaux (Elderly Paralyzed Man)', 'Violet Devereaux (Elderly Woman)', 'Luke Marshall (Young Male Lawyer)', 'Jill (Female Best Friend)').
-3. Canonical Locations, Spells, and Key Props:
-   - Specific place names (e.g., 'Terrebonne Parish, Louisiana', 'New Orleans', 'Orient Express').
-   - Specific props/terms (e.g., 'Conjure of Sacrifice (Ritual)', 'Red Brick Dust', 'Skeleton Key', 'Conjugation / Conjuration of Protection').
+        prompt = """You are an expert Hollywood screenplay and movie recap script analyst.
+Analyze the following Hindi/Hinglish movie recap transcript and extract a definitive, structured JSON entity guide.
 
-Return ONLY a clear, concise bulleted list of standard names, genders, roles, and terms to ensure 100% consistency across all translated segments."""
-        
+Return a STRICT JSON object with these exact keys:
+{
+  "movie_title": "Title of the movie or real incident",
+  "genre": "Genre (e.g. Horror, Mystery Thriller, True Crime)",
+  "characters": [
+    {
+      "canonical_name": "Full English Character Name (e.g. Caroline Ellis)",
+      "aliases": ["Caroline", "Nurse"],
+      "gender": "female" or "male",
+      "role_summary": "Brief 1-line description of role in the story",
+      "hindi_phonetic_spellings": ["कैरोलाइन", "केरोलिन"]
+    }
+  ],
+  "key_terms": [
+    {
+      "canonical_term": "English Term or Location (e.g. Terrebonne Parish)",
+      "hindi_phonetic_spellings": ["टेरेबोन", "टेरेबॉन"],
+      "meaning": "Brief explanation"
+    }
+  ]
+}
+Identify all characters, villains, victims, and crucial props/locations. Be thorough and accurate."""
+
         for k_idx, key in enumerate(groq_keys):
             try:
                 from groq import Groq
@@ -222,21 +261,172 @@ Return ONLY a clear, concise bulleted list of standard names, genders, roles, an
                         {"role": "system", "content": prompt},
                         {"role": "user", "content": full_text}
                     ],
-                    temperature=0.3
+                    response_format={"type": "json_object"},
+                    temperature=0.2
                 )
-                glossary = completion.choices[0].message.content.strip()
-                print(f"--- Extracted Glossary (using Key #{k_idx+1}): {glossary} ---")
-                return glossary
+                raw_json = completion.choices[0].message.content.strip()
+                data = json.loads(raw_json)
+                self.movie_metadata = data
+                print(f"  [Layer 1 Grounding] ✅ Identified Movie: '{data.get('movie_title')}' with {len(data.get('characters', []))} characters & {len(data.get('key_terms', []))} key terms.")
+
+                if metadata_path:
+                    try:
+                        with open(metadata_path, "w", encoding="utf-8") as mf:
+                            json.dump(data, mf, indent=2, ensure_ascii=False)
+                    except Exception as e:
+                        print(f"  [Layer 1 Grounding] Warning saving metadata: {e}")
+
+                return self._format_glossary_markdown(data)
             except Exception as e:
                 err_str = str(e).lower()
                 if "429" in err_str or "rate_limit" in err_str:
-                    print(f"  [Glossary] Key #{k_idx+1} hit rate limit (429). Trying next key...")
+                    print(f"  [Layer 1 Grounding] Key #{k_idx+1} hit rate limit (429). Trying next key...")
                     continue
-                print(f"Glossary extraction failed on Key #{k_idx+1}: {e}")
+                print(f"  [Layer 1 Grounding] Extraction failed on Key #{k_idx+1}: {e}")
         return ""
 
-    def get_validator_prompt(self, target_language: str) -> str:
-        return f"""You are a strict QA Editor for a YouTube movie recap channel.
+    def _format_glossary_markdown(self, metadata: dict) -> str:
+        """Converts structured metadata into a rich Markdown prompt section."""
+        lines = []
+        if metadata.get("movie_title"):
+            lines.append(f"Movie / Story Title: {metadata['movie_title']} ({metadata.get('genre', 'Drama')})")
+        
+        characters = metadata.get("characters", [])
+        if characters:
+            lines.append("\nStandard Character Names & Roles:")
+            for c in characters:
+                cname = c.get("canonical_name", "")
+                gender = c.get("gender", "unknown")
+                role = c.get("role_summary", "")
+                spellings = ", ".join(c.get("hindi_phonetic_spellings", []))
+                lines.append(f"- {cname} ({gender.capitalize()}, Role: {role}) | Hindi ASR spellings: [{spellings}]")
+
+        terms = metadata.get("key_terms", [])
+        if terms:
+            lines.append("\nCanonical Locations & Story Elements:")
+            for t in terms:
+                tname = t.get("canonical_term", "")
+                mean = t.get("meaning", "")
+                spellings = ", ".join(t.get("hindi_phonetic_spellings", []))
+                lines.append(f"- {tname}: {mean} | Hindi ASR spellings: [{spellings}]")
+
+        return "\n".join(lines)
+
+    def get_batch_entity_bindings(self, batch_segments: list) -> str:
+        """
+        Layer 2: Generic Dynamic In-Prompt Entity Binding (Per Batch).
+        Scans the batch's Hindi text against self.movie_metadata.
+        Dynamically constructs targeted entity anchoring rules strictly for the
+        characters and terms present in this specific batch.
+        Zero hardcoded names — 100% dynamically resolved from Layer 1.
+        """
+        if not self.movie_metadata:
+            return ""
+
+        batch_text = " ".join([s.get("text", "") for s in batch_segments])
+        active_characters = []
+        for char in self.movie_metadata.get("characters", []):
+            spellings = char.get("hindi_phonetic_spellings", [])
+            matched_spellings = [sp for sp in spellings if sp and sp in batch_text]
+            if matched_spellings:
+                active_characters.append((char, matched_spellings))
+
+        active_terms = []
+        for term in self.movie_metadata.get("key_terms", []):
+            spellings = term.get("hindi_phonetic_spellings", [])
+            matched_spellings = [sp for sp in spellings if sp and sp in batch_text]
+            if matched_spellings:
+                active_terms.append((term, matched_spellings))
+
+        if not active_characters and not active_terms:
+            return ""
+
+        binding_lines = ["\n### DYNAMIC ENTITY LOCKS FOR THIS SPECIFIC BATCH:"]
+        binding_lines.append("The following story entities are actively mentioned in this batch's source text. Adhere strictly to these canonical names:")
+        
+        for char, spellings in active_characters:
+            cname = char.get("canonical_name")
+            gender = char.get("gender", "unknown").lower()
+            pronouns = "he / him / his" if gender == "male" else ("she / her / hers" if gender == "female" else "they / them")
+            spellings_str = ", ".join([f"'{s}'" for s in spellings])
+            binding_lines.append(
+                f"- Hindi ASR: {spellings_str} -> CANONICAL CHARACTER: '{cname}' ({gender.capitalize()}, Pronouns: {pronouns}). Role: {char.get('role_summary', '')}."
+                f"\n  STRICT: Translate this person as '{cname}'. NEVER substitute unrelated phonetic words or confuse identities!"
+            )
+
+        for term, spellings in active_terms:
+            tname = term.get("canonical_term")
+            spellings_str = ", ".join([f"'{s}'" for s in spellings])
+            binding_lines.append(
+                f"- Hindi ASR: {spellings_str} -> CANONICAL TERM: '{tname}' ({term.get('meaning', '')}). Translate strictly as '{tname}'."
+            )
+
+        return "\n".join(binding_lines)
+
+    def check_entity_consistency(self, batch_source_segments: list, batch_translated_segments: list, target_language: str = "english") -> dict:
+        """
+        Layer 3: Generic Source-to-Target Entity Consistency Check (Automated QA).
+        Algorithmic check across all segments in the batch:
+        If any character from self.movie_metadata is found in the source Hindi text via
+        hindi_phonetic_spellings, verifies that the character's canonical name, alias,
+        or gender-appropriate pronoun is present in the translated text.
+        Zero hardcoded names — 100% dynamically resolved from Layer 1.
+        Returns: dict mapping segment ID -> list of defect messages.
+        """
+        defects = {}
+        if target_language.lower() != "english" or not self.movie_metadata:
+            return defects
+
+        characters = self.movie_metadata.get("characters", [])
+        if not characters:
+            return defects
+
+        trans_map = {}
+        for t in batch_translated_segments:
+            try:
+                sid = int(t.get("id"))
+                text_val = t.get("translated_text") or t.get("english") or t.get("text") or ""
+                trans_map[sid] = text_val
+            except Exception:
+                pass
+
+        for src in batch_source_segments:
+            try:
+                sid = int(src.get("id"))
+            except Exception:
+                continue
+
+            src_text = src.get("text", "")
+            trans_text = trans_map.get(sid, "")
+            if not trans_text:
+                continue
+
+            for char in characters:
+                spellings = char.get("hindi_phonetic_spellings", [])
+                matched_spellings = [sp for sp in spellings if sp and sp in src_text]
+                if matched_spellings:
+                    cname = char.get("canonical_name", "")
+                    aliases = char.get("aliases", [])
+                    gender = char.get("gender", "").lower()
+
+                    # Check for canonical name or alias match
+                    names_to_search = [cname.lower()] + [a.lower() for a in aliases if len(a) > 2]
+                    name_present = any(n in trans_text.lower() for n in names_to_search if n)
+
+                    # Pronoun fallback check
+                    pronoun_pattern = r'\b(he|him|his)\b' if gender == "male" else (r'\b(she|her|hers)\b' if gender == "female" else r'\b(they|them)\b')
+                    pronoun_present = bool(re.search(pronoun_pattern, trans_text, re.IGNORECASE))
+
+                    if not name_present and not pronoun_present:
+                        defect_desc = f"Source mentioned '{matched_spellings[0]}' ({cname}), but translation omitted or scrambled the character."
+                        if sid not in defects:
+                            defects[sid] = []
+                        defects[sid].append(defect_desc)
+
+        return defects
+
+    def get_validator_prompt(self, target_language: str, qa_defects: dict = None) -> str:
+        prompt = f"""You are a strict QA Editor for a YouTube movie recap channel.
 Review and fix the provided {target_language.capitalize()} script segments.
 Rules:
 1. ZERO UNTRANSLATED CHARACTERS: If target is English, ensure ZERO Hindi/Devanagari characters remain. Translate any missed text completely.
@@ -250,6 +440,13 @@ Rules:
 6. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
 7. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
 """
+        if qa_defects:
+            prompt += "\n\nCRITICAL IDENTIFIED ENTITY DEFECTS TO FIX IN THIS BATCH:\n"
+            for sid, msgs in qa_defects.items():
+                prompt += f"- Segment ID {sid}: " + "; ".join(msgs) + "\n"
+            prompt += "STRICT REQUIREMENT: Ensure the accurate canonical character names are restored in these segments!\n"
+
+        return prompt
 
     def _execute_translation(self, segments, system_prompt: str, context: str, target_language: str) -> list:
         for provider in self.providers:
@@ -355,6 +552,7 @@ RULES:
         suffix = f"_{channel_type}" if channel_type == "thriller_story" else ""
         output_path = os.path.join(output_dir, f"{base_name}_{lang_key}{suffix}_transcript.json")
         checkpoint_path = os.path.join(output_dir, f"{base_name}_{lang_key}{suffix}_checkpoint.json")
+        metadata_path = os.path.join(output_dir, f"{base_name}_metadata.json")
         
         # Load progress from checkpoint if a previous run was paused/interrupted
         translated_map = {}
@@ -373,7 +571,7 @@ RULES:
                 translated_map = {}
         
         print(f"Extracting contextual glossary for {lang_key} translation...")
-        glossary = self._extract_glossary(segments)
+        glossary = self._extract_glossary(segments, metadata_path=metadata_path)
         
         system_prompt = self.get_system_prompt(lang_key, glossary, channel_type=channel_type)
         
@@ -393,12 +591,16 @@ RULES:
             next_context = segments[next_idx]["text"] if next_idx < len(segments) else ""
             context = f"{prev_context} [...] {next_context}"
             
+            # Layer 2: Dynamic in-prompt entity binding for this specific batch
+            entity_bindings = self.get_batch_entity_bindings(batch)
+            batch_system_prompt = system_prompt + ("\n\n" + entity_bindings if entity_bindings else "")
+
             valid_results = []
             
             # --- Pass 1: Translation with retry loop for missing IDs ---
             for attempt in range(self.max_retries + 1):
                 print(f"Generating {lang_key} script for batch {i // self.batch_size + 1} (Attempt {attempt+1})...")
-                results = self._execute_translation(batch, system_prompt, context, lang_key)
+                results = self._execute_translation(batch, batch_system_prompt, context, lang_key)
                 
                 returned_ids = set()
                 for item in results:
@@ -427,7 +629,7 @@ RULES:
                     missing_seg = next((s for s in batch if int(s["id"]) == missing_id), None)
                     if missing_seg:
                         try:
-                            recovered = self._execute_translation([missing_seg], system_prompt, context="", target_language=lang_key)
+                            recovered = self._execute_translation([missing_seg], batch_system_prompt, context="", target_language=lang_key)
                             for r in recovered:
                                 if int(r.get("id", missing_id)) == missing_id:
                                     valid_results.append(r)
@@ -435,10 +637,17 @@ RULES:
                         except Exception as e:
                             print(f"  -> Single-segment recovery failed for ID {missing_id}: {e}")
                 
-            # --- Pass 2: Smart Conditional Validation ---
-            # Only run validation pass if the batch contains defects (saves 50% API calls and prevents rate limits)
+            # --- Pass 2: Smart Conditional Validation & Layer 3 Generic QA ---
             needs_validation = False
-            if self.validator_provider and valid_results:
+            entity_defects = {}
+            if valid_results:
+                # Layer 3: Generic source-to-target entity consistency check
+                entity_defects = self.check_entity_consistency(batch, valid_results, target_language=lang_key)
+                if entity_defects:
+                    needs_validation = True
+                    print(f"  [Layer 3 QA] ⚠️ Detected entity discrepancies in batch {i // self.batch_size + 1}: {list(entity_defects.keys())}")
+
+            if self.validator_provider and valid_results and not needs_validation:
                 for r in valid_results:
                     val_text = r.get("translated_text", r.get(lang_key, r.get("text", ""))).strip()
                     if lang_key == "english" and re.search(r'[\u0900-\u097F]', val_text):
@@ -461,9 +670,9 @@ RULES:
                         needs_validation = True
                         break
 
-            if needs_validation:
+            if needs_validation and self.validator_provider:
                 print(f"Validating batch {i // self.batch_size + 1} with second API key (defects detected)...")
-                validator_prompt = self.get_validator_prompt(lang_key)
+                validator_prompt = self.get_validator_prompt(lang_key, qa_defects=entity_defects)
                 
                 # Format for the validator (it expects 'text' to translate/fix)
                 validator_input = []
@@ -621,6 +830,12 @@ RULES:
                         flagged_ids.add(int(seg["id"]))
                         flagged_ids.add(int(segments[i-1]["id"]))
 
+        # Check 6: Generic Layer 3 entity consistency check across entire script
+        if lang == "english" and self.movie_metadata:
+            entity_defects = self.check_entity_consistency(segments, segments, target_language=lang)
+            for eid in entity_defects:
+                flagged_ids.add(eid)
+
         if not flagged_ids:
             print("  [Self-Review] ✨ All segments passed quality screening! No issues detected.")
             return segments
@@ -701,19 +916,36 @@ CRITICAL INSTRUCTIONS:
         """
         Final safety and QA sweep across the completed script:
         1. Purges any leaked Devanagari/Hindi characters from English narrations.
-        2. Fixes dangling word cutoffs at segment boundaries (e.g. 'to', 'then.', 'The door', 'and', 'waiting for').
-        3. Cleans boundary stuttering / duplicate sentences between adjacent segments.
-        4. Standardizes canonical naming (e.g. 'Mama Cecile', 'Terrebonne Parish').
+        2. Fixes dangling word cutoffs at segment boundaries for Kokoro TTS audio hygiene.
+        3. Standardizes canonical terms dynamically using self.movie_metadata.
+        4. Layer 4: Universal Tail Purge — Scrubs YouTube subscription/bell/channel pleas from final 5%.
+        5. Cleans boundary stuttering / duplicate sentences between adjacent segments.
         """
         import re
         lang = target_language.lower()
         if not segments:
             return segments
 
-        for seg in segments:
+        # Layer 4: Universal Outro / YouTube Meta-Chatter Purge for final 5%
+        tail_idx_threshold = max(0, int(len(segments) * 0.95))
+        yt_tail_pattern = re.compile(
+            r'\b(subscribe|subscribing|channel|bell icon|notification|leave a like|hit like|comment below|thanks for watching|see you in the next|share this video|share with your friends)\b'
+            r'|[\u0900-\u097F]*(?:सब्सक्राइब|लाइक|घंटी|बेल|शेयर|कमेंट|चैनल)[\u0900-\u097F]*',
+            re.IGNORECASE
+        )
+
+        for i, seg in enumerate(segments):
             text = seg.get(lang, "").strip()
+            orig = seg.get("original_text", "")
             if not text:
                 continue
+
+            # Layer 4: Universal Outro replacement
+            if i >= tail_idx_threshold and (yt_tail_pattern.search(text) or yt_tail_pattern.search(orig)):
+                if i == len(segments) - 1:
+                    text = "And with that, our story reaches its thrilling conclusion. Thank you for watching."
+                else:
+                    text = "The mystery finally draws to a close, leaving behind questions that may never be answered."
 
             if lang == "english":
                 # 1. Purge any Devanagari text leaking into English
@@ -722,25 +954,29 @@ CRITICAL INSTRUCTIONS:
                     if len(cleaned.split()) >= 4:
                         text = cleaned
                     else:
-                        print(f"  [QA Fix] Purged raw Hindi from segment {seg.get('id')}")
                         text = cleaned if cleaned else text
 
                 # 2. Fix dangling word cutoffs at the end of segments for Kokoro TTS
-                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for|Conjugation of)\.?$', '.', text, flags=re.IGNORECASE)
-                text = re.sub(r'\.\s*Luke then\.?$', '.', text, flags=re.IGNORECASE)
-                text = re.sub(r'\.\s*Once Violet had left the room\.?$', '.', text, flags=re.IGNORECASE)
+                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for)\.?$', '.', text, flags=re.IGNORECASE)
                 text = re.sub(r'\s+to$', '.', text)
                 text = re.sub(r',\s*$', '.', text)
 
-                # 3. Canonical terms and entity corrections
-                text = re.sub(r'\s*\.{3,}$', '.', text)
-                text = re.sub(r'\bbungalow\b', 'mansion', text, flags=re.IGNORECASE)
-                text = re.sub(r'\bbungalows\b', 'mansions', text, flags=re.IGNORECASE)
-                text = re.sub(r'\bUncle Cecil\b', 'Mama Cecile', text)
-                text = re.sub(r'\bUncle Cecile\b', 'Mama Cecile', text)
-                text = re.sub(r'\bTerabon\b', 'Terrebonne', text)
-                text = re.sub(r'\bCanjar of Sacrifice\b', 'Conjure of Sacrifice', text, flags=re.IGNORECASE)
-                text = re.sub(r'\bConjugation of Supreme Protection\b', 'Conjuration of Supreme Protection', text, flags=re.IGNORECASE)
+                # 3. Dynamic Term & Character Title Harmonization
+                if self.movie_metadata:
+                    for char in self.movie_metadata.get("characters", []):
+                        cname = char.get("canonical_name", "")
+                        gender = char.get("gender", "").lower()
+                        # If a female character was accidentally called "Uncle <Name>", fix dynamically
+                        if gender == "female" and cname:
+                            first_name = cname.split()[0]
+                            text = re.sub(rf'\bUncle\s+{first_name}\b', rf'Mama {first_name}', text, flags=re.IGNORECASE)
+                    
+                    for term in self.movie_metadata.get("key_terms", []):
+                        canon_term = term.get("canonical_term", "")
+                        for spelling in term.get("hindi_phonetic_spellings", []):
+                            # Remove any accidental raw Devanagari term transliterations
+                            if spelling in text:
+                                text = text.replace(spelling, canon_term)
 
             # Ensure proper capitalization and punctuation at the end of every segment for Kokoro TTS
             text = text.strip()
