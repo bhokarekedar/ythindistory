@@ -14,8 +14,21 @@ class OpenRouterProvider(LLMProvider):
             print("Warning: OPENROUTER_API_KEY not set.")
             return []
 
+        segment_payload = []
+        for s in segments:
+            dur = 0.0
+            if "start" in s and "end" in s:
+                dur = max(1.5, round(float(s["end"]) - float(s["start"]), 2))
+            elif "duration" in s:
+                dur = max(1.5, round(float(s["duration"]), 2))
+            item = {"id": s["id"], "text": s.get("text", s.get("original_text", ""))}
+            if dur > 0:
+                item["duration_sec"] = dur
+                item["max_words"] = max(5, int(round(dur * 2.4)))
+            segment_payload.append(item)
+
         user_content = f"Context (do not translate this): {context}\n\nSegments to translate/rewrite:\n"
-        user_content += json.dumps([{"id": s["id"], "text": s.get("text", "")} for s in segments], ensure_ascii=False)
+        user_content += json.dumps(segment_payload, ensure_ascii=False)
         
         system_prompt += f"\n\nIMPORTANT: You must output ONLY a valid JSON object with a single key 'translations', containing a list of objects with 'id' and 'translated_text'. Exactly {len(segments)} objects must be returned, corresponding 1-to-1 to each input id. NEVER skip, combine, or omit any segment ID. Do not output markdown code blocks or any other text."
 

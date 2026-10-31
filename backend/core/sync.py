@@ -272,7 +272,9 @@ class AudioSynchronizer:
         video_cursor = 0.0   # Tracks position in the ORIGINAL video
         audio_cursor = 0.0   # Tracks position in the OUTPUT timeline
 
-        for entry in timeline:
+        total_video_dur = self.get_video_duration(original_video_path)
+
+        for i, entry in enumerate(timeline):
             seg_id = entry.get("id", 0)
             orig_start = entry["start"]
             orig_end = entry["end"]
@@ -280,11 +282,33 @@ class AudioSynchronizer:
             audio_end = entry["audio_end"]
             tts_dur = entry["tts_dur"]
 
-            # Variables passed to ffmpeg for extraction
-            # If original segments overlap (orig_start < video_cursor), clamp the start to video_cursor
-            # so the video doesn't awkwardly jump backward in time!
-            seg_extract_start = max(orig_start, video_cursor)
-            seg_extract_dur = max(orig_end - seg_extract_start, 0.05)
+            # Visual boundary handling:
+            # If next segment starts earlier than this segment's end (common in overlapping YouTube captions),
+            # the natural cut boundary for this segment's thought is when the next segment begins.
+            next_start = timeline[i + 1]["start"] if (i + 1 < len(timeline)) else orig_end
+            natural_end = next_start if (next_start > orig_start and orig_end > next_start) else orig_end
+
+            # Ensure extraction start does not jump backward awkwardly, but avoid chopping
+            # when the overlap is normal subtitle timing.
+            if video_cursor <= orig_start + 1.5:
+                seg_extract_start = max(orig_start, video_cursor)
+            else:
+                seg_extract_start = orig_start
+
+            # Calculate natural duration from original footage
+            raw_extract_dur = max(natural_end - seg_extract_start, 0.5)
+
+            # Cap pts_factor between 0.85 and 1.25 to prevent 3x slow-motion or fast-forward!
+            # If tts_dur needs more visual time than raw_extract_dur * 1.20, expand seg_extract_dur
+            # so the movie footage naturally continues playing at normal human speed (~1.0x).
+            seg_extract_dur = raw_extract_dur
+            if tts_dur > seg_extract_dur * 1.20:
+                available_footage = max(0.5, total_video_dur - seg_extract_start)
+                seg_extract_dur = min(tts_dur, available_footage)
+                seg_extract_dur = max(seg_extract_dur, 0.5)
+
+            pts_factor = tts_dur / seg_extract_dur
+            pts_factor = max(0.80, min(1.30, pts_factor))
             
             gap_extract_start = video_cursor
             gap_extract_dur = max(seg_extract_start - video_cursor, 0.0)
@@ -315,7 +339,7 @@ class AudioSynchronizer:
                     gap_extract_dur = gap_dur  # fallback
                 
                 # Clamp: don't use more original video than available
-                gap_extract_dur = min(gap_extract_dur, self.get_video_duration(original_video_path) - gap_extract_start)
+                gap_extract_dur = min(gap_extract_dur, total_video_dur - gap_extract_start)
                 gap_extract_dur = max(gap_extract_dur, 0.05)
 
                 chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
@@ -375,8 +399,6 @@ class AudioSynchronizer:
                         .filter("fps", fps=30, round="near")
                     )
                 else:
-                    # PTS scale: orig_dur seconds of video → tts_dur seconds of output
-                    pts_factor = tts_dur / seg_extract_dur   
                     seek_point = max(0.0, seg_extract_start - 2.0)
                     trim_offset = seg_extract_start - seek_point
                     v = (
@@ -411,7 +433,7 @@ class AudioSynchronizer:
 
             concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
             chunk_idx += 1
-            video_cursor = orig_end
+            video_cursor = seg_extract_start + seg_extract_dur
             audio_cursor = audio_end
 
         # ── Final trailing silence gap ─────────────────────────────────────

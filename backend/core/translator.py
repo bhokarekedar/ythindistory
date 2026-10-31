@@ -173,7 +173,12 @@ CRITICAL EDITORIAL RULES:
 4. NATURAL SPOKEN RHYTHM & PACING:
    - Write sentences that sound punchy, tense, and captivating when read aloud by a Text-to-Speech narrator.
    - End declarative statements with a period (.). Never use malformed marks ('?.', '!.', '..').
-5. STRICT TIMING & ID PRESERVATION:
+5. DURATION PACING & WORD-COUNT BUDGET (PREVENT VIDEO DRIFT):
+   - Each input segment provides 'duration_sec' and 'max_words' (~2.2 - 2.5 words per second).
+   - You MUST budget your English sentence length to stay within or close to 'max_words'.
+   - NEVER write bloated, verbose sentences (e.g. 20+ words for a 3-second clip).
+   - Keep sentences punchy, complete, and concise so the voiceover finishes synchronously with the video scene cut!
+6. STRICT TIMING & ID PRESERVATION:
    - Return exactly one polished translation object for every input ID. Do not merge, skip, or delete IDs."""
             else:
                 base_prompt = """You are a master YouTube movie-recap and storytelling narrator.
@@ -210,10 +215,15 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
 8. AUDIO-FIRST STORYTELLING & NATURAL CHRONOLOGY:
    - Deliver the full story with complete emotional weight, tension, and storytelling nuance. NEVER summarize into a dry summary.
    - Strictly narrate events belonging to this segment. Do not jump ahead.
-9. NATURAL SPOKEN RHYTHM & PACING:
+9. DURATION PACING & WORD-COUNT BUDGET (CRITICAL VISUAL SYNC):
+   - Each segment provides 'duration_sec' and 'max_words' (~2.2 - 2.5 words per second of original video).
+   - You MUST budget your translated sentence length to fit within or close to 'max_words'.
+   - NEVER write bloated, over-long compound sentences (e.g. 20+ words for a 3-second scene) that spill over into later scenes.
+   - Write punchy, cinematic sentences that capture the full action and finish synchronously with the camera transition.
+10. NATURAL SPOKEN RHYTHM & PACING:
    - Write sentences that sound natural, rhythmic, and captivating for a voiceover narrator. End complete sentences with a period (.).
-10. FIX TRANSCRIPTION TYPOS: Correct phonetic transcription errors using context.
-11. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+11. FIX TRANSCRIPTION TYPOS: Correct phonetic transcription errors using context.
+12. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
 
         if glossary:
             base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos, character genders, and ambiguous terms):\n{glossary}"
@@ -468,6 +478,20 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
                             defects[sid] = []
                         defects[sid].append(defect_desc)
 
+            # Duration & word-count pacing check (prevent voiceover from spilling into next scene)
+            dur = 0.0
+            if "start" in src and "end" in src:
+                dur = float(src["end"]) - float(src["start"])
+            elif "duration" in src:
+                dur = float(src["duration"])
+            if dur > 0.5:
+                word_count = len(trans_text.split())
+                max_allowed_words = max(8, int(round(dur * 3.0)))
+                if word_count > max_allowed_words:
+                    if sid not in defects:
+                        defects[sid] = []
+                    defects[sid].append(f"Pacing defect: {word_count} words exceeds scene duration ({dur:.1f}s, target ~{int(dur*2.4)} words). Condense into a punchy, complete sentence.")
+
         return defects
 
     @staticmethod
@@ -517,8 +541,11 @@ Rules:
    - NEVER end a segment with an ellipsis ('...'), dangling comma (','), semicolon, or hyphen.
    - End declarative statements with a single clean period (.).
 6. NO DUPLICATE REPETITIONS: If two adjacent segments repeat the same statement, harmonize them seamlessly.
-7. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
-8. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
+7. DURATION PACING & WORD-COUNT BUDGET:
+   - Check if any segment is overly verbose and far exceeds its duration budget.
+   - If a sentence is bloated with filler or excessive description, tighten it into a punchy, complete sentence so voiceover finishes synchronously with the video scene cut.
+8. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
+9. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
 """
         if qa_defects:
             prompt += "\n\nCRITICAL IDENTIFIED DEFECTS TO FIX IN THIS BATCH:\n"
