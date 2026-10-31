@@ -425,6 +425,37 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
 
         return defects
 
+    @staticmethod
+    def detect_punctuation_glitches(text: str) -> list:
+        """
+        Detects all malformed punctuation patterns that cause Kokoro TTS glitching:
+        - Mixed terminal marks ('?.', '!.', '.?', '.!')
+        - Double/triple marks ('??', '!!', '?!', '!?')
+        - Ellipses or double periods ('..', '...', '....')
+        - Comma/semicolon/dash collisions (',.', ';.', '.,', ':,')
+        - Trailing commas, semicolons, colons, or dashes (',', ';', ':', '-', '—')
+        - Space before terminal punctuation (' .', ' ?')
+        """
+        glitches = []
+        if not text:
+            return glitches
+            
+        if re.search(r'[\?!]+\s*\.+', text):
+            glitches.append("Mixed question/exclamation with period (e.g. '?.', '!.')")
+        if re.search(r'\.+\s*[\?!]+', text):
+            glitches.append("Period followed by question/exclamation (e.g. '.?', '.!')")
+        if re.search(r'[?!]{2,}', text):
+            glitches.append("Repeated question/exclamation marks (e.g. '?!', '??')")
+        if re.search(r'\.{2,}', text):
+            glitches.append("Ellipsis or multiple periods (e.g. '..', '...')")
+        if re.search(r'[,;:–—-]\s*[.!?]|[.!?,]\s*[,;:–—-]', text):
+            glitches.append("Conflicting punctuation collision (e.g. ',.', '.,', '-.')")
+        if re.search(r'[,;:–—-]\s*$', text):
+            glitches.append("Trailing dangling punctuation mark at end of segment")
+        if re.search(r'[,;]{2,}', text):
+            glitches.append("Repeated commas or semicolons (e.g. ',,')")
+        return glitches
+
     def get_validator_prompt(self, target_language: str, qa_defects: dict = None) -> str:
         prompt = f"""You are a strict QA Editor for a YouTube movie recap channel.
 Review and fix the provided {target_language.capitalize()} script segments.
@@ -436,15 +467,19 @@ Rules:
    - Every single segment MUST be a self-contained, grammatically complete sentence ending strictly with a period (.), exclamation point (!), or question mark (?).
    - NEVER allow a sentence to be sliced or chopped across two segments (e.g., segment A ending with 'and her', 'when she went', or 'it then', and segment B starting with lowercase).
    - If a segment is an incomplete fragment or clause, rewrite it into a full, finished, independent sentence.
-5. NO DUPLICATE REPETITIONS: If two adjacent segments repeat the same statement, harmonize them seamlessly.
-6. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
-7. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
+5. NO MALFORMED PUNCTUATION PATTERNS:
+   - NEVER combine marks like '?.', '!.', '.?', or '..'.
+   - NEVER end a segment with an ellipsis ('...'), dangling comma (','), semicolon, or hyphen.
+   - End declarative statements with a single clean period (.).
+6. NO DUPLICATE REPETITIONS: If two adjacent segments repeat the same statement, harmonize them seamlessly.
+7. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
+8. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
 """
         if qa_defects:
-            prompt += "\n\nCRITICAL IDENTIFIED ENTITY DEFECTS TO FIX IN THIS BATCH:\n"
+            prompt += "\n\nCRITICAL IDENTIFIED DEFECTS TO FIX IN THIS BATCH:\n"
             for sid, msgs in qa_defects.items():
                 prompt += f"- Segment ID {sid}: " + "; ".join(msgs) + "\n"
-            prompt += "STRICT REQUIREMENT: Ensure the accurate canonical character names are restored in these segments!\n"
+            prompt += "STRICT REQUIREMENT: Ensure all entity omissions and punctuation glitches in these flagged segments are fully corrected!\n"
 
         return prompt
 
@@ -637,15 +672,26 @@ RULES:
                         except Exception as e:
                             print(f"  -> Single-segment recovery failed for ID {missing_id}: {e}")
                 
-            # --- Pass 2: Smart Conditional Validation & Layer 3 Generic QA ---
+            # --- Pass 2: Smart Conditional Validation, Layer 3 QA & Punctuation Glitch Inspector ---
             needs_validation = False
-            entity_defects = {}
+            qa_defects = {}
             if valid_results:
-                # Layer 3: Generic source-to-target entity consistency check
+                # 1. Layer 3: Generic source-to-target entity consistency check
                 entity_defects = self.check_entity_consistency(batch, valid_results, target_language=lang_key)
-                if entity_defects:
+                for sid, msgs in entity_defects.items():
+                    qa_defects.setdefault(sid, []).extend(msgs)
+
+                # 2. Punctuation & Syntax Glitch Inspection ('?.', '!.', '..', etc.)
+                for r in valid_results:
+                    sid = int(r.get("id", 0))
+                    val_text = r.get("translated_text", r.get(lang_key, r.get("text", ""))).strip()
+                    punct_glitches = self.detect_punctuation_glitches(val_text)
+                    if punct_glitches:
+                        qa_defects.setdefault(sid, []).extend(punct_glitches)
+
+                if qa_defects:
                     needs_validation = True
-                    print(f"  [Layer 3 QA] ⚠️ Detected entity discrepancies in batch {i // self.batch_size + 1}: {list(entity_defects.keys())}")
+                    print(f"  [QA Inspector] ⚠️ Flagged defects in batch {i // self.batch_size + 1} (IDs: {list(qa_defects.keys())})")
 
             if self.validator_provider and valid_results and not needs_validation:
                 for r in valid_results:
@@ -672,7 +718,7 @@ RULES:
 
             if needs_validation and self.validator_provider:
                 print(f"Validating batch {i // self.batch_size + 1} with second API key (defects detected)...")
-                validator_prompt = self.get_validator_prompt(lang_key, qa_defects=entity_defects)
+                validator_prompt = self.get_validator_prompt(lang_key, qa_defects=qa_defects)
                 
                 # Format for the validator (it expects 'text' to translate/fix)
                 validator_input = []
@@ -812,6 +858,11 @@ RULES:
                 flagged_ids.add(int(seg["id"]))
                 continue
 
+            # Check 2c: Malformed punctuation patterns ('?.', '!.', '.?', '..', '.,', trailing comma/dash)
+            if self.detect_punctuation_glitches(text):
+                flagged_ids.add(int(seg["id"]))
+                continue
+
             # Check 3: Short unfinished fragments (< 4 words)
             if len(text.split()) < 4:
                 flagged_ids.add(int(seg["id"]))
@@ -876,8 +927,11 @@ Your task is to REVIEW and ELEVATE the provided {lang.capitalize()} story segmen
 CRITICAL INSTRUCTIONS:
 1. STANDALONE & COMPLETE THOUGHTS: Fix all dangling word cutoffs (e.g. 'and', 'to', 'then', 'because'). Every segment must be a complete, grammatically sound sentence.
 2. SEAMLESS NARRATIVE FLOW: Ensure natural transitions between segments. The narration should feel like an engaging storyteller speaking naturally.
-3. PURGE JUNK & REPETITION: Remove any stuttering, duplicate phrasing, channel branding, or untranslated characters.
-4. STRICT TIMING INTEGRITY: Do NOT combine or remove segments. You MUST return a JSON object with a single key 'translations' containing EXACTLY the same segment IDs with polished text.
+3. FLAWLESS PUNCTUATION & AUDIO CADENCE:
+   - Ensure zero malformed marks (no '?.', '!.', '.?', '..', or trailing dashes/commas).
+   - End every finished sentence with a single clean period (.).
+4. PURGE JUNK & REPETITION: Remove any stuttering, duplicate phrasing, channel branding, or untranslated characters.
+5. STRICT TIMING INTEGRITY: Do NOT combine or remove segments. You MUST return a JSON object with a single key 'translations' containing EXACTLY the same segment IDs with polished text.
 """
 
         # 3. Process review chunks using the multi-key pool / execute translation
@@ -917,9 +971,10 @@ CRITICAL INSTRUCTIONS:
         Final safety and QA sweep across the completed script:
         1. Purges any leaked Devanagari/Hindi characters from English narrations.
         2. Fixes dangling word cutoffs at segment boundaries for Kokoro TTS audio hygiene.
-        3. Standardizes canonical terms dynamically using self.movie_metadata.
-        4. Layer 4: Universal Tail Purge — Scrubs YouTube subscription/bell/channel pleas from final 5%.
-        5. Cleans boundary stuttering / duplicate sentences between adjacent segments.
+        3. Comprehensive Punctuation & Syntax Sanitization (purges '?.', '!.', '.?', '..', '.,', trailing dashes/commas).
+        4. Standardizes canonical terms dynamically using self.movie_metadata.
+        5. Layer 4: Universal Tail Purge — Scrubs YouTube subscription/bell/channel pleas from final 5%.
+        6. Cleans boundary stuttering / duplicate sentences between adjacent segments.
         """
         import re
         lang = target_language.lower()
@@ -977,6 +1032,17 @@ CRITICAL INSTRUCTIONS:
                             # Remove any accidental raw Devanagari term transliterations
                             if spelling in text:
                                 text = text.replace(spelling, canon_term)
+
+            # 4. Comprehensive Punctuation & Syntax Sanitization
+            text = re.sub(r'[\?!]+\s*\.+', '.', text)          # '?.', '!.' -> '.'
+            text = re.sub(r'\.+\s*[\?!]+', '.', text)          # '.?', '.!' -> '.'
+            text = re.sub(r'[?!]{2,}', '.', text)              # '?!', '!?', '??', '!!' -> '.'
+            text = re.sub(r'\.{2,}', '.', text)                # '..', '...', '....' -> '.'
+            text = re.sub(r'[,;:–—-]\s*[.!?]', '.', text)      # ',.', ';.', ':.', '-.' -> '.'
+            text = re.sub(r'[.!?]\s*[,;:–—-]', '.', text)      # '.,', '.:' -> '.'
+            text = re.sub(r'[,;]{2,}', ',', text)              # ',,', ';;' -> ','
+            text = re.sub(r'[,;:–—-]\s*$', '.', text)          # Trailing comma, semicolon, dash -> '.'
+            text = re.sub(r'\s+([.,!?])', r'\1', text)         # Space before punctuation -> remove
 
             # Ensure proper capitalization and punctuation at the end of every segment for Kokoro TTS
             text = text.strip()
