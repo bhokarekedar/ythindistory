@@ -218,41 +218,27 @@ def archive_training_script(video_id: str, channel_type: str, target_lang: str, 
         print(f"  [Dataset Archive] ⚠️ Failed to archive training script: {e}")
 
 def cleanup_job_temp(video_id: str):
-    """Removes all heavy intermediate temp files (video chunks, resampled audio, mixed temp files) for this job."""
+    """Removes heavy scratch render files (video chunks, resampled audio, mixed temp files) while preserving audio & video cache."""
     try:
         if video_id:
             job_temp = os.path.join("temp", video_id)
             if os.path.exists(job_temp):
-                # Safety guard: ensure any transcripts inside job_temp are saved to training_dataset before wiping
-                for fname in os.listdir(job_temp):
-                    if fname.endswith("_transcript.json"):
-                        fpath = os.path.join(job_temp, fname)
-                        archive_dir = os.path.join(TRAINING_DATASET_DIR, video_id)
-                        os.makedirs(archive_dir, exist_ok=True)
-                        dst = os.path.join(archive_dir, fname)
-                        if not os.path.exists(dst):
-                            shutil.copy2(fpath, dst)
-                
-                shutil.rmtree(job_temp, ignore_errors=True)
-                print(f"  [Cleanup] 🧹 Cleared intermediate temp directory: {job_temp}")
-        raw_videos = "temp/videos"
-        if os.path.exists(raw_videos):
-            shutil.rmtree(raw_videos, ignore_errors=True)
-            os.makedirs(raw_videos, exist_ok=True)
+                for stale in ["video_only.mp4", "mixed_temp.mp4", "narrator_audio_track.wav"]:
+                    p = os.path.join(job_temp, stale)
+                    if os.path.exists(p):
+                        try: os.remove(p)
+                        except: pass
+                for stale_dir in ["video_chunks", "resampled_wavs"]:
+                    p = os.path.join(job_temp, stale_dir)
+                    if os.path.exists(p):
+                        shutil.rmtree(p, ignore_errors=True)
+                print(f"  [Cleanup] 🧹 Cleared scratch render artifacts for: {job_temp}")
     except Exception as e:
         print(f"  [Cleanup] Warning while clearing temp files: {e}")
 
 def schedule_delayed_output_cleanup(video_id: str, delay_seconds: int = 180):
-    """Gives n8n 3 minutes to finish reading/uploading the final output before deleting it."""
-    def worker():
-        time.sleep(delay_seconds)
-        output_dir = os.path.join("output", video_id)
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir, ignore_errors=True)
-            print(f"  [Cleanup] 🧹 Automatically cleared final output folder after n8n upload: {output_dir}")
-            
-    t = threading.Thread(target=worker, daemon=True)
-    t.start()
+    """Preserves output video permanently so n8n / YouTube uploads are never interrupted."""
+    pass
 
 def process_pipeline(job_id: str, request: VideoRequest):
     url = request.url

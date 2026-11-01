@@ -570,6 +570,7 @@ class AudioSynchronizer:
                     ac=TARGET_CHANNELS,
                     ar=TARGET_RATE,
                     audio_bitrate="192k",
+                    movflags="+faststart",
                 )
                 ffmpeg.run(out, quiet=True, overwrite_output=True)
             except ffmpeg.Error as e:
@@ -626,6 +627,7 @@ class AudioSynchronizer:
                 vcodec="libx264", acodec="aac",
                 ac=TARGET_CHANNELS, ar=TARGET_RATE,
                 pix_fmt="yuv420p",
+                movflags="+faststart",
                 **{"crf": "18", "preset": "fast"}
             )
             try:
@@ -634,7 +636,7 @@ class AudioSynchronizer:
                 print("FFmpeg Error (intro concat):", e.stderr.decode("utf8") if e.stderr else str(e))
                 raise
         else:
-            ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c="copy").run(
+            ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c="copy", movflags="+faststart").run(
                 quiet=True, overwrite_output=True
             )
 
