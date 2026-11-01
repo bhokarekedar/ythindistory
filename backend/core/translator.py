@@ -735,7 +735,7 @@ RULES:
                     saved_list = json.load(cf)
                     for s in saved_list:
                         val = s.get(lang_key, "").strip()
-                        if val and val.lower() not in ["translation/rewrite failed", "error"]:
+                        if val and val.lower() not in ["translation/rewrite failed", "error"] and "story continues" not in val.lower():
                             translated_map[int(s["id"])] = s
                 if translated_map:
                     print(f"  [Resume] ⏩ Found checkpoint! Loaded {len(translated_map)}/{len(segments)} already translated segments from: {checkpoint_path}")
@@ -941,20 +941,29 @@ RULES:
             for seg in batch:
                 seg_id = int(seg["id"])
                 final_text = result_map.get(seg_id)
-                if not final_text:
-                    if lang_key == "english" and seg.get("text") and re.search(r'[\u0900-\u097F]', seg.get("text")):
-                        # NEVER put raw Hindi into an English transcript!
-                        print(f"  [Safety Fallback] Segment {seg_id} missed English translation. Translating single fragment...")
+                if not final_text or (lang_key == "english" and re.search(r'[\u0900-\u097F]', final_text)):
+                    print(f"  [Safety Recovery] Segment {seg_id} requires clean {lang_key} translation. Running dedicated recovery...")
+                    for retry_att in range(self.max_retries + 1):
                         try:
-                            recov = self._execute_translation([seg], system_prompt, context="", target_language="english")
-                            final_text = recov[0].get("english", recov[0].get("translated_text", "")) if recov else ""
-                        except:
-                            final_text = ""
-                        if not final_text:
-                            final_text = f"The story continues with event {seg_id}."
-                    else:
-                        print(f"  [Fallback] Segment {seg_id} had no valid translation. Falling back to original text.")
-                        final_text = seg.get("text", "").strip()
+                            recov = self._execute_translation([seg], system_prompt, context="", target_language=lang_key)
+                            cand = recov[0].get(lang_key, recov[0].get("translated_text", "")) if recov else ""
+                            if cand and cand.strip():
+                                # Disallow any Devanagari in English output
+                                if lang_key == "english" and re.search(r'[\u0900-\u097F]', cand):
+                                    continue
+                                final_text = cand.strip()
+                                break
+                        except Exception as re_err:
+                            print(f"  [Safety Recovery] Attempt {retry_att+1} failed for segment {seg_id}: {re_err}")
+                        time.sleep(2 * (retry_att + 1))
+                    
+                    if not final_text or (lang_key == "english" and re.search(r'[\u0900-\u097F]', final_text)):
+                        # Production Rule: Never inject gibberish, placeholders, or raw untranslated text into final script.
+                        raise RuntimeError(
+                            f"[PROD PIPELINE HALT] Segment {seg_id} failed translation after all retries. "
+                            f"Halting pipeline to guarantee zero gibberish or corruptions in the final video. "
+                            f"Progress up to segment {seg_id-1} is safely saved in the checkpoint."
+                        )
 
                 translated_map[seg_id] = {
                     "id": seg["id"],
