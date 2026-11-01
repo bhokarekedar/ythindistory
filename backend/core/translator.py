@@ -764,11 +764,26 @@ RULES:
                 print(f"  [Resume] ⏩ Skipping batch {i // self.batch_size + 1} (Segments {min(batch_ids)}-{max(batch_ids)} already translated in checkpoint).")
                 continue
             
-            # Build context (1 sentence before and 1 after the batch)
+            # Build context (including actual translated text of the immediately preceding segment)
             prev_context = segments[i-1]["text"] if i > 0 else ""
             next_idx = i + self.batch_size
             next_context = segments[next_idx]["text"] if next_idx < len(segments) else ""
-            context = f"{prev_context} [...] {next_context}"
+            
+            prev_translated_info = ""
+            if i > 0:
+                prev_id = int(segments[i-1]["id"])
+                prev_entry = translated_map.get(prev_id)
+                if prev_entry:
+                    prev_trans_text = prev_entry.get(lang_key, "").strip()
+                    if prev_trans_text:
+                        prev_translated_info = (
+                            f"Immediately preceding segment [ID {prev_id}] was already translated as:\n"
+                            f"\"{prev_trans_text}\"\n"
+                            f"(CRITICAL: Do NOT repeat, rephrase, or duplicate what was already narrated in segment {prev_id}. "
+                            f"Advance the narrative with new action.)\n\n"
+                        )
+            
+            context = f"{prev_translated_info}Source Text Surrounding Context:\n{prev_context} [...] {next_context}"
             
             # Layer 2: Dynamic in-prompt entity binding for this specific batch
             entity_bindings = self.get_batch_entity_bindings(batch)
@@ -832,6 +847,28 @@ RULES:
                     punct_glitches = self.detect_punctuation_glitches(val_text)
                     if punct_glitches:
                         qa_defects.setdefault(sid, []).extend(punct_glitches)
+
+                # 3. Detect Adjacent Stutter / Duplicate Thoughts (within batch and across batch boundary)
+                prev_eval_text = ""
+                if i > 0:
+                    prev_id = int(segments[i-1]["id"])
+                    prev_entry = translated_map.get(prev_id)
+                    if prev_entry:
+                        prev_eval_text = prev_entry.get(lang_key, "").strip()
+
+                for r_idx, r in enumerate(valid_results):
+                    sid = int(r.get("id", 0))
+                    val_text = r.get("translated_text", r.get(lang_key, r.get("text", ""))).strip()
+                    compare_text = prev_eval_text if r_idx == 0 else valid_results[r_idx-1].get("translated_text", valid_results[r_idx-1].get(lang_key, "")).strip()
+                    if val_text and compare_text:
+                        w1 = set(re.findall(r'\b[a-z]{3,}\b', compare_text.lower()))
+                        w2 = set(re.findall(r'\b[a-z]{3,}\b', val_text.lower()))
+                        if len(w1) >= 4 and len(w2) >= 4:
+                            overlap = len(w1 & w2) / max(1, min(len(w1), len(w2)))
+                            if overlap >= 0.58:
+                                qa_defects.setdefault(sid, []).append(
+                                    f"DUPLICATE STUTTER: Segment repeats the preceding sentence's idea/words ({int(overlap*100)}% overlap with '{compare_text[:40]}...'). Rewrite to eliminate repetition and translate only the new plot action."
+                                )
 
                 if qa_defects:
                     needs_validation = True
@@ -1225,11 +1262,28 @@ CRITICAL INSTRUCTIONS:
             w1 = set(re.findall(r'\b[a-z]{3,}\b', curr_text.lower()))
             w2 = set(re.findall(r'\b[a-z]{3,}\b', next_text.lower()))
             overlap = len(w1 & w2) / max(1, min(len(w1), len(w2)))
-            if overlap >= 0.70 and len(w1) >= 4 and len(w2) >= 4:
+            if overlap >= 0.58 and len(w1) >= 4 and len(w2) >= 4:
                 if next_sentences and len(next_sentences) > 1:
                     segments[i+1][lang] = ". ".join(next_sentences[1:]) + "."
                 elif curr_sentences and len(curr_sentences) > 1:
                     segments[i][lang] = ". ".join(curr_sentences[:-1]) + "."
+                else:
+                    print(f"  [Anti-Stutter] ⚠️ Detected duplicate thought between Segments {segments[i].get('id')} and {segments[i+1].get('id')} ({int(overlap*100)}% overlap). Re-synthesizing segment {segments[i+1].get('id')}...")
+                    try:
+                        fix_prompt = (
+                            f"The following two consecutive segments duplicate the same thought/action:\n"
+                            f"Segment {segments[i].get('id')}: \"{curr_text}\"\n"
+                            f"Segment {segments[i+1].get('id')} (DUPLICATE): \"{next_text}\"\n"
+                            f"Source text for Segment {segments[i+1].get('id')}: \"{segments[i+1].get('original_text', segments[i+1].get('text', ''))}\"\n\n"
+                            f"Task: Rewrite Segment {segments[i+1].get('id')} into a single, punchy, complete sentence that translates the NEW action from its source text without repeating what Segment {segments[i].get('id')} already said."
+                        )
+                        recov = self._execute_translation([segments[i+1]], fix_prompt, context="", target_language=lang)
+                        if recov:
+                            new_val = recov[0].get("translated_text", recov[0].get(lang, ""))
+                            if new_val and new_val.strip() != next_text:
+                                segments[i+1][lang] = self.sanitize_segment_text(new_val, target_language=lang)
+                    except Exception as e:
+                        print(f"  [Anti-Stutter] Warning: Recovery failed: {e}")
 
         return segments
 

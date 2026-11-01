@@ -84,7 +84,8 @@ class Transcriber:
         curr = []
         dangling_words = {
             "and", "but", "or", "because", "with", "to", "in", "of", "that", "so", "then",
-            "की", "का", "के", "और", "तथा", "या", "लेकिन", "कि", "तो", "में", "से", "पर", "भी"
+            "की", "का", "के", "और", "तथा", "या", "लेकिन", "कि", "तो", "में", "से", "पर", "भी",
+            "एक", "दो", "कोई", "किसी", "हर", "इस", "उस", "ये", "वो"
         }
         
         for s in segments:
@@ -282,7 +283,8 @@ Rules:
                 
         # Clean up any trailing dangling conjunctions/prepositions across segments
         dangling_words = {
-            "की", "का", "के", "और", "तथा", "या", "लेकिन", "कि", "तो", "में", "से", "पर",
+            "की", "का", "के", "और", "तथा", "या", "लेकिन", "कि", "तो", "में", "से", "पर", "भी",
+            "एक", "दो", "कोई", "किसी", "हर", "इस", "उस", "ये", "वो",
             "and", "but", "or", "because", "with", "to", "in", "of", "that", "so", "then"
         }
         for i in range(len(merged_segments) - 1):
