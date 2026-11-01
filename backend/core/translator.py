@@ -201,9 +201,11 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - NEVER start a segment with a lowercase continuation word (e.g., 'inside to look', 'and her', 'began to clean'). Always capitalize the first word.
    - NEVER end a segment on a comma (,), an unfinished preposition, or a trailing conjunction (e.g., 'when she went', 'and her', 'it then', 'just then', 'and', 'but', 'because', 'so', 'to').
    - If the input Hindi subtitle chunk is short (3-5 words) or cut off mid-thought, DO NOT translate it literally as a half-sentence fragment. Use the story context to complete the full, independent thought cleanly within that segment!
-4. SEAMLESS BOUNDARY HARMONIZATION (NO DUPLICATE REPETITIONS):
-   - When an input segment begins with a fragment carried over from an earlier sentence, DO NOT repeat what the previous segment already narrated.
-   - Seamlessly advance the narrative without stuttering or duplicating lines across adjacent segments.
+4. SEAMLESS BOUNDARY HARMONIZATION & NO DUPLICATE REPETITIONS:
+   - When an input segment begins with a fragment or trailing clause from a sentence that was already completed in the previous segment, DO NOT re-translate or paraphrase that thought again.
+   - Omit the trailing remnant and dedicate the segment entirely to advancing the new action or thought.
+   - Maintain uniform entity naming and noun forms across adjacent lines (never arbitrarily flip between singular and plural, or swap synonyms for the same subject back-to-back).
+   - Seamlessly advance the narrative without stuttering, semantic looping, or duplicating lines across adjacent segments.
 5. STRICT ZERO-DEVANAGARI GUARANTEE:
    - Under NO circumstances should any Devanagari or Hindi characters (e.g., हिन्दी अक्षर) appear anywhere in the output!
    - The entire output MUST be 100% fluent, idiomatic English. Never copy source Hindi into the English field.
@@ -602,7 +604,9 @@ Rules:
    - NEVER combine marks like '?.', '!.', '.?', or '..'.
    - NEVER end a segment with an ellipsis ('...'), dangling comma (','), semicolon, or hyphen.
    - End declarative statements with a single clean period (.).
-6. NO DUPLICATE REPETITIONS: If two adjacent segments repeat the same statement, harmonize them seamlessly.
+6. NO DUPLICATE REPETITIONS OR ENTITY DRIFT:
+   - If two adjacent segments repeat the same statement, idiom, or semantic thought, eliminate the redundant repetition and ensure the actual new narrative action is translated.
+   - Maintain uniform entity naming and noun forms across adjacent segments (do not alternate between singular and plural or switch synonyms without narrative reason).
 7. DURATION PACING & WORD-COUNT BUDGET:
    - Check if any segment is overly verbose and far exceeds its duration budget.
    - If a sentence is bloated with filler or excessive description, tighten it into a punchy, complete sentence so voiceover finishes synchronously with the video scene cut.
