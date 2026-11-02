@@ -320,7 +320,12 @@ def process_pipeline(job_id: str, request: VideoRequest):
             try:
                 from core.facebook_uploader import FacebookUploader
                 fb_uploader = FacebookUploader()
-                fb_uploader.upload_video(final_output, title=meta.get("title", f"Video {video_id}"), description=meta.get("description", ""))
+                fb_uploader.upload_video(
+                    final_output,
+                    title=meta.get("title", f"Video {video_id}"),
+                    description=meta.get("description", ""),
+                    tags=meta.get("keywords", [])
+                )
             except Exception as fb_err:
                 print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
         return
@@ -537,7 +542,12 @@ def process_pipeline(job_id: str, request: VideoRequest):
             try:
                 from core.facebook_uploader import FacebookUploader
                 fb_uploader = FacebookUploader()
-                fb_uploader.upload_video(final_output, title=meta.get("title", f"Video {video_id}"), description=meta.get("description", ""))
+                fb_uploader.upload_video(
+                    final_output,
+                    title=meta.get("title", f"Video {video_id}"),
+                    description=meta.get("description", ""),
+                    tags=meta.get("keywords", [])
+                )
             except Exception as fb_err:
                 print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
         

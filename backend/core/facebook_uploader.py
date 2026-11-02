@@ -9,19 +9,59 @@ class FacebookUploader:
         self.page_token = page_token or os.getenv("FB_PAGE_ACCESS_TOKEN")
         self.base_url = f"https://graph.facebook.com/v21.0/{self.page_id}/videos"
 
-    def upload_video(self, video_path: str, title: str, description: str, chunk_size_mb: int = 25) -> dict:
+    def optimize_seo(self, title: str, description: str, tags: list = None) -> tuple:
         """
-        Uploads long-form videos to a Facebook Page using Meta's Resumable Chunked Upload API.
-        Handles videos of any file size without hitting HTTP 413 Payload Too Large limits.
+        Enhances Title & Description with high-retention keywords and hashtags tailored for Facebook algorithms.
+        """
+        # 1. Title SEO: Ensure strong genre keywords exist without keyword stuffing
+        title_clean = title.strip()
+        lower_t = title_clean.lower()
+        if not any(k in lower_t for k in ["recap", "explained"]):
+            optimized_title = f"{title_clean} | Movie Recap"
+        else:
+            optimized_title = title_clean
+
+        # 2. Hashtag Generator: Curate top-ranking Facebook hashtags from metadata tags
+        default_hashtags = ["#MovieRecap", "#ThrillerMovie", "#MovieExplained", "#CrimeThriller", "#MysteryRecap"]
+        if tags:
+            for tag in tags[:8]:
+                cleaned = "#" + "".join([w.capitalize() for w in tag.split() if w.isalnum()])
+                if cleaned not in default_hashtags and len(cleaned) > 2:
+                    default_hashtags.append(cleaned)
+
+        hashtag_block = " ".join(default_hashtags[:10])
+        
+        # 3. Description formatting
+        desc_clean = description.strip() if description else ""
+        if hashtag_block not in desc_clean:
+            optimized_desc = f"{desc_clean}\n\n{hashtag_block}"
+        else:
+            optimized_desc = desc_clean
+
+        return optimized_title, optimized_desc
+
+    def upload_video(self, video_path: str, title: str, description: str, tags: list = None,
+                     chunk_size_mb: int = 25, target_tier1: bool = True) -> dict:
+        """
+        Uploads long-form videos to Facebook using Meta's Resumable Chunked Upload API.
+        
+        Features:
+        - Feed Targeting: Prioritizes organic distribution to Tier-1 countries (US, UK, CA, AU) 
+          WITHOUT blocking or restricting global viewers.
+        - SEO Optimization: Automatically embeds keyword badges and high-volume hashtags.
+        - Resumable Chunking: Safely uploads videos of any size (300MB - 5GB+).
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
         file_size = os.path.getsize(video_path)
+        opt_title, opt_desc = self.optimize_seo(title, description, tags)
+
         print(f"\n[Facebook Uploader] 🚀 Initializing Resumable Upload for: {os.path.basename(video_path)}")
-        print(f"  Page ID   : {self.page_id}")
-        print(f"  File Size : {file_size / (1024 * 1024):.2f} MB")
-        print(f"  Title     : {title}")
+        print(f"  Page ID          : {self.page_id}")
+        print(f"  File Size        : {file_size / (1024 * 1024):.2f} MB")
+        print(f"  Optimized Title  : {opt_title}")
+        print(f"  Target Demography: Tier 1 (US, GB, CA, AU) Feed-Prioritized")
 
         # ── Step 1: Start Upload Session ──────────────────────────────────
         start_payload = {
@@ -37,7 +77,6 @@ class FacebookUploader:
         video_id = session_data.get("video_id")
         upload_session_id = session_data.get("upload_session_id")
         start_offset = int(session_data.get("start_offset", 0))
-        end_offset = int(session_data.get("end_offset", file_size))
 
         print(f"  [Session Started] Video ID: {video_id} | Session ID: {upload_session_id}")
 
@@ -45,7 +84,6 @@ class FacebookUploader:
         chunk_size_bytes = chunk_size_mb * 1024 * 1024
         with open(video_path, "rb") as f:
             while start_offset < file_size:
-                # Meta suggests an end_offset, but we can send up to chunk_size_bytes
                 send_len = min(chunk_size_bytes, file_size - start_offset)
                 f.seek(start_offset)
                 chunk_data = f.read(send_len)
@@ -71,7 +109,6 @@ class FacebookUploader:
                         if t_res.status_code == 200:
                             t_json = t_res.json()
                             start_offset = int(t_json.get("start_offset"))
-                            end_offset = int(t_json.get("end_offset"))
                             success = True
                             break
                         else:
@@ -86,25 +123,34 @@ class FacebookUploader:
 
         print("  [Transfer Complete] 100% of video bytes uploaded successfully!")
 
-        # ── Step 3: Finish Upload & Publish ───────────────────────────────
+        # ── Step 3: Finish Upload & Publish with Tier-1 Feed Targeting ─────
         finish_payload = {
             "upload_phase": "finish",
             "upload_session_id": upload_session_id,
-            "title": title,
-            "description": description,
+            "title": opt_title,
+            "description": opt_desc,
             "access_token": self.page_token
         }
+
+        # Preferred Audience (News Feed & Watch tab priority) WITHOUT restricting global access
+        if target_tier1:
+            feed_targeting = {
+                "geo_locations": {
+                    "countries": ["US", "GB", "CA", "AU"]
+                }
+            }
+            finish_payload["feed_targeting"] = json.dumps(feed_targeting)
+
         f_res = requests.post(self.base_url, data=finish_payload, timeout=30)
         if f_res.status_code != 200:
             raise RuntimeError(f"Failed to finish Facebook video publish: {f_res.status_code} - {f_res.text}")
 
-        finish_data = f_res.json()
         print(f"  [Published] ✅ Success! Facebook Video ID: {video_id}")
         return {
             "success": True,
             "video_id": video_id,
             "page_id": self.page_id,
-            "url": f"https://www.facebook.com/{self.page_id}/videos/{video_id}"
+            "url": f"https://www.facebook.com/reel/{video_id}/"
         }
 
 if __name__ == "__main__":
@@ -121,6 +167,7 @@ if __name__ == "__main__":
     result = uploader.upload_video(
         video_path=video_path,
         title=meta.get("title"),
-        description=meta.get("description")
+        description=meta.get("description"),
+        tags=meta.get("keywords")
     )
     print("\nResult:", result)
