@@ -314,6 +314,15 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 "tags": meta.get("keywords", [])
             }
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
+
+        # Auto-publish directly to Facebook Page (Woivy Recaps)
+        if os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID"):
+            try:
+                from core.facebook_uploader import FacebookUploader
+                fb_uploader = FacebookUploader()
+                fb_uploader.upload_video(final_output, title=meta.get("title", f"Video {video_id}"), description=meta.get("description", ""))
+            except Exception as fb_err:
+                print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
         return
     
     try:
@@ -522,6 +531,15 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 "tags": meta.get("keywords", [])
             }
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
+
+        # Auto-publish directly to Facebook Page (Woivy Recaps)
+        if os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID"):
+            try:
+                from core.facebook_uploader import FacebookUploader
+                fb_uploader = FacebookUploader()
+                fb_uploader.upload_video(final_output, title=meta.get("title", f"Video {video_id}"), description=meta.get("description", ""))
+            except Exception as fb_err:
+                print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
         
         # Immediately clean up heavy scratch files (video chunks, resampled audio, mixed temp files)
         cleanup_job_temp(video_id)
