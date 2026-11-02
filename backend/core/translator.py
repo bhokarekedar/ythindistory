@@ -189,11 +189,12 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - Do NOT translate literally. Re-script the text with personal storytelling flair, enthusiasm, and tension.
    - Use natural storytelling beats and audience engagement ('Now, this is where things take a bizarre turn...', 'Imagine being in his shoes...', 'Suddenly, an unexpected revelation changes everything.').
    - Keep the pace lively, engaging, and atmospheric.
-2. TOTAL BRANDING & CHATTER PURGE:
+2. TOTAL BRANDING & CHATTER PURGE ([SKIP_PROMO]):
    - NEVER mention any third-party channel names (e.g., 'Filmi Cheeti', 'Mystery Recapped', 'Binge Lab', 'Cinema Mirage') or original creator names/handles.
-   - Remove all YouTube meta-chatter ('Subscribe now', 'Like the video', 'Hit the bell', 'Patreon link').
-   - If the first segment contains a channel greeting, replace it immediately with a captivating story hook about the film itself.
-   - Remove personal anecdotes ('I watched this last week'). Focus 100% on the movie plot and characters.
+   - WHENEVER the speaker talks about other movies, previous uploads ('I recently explained...'), links in description/comments, sponsors, or channel subscriptions:
+     DO NOT translate it! Set the translated text for that ID to exactly "[SKIP_PROMO]".
+   - The automation pipeline will automatically drop the audio and cleanly trim out the promotional video footage from the final cut.
+   - If the first segment contains a general greeting about the film, replace it with a captivating story hook about this movie. Focus 100% on the movie plot and characters.
 3. ABSOLUTE STANDALONE SENTENCES & KOKORO TTS AUDIO RULES:
    - CRITICAL: NEVER SLICE OR CHOP A SINGLE SENTENCE ACROSS MULTIPLE IDS!
    - Kokoro Text-to-Speech (TTS) makes bizarre glitched breathing noises when sentences end abruptly on clauses or conjunctions.
@@ -225,7 +226,9 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
 10. NATURAL SPOKEN RHYTHM & PACING:
    - Write sentences that sound natural, rhythmic, and captivating for a voiceover narrator. End complete sentences with a period (.).
 11. FIX TRANSCRIPTION TYPOS: Correct phonetic transcription errors using context.
-12. PRESERVE SEGMENT IDS: Return exactly one translation object for every input ID."""
+12. PRESERVE STORY INTEGRITY & SEGMENT IDS:
+   - For all movie story plot events, maintain strict 1-to-1 narrative progression without compressing or skipping plot points.
+   - Return exactly one translation object for every input ID. If an ID contains promotional chatter, set its text to "[SKIP_PROMO]". Do not merge or omit ID numbers from the output JSON."""
 
         if glossary:
             base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos, character genders, and ambiguous terms):\n{glossary}"
@@ -568,9 +571,20 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         text = re.sub(r'([.!?])\s*[,;:–—-]', r'\1', text)   # '.,', '?:' -> '.', '?'
         text = re.sub(r'[,;]{2,}', ',', text)               # ',,', ';;' -> ','
         text = re.sub(r'[,;:–—-]\s*$', '.', text)           # Trailing comma, semicolon, dash -> '.'
-        text = re.sub(r'\s+([.,!?])', r'\1', text)          # Space before punctuation -> remove
+        # 4. Smart Duplicate Word Deduplication (Whitelist-Aware)
+        # Prevents glossary collisions ("Apartment Apartment 604" -> "Apartment 604") 
+        # while strictly preserving legitimate English grammar ("that that", "had had", "very very", "do do", "Jong-in in").
+        legitimate_duplicates = {'that', 'had', 'very', 'do'}
+        def _collapse_dup(m):
+            w = m.group(1)
+            if w.lower() in legitimate_duplicates:
+                return m.group(0)
+            return w
 
-        # 4. Ensure proper capitalization
+        # Match consecutive identical words, ignoring hyphens so hyphenated names ("Jong-in in") are preserved
+        text = re.sub(r'(?<!-)\b([A-Za-z]{2,})\s+\1\b(?!-)', _collapse_dup, text, flags=re.IGNORECASE)
+
+        # 5. Ensure proper capitalization
         text = text.strip()
         if text and text[0].islower():
             text = text[0].upper() + text[1:]
