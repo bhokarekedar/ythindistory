@@ -326,7 +326,8 @@ def process_pipeline(job_id: str, request: VideoRequest):
                     final_output,
                     title=meta.get("title", f"Video {video_id}"),
                     description=meta.get("description", ""),
-                    tags=meta.get("keywords", [])
+                    tags=meta.get("keywords", []),
+                    movie_title=meta.get("movie_title")
                 )
             except Exception as fb_err:
                 print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
@@ -572,7 +573,8 @@ def process_pipeline(job_id: str, request: VideoRequest):
                     final_output,
                     title=meta.get("title", f"Video {video_id}"),
                     description=meta.get("description", ""),
-                    tags=meta.get("keywords", [])
+                    tags=meta.get("keywords", []),
+                    movie_title=meta.get("movie_title")
                 )
             except Exception as fb_err:
                 print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")

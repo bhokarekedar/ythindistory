@@ -272,8 +272,8 @@ Analyze the following {lang_desc} movie recap transcript and extract a definitiv
 
 Return a STRICT JSON object with these exact keys:
 {{
-  "movie_title": "Title of the movie or real incident",
-  "genre": "Genre (e.g. Horror, Mystery Thriller, True Crime)",
+  "movie_title": "Exact title of the movie if mentioned or introduced in the transcript, otherwise null",
+  "genre": "Genre (e.g. Horror, Mystery Thriller, True Crime, Sci-Fi)",
   "characters": [
     {{
       "canonical_name": "Full English Character Name (e.g. Caroline Ellis)",
@@ -291,6 +291,12 @@ Return a STRICT JSON object with these exact keys:
     }}
   ]
 }}
+
+MOVIE TITLE EXTRACTION RULES:
+- If the narrator clearly mentions, introduces, or names the movie title in the script (e.g. 'aaj hum movie X explain karenge', 'today we will explain the movie X', 'in this film X...'), extract the clean, accurate movie title into "movie_title".
+- If the narrator NEVER mentions or names the movie title in the script, set "movie_title": null.
+- STRICT RULE: DO NOT guess, fabricate, or hallucinate a movie title if it is not mentioned in the transcript!
+
 Identify all characters, villains, victims, and crucial props/locations. Be thorough and accurate."""
 
         for k_idx, key in enumerate(groq_keys):

@@ -3,15 +3,31 @@ import requests
 import json
 import time
 
+def is_valid_movie_title(t: str) -> bool:
+    if not t or not isinstance(t, str):
+        return False
+    t_clean = t.strip().lower()
+    invalid_keywords = [
+        "", "none", "null", "unknown", "untitled", "n/a", "na",
+        "extract the movie title from the story", "movie recap", "film recap",
+        "movie name", "unnamed", "not mentioned", "not specified"
+    ]
+    if t_clean in invalid_keywords:
+        return False
+    if t_clean.startswith("unknown") or t_clean.startswith("[") or t_clean.endswith("]"):
+        return False
+    return True
+
 class FacebookUploader:
     def __init__(self, page_id: str = None, page_token: str = None):
         self.page_id = page_id or os.getenv("FB_PAGE_ID", "561214384321132")
         self.page_token = page_token or os.getenv("FB_PAGE_ACCESS_TOKEN")
         self.base_url = f"https://graph.facebook.com/v21.0/{self.page_id}/videos"
 
-    def optimize_seo(self, title: str, description: str, tags: list = None) -> tuple:
+    def optimize_seo(self, title: str, description: str, tags: list = None, movie_title: str = None) -> tuple:
         """
-        Enhances Title & Description with high-retention keywords and hashtags tailored for Facebook algorithms.
+        Enhances Title & Description with high-retention keywords, explicit Movie Attribution,
+        and hashtags tailored for Facebook algorithms. If movie is absent, skips cleanly.
         """
         # 1. Title SEO: Ensure strong genre keywords exist without keyword stuffing
         title_clean = title.strip()
@@ -21,18 +37,47 @@ class FacebookUploader:
         else:
             optimized_title = title_clean
 
-        # 2. Hashtag Generator: Curate top-ranking Facebook hashtags from metadata tags
+        # Clean placeholders from title if any
+        for bad in ["| Unknown Recap", "| [Movie Name] Recap", "| None Recap"]:
+            if bad in optimized_title:
+                optimized_title = optimized_title.replace(bad, "| Movie Recap")
+
+        has_movie = is_valid_movie_title(movie_title)
+
+        # 2. Hashtag Generator: Curate top-ranking Facebook hashtags
         default_hashtags = ["#MovieRecap", "#ThrillerMovie", "#MovieExplained", "#CrimeThriller", "#MysteryRecap"]
+        
+        # Add movie-specific hashtag ONLY if valid movie name exists
+        if has_movie:
+            clean_movie = movie_title.strip()
+            m_tag = "#" + "".join([w.capitalize() for w in clean_movie.split() if w.isalnum()])
+            if m_tag not in default_hashtags and len(m_tag) > 2:
+                default_hashtags.insert(0, m_tag)
+
         if tags:
             for tag in tags[:8]:
                 cleaned = "#" + "".join([w.capitalize() for w in tag.split() if w.isalnum()])
-                if cleaned not in default_hashtags and len(cleaned) > 2:
+                if cleaned not in default_hashtags and len(cleaned) > 2 and not any(bad in cleaned.lower() for bad in ["unknown", "moviename", "na"]):
                     default_hashtags.append(cleaned)
 
         hashtag_block = " ".join(default_hashtags[:10])
         
-        # 3. Description formatting
+        # 3. Description formatting with prominent Movie Attribution
         desc_clean = description.strip() if description else ""
+        if has_movie:
+            clean_movie = movie_title.strip()
+            if "Movie:" not in desc_clean and "Movie Name:" not in desc_clean and clean_movie.lower() not in desc_clean.lower():
+                desc_clean = f"🎬 Movie Name: {clean_movie}\n\n{desc_clean}"
+
+        # Clean any accidental placeholder lines from description
+        filtered_lines = []
+        for line in desc_clean.split("\n"):
+            l_lower = line.lower()
+            if ("🎬 movie" in l_lower or "movie name:" in l_lower) and any(bad in l_lower for bad in ["unknown", "[", "]", "n/a", "none"]):
+                continue
+            filtered_lines.append(line)
+        desc_clean = "\n".join(filtered_lines).strip()
+
         if hashtag_block not in desc_clean:
             optimized_desc = f"{desc_clean}\n\n{hashtag_block}"
         else:
@@ -41,7 +86,7 @@ class FacebookUploader:
         return optimized_title, optimized_desc
 
     def upload_video(self, video_path: str, title: str, description: str, tags: list = None,
-                     chunk_size_mb: int = 25, target_tier1: bool = True) -> dict:
+                     chunk_size_mb: int = 25, target_tier1: bool = True, movie_title: str = None) -> dict:
         """
         Uploads long-form videos to Facebook using Meta's Resumable Chunked Upload API.
         
@@ -55,7 +100,7 @@ class FacebookUploader:
             raise FileNotFoundError(f"Video file not found: {video_path}")
 
         file_size = os.path.getsize(video_path)
-        opt_title, opt_desc = self.optimize_seo(title, description, tags)
+        opt_title, opt_desc = self.optimize_seo(title, description, tags, movie_title=movie_title)
 
         print(f"\n[Facebook Uploader] 🚀 Initializing Resumable Upload for: {os.path.basename(video_path)}")
         print(f"  Page ID          : {self.page_id}")
