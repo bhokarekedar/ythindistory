@@ -150,54 +150,66 @@ class Transcriber:
 
     def fetch_youtube_transcript(self, url: str) -> list:
         """
-        Attempts to instantly download the transcript directly from YouTube servers.
-        Returns a list of segments if successful, otherwise None.
+        Attempts to download the transcript directly from YouTube servers.
+        Includes automatic retry with exponential backoff to overcome YouTube's
+        temporary timedtext rate-limiting/signature throttling.
         """
-        try:
-            from urllib.parse import urlparse, parse_qs
-            # Extract video ID
-            parsed_url = urlparse(url)
-            video_id = ""
-            if parsed_url.hostname in ['www.youtube.com', 'youtube.com']:
-                video_id = parse_qs(parsed_url.query).get('v', [None])[0]
-            elif parsed_url.hostname in ['youtu.be']:
-                video_id = parsed_url.path[1:]
-                
-            if not video_id:
-                return None
-
-            print(f"Fetching official YouTube transcript for video {video_id}...")
+        import time
+        from urllib.parse import urlparse, parse_qs
+        # Extract video ID
+        parsed_url = urlparse(url)
+        video_id = ""
+        if parsed_url.hostname in ['www.youtube.com', 'youtube.com']:
+            video_id = parse_qs(parsed_url.query).get('v', [None])[0]
+        elif parsed_url.hostname in ['youtu.be']:
+            video_id = parsed_url.path[1:]
             
-            # Fetch transcripts, prioritizing official/auto English caption track, then Hindi
-            transcript_list = YouTubeTranscriptApi().list(video_id)
-            
-            try:
-                transcript = transcript_list.find_transcript(['en', 'hi', 'en-US', 'hi-IN'])
-            except NoTranscriptFound:
-                # If neither english nor hindi exists, just get whatever is available and we'll translate it later
-                transcript = transcript_list.find_transcript([t.language_code for t in transcript_list])
-                
-            fetched_data = transcript.fetch()
-            
-            # Convert YouTube's format to our segment format
-            segments = []
-            for i, seg in enumerate(fetched_data):
-                # Handle both dicts (older versions) and objects (newer versions)
-                text = seg['text'] if isinstance(seg, dict) else seg.text
-                start = seg['start'] if isinstance(seg, dict) else seg.start
-                duration = seg['duration'] if isinstance(seg, dict) else seg.duration
-                
-                segments.append({
-                    "id": i + 1,
-                    "start": start,
-                    "end": start + duration,
-                    "text": text.strip()
-                })
-            
-            return segments
-        except Exception as e:
-            print(f"YouTube Transcript Fetch Failed: {e}")
+        if not video_id:
             return None
+
+        # Retry loop for YouTube timedtext rate-limiting / signature throttling
+        for attempt in range(3):
+            try:
+                print(f"Fetching official YouTube transcript for video {video_id} (Attempt {attempt + 1}/3)...")
+                
+                # Fetch transcripts, prioritizing official/auto English caption track, then Hindi
+                transcript_list = YouTubeTranscriptApi().list(video_id)
+                
+                try:
+                    transcript = transcript_list.find_transcript(['en', 'hi', 'en-US', 'hi-IN'])
+                except NoTranscriptFound:
+                    # If neither english nor hindi exists, get whatever is available
+                    transcript = transcript_list.find_transcript([t.language_code for t in transcript_list])
+                    
+                fetched_data = transcript.fetch()
+                
+                # Convert YouTube's format to our segment format
+                segments = []
+                for i, seg in enumerate(fetched_data):
+                    text = seg['text'] if isinstance(seg, dict) else seg.text
+                    start = seg['start'] if isinstance(seg, dict) else seg.start
+                    duration = seg['duration'] if isinstance(seg, dict) else seg.duration
+                    
+                    segments.append({
+                        "id": i + 1,
+                        "start": start,
+                        "end": start + duration,
+                        "text": text.strip()
+                    })
+                
+                return segments
+
+            except Exception as e:
+                err_str = str(e)
+                print(f"  [Transcriber] YouTube timedtext attempt {attempt + 1} throttled: {err_str[:120]}...")
+                if attempt < 2:
+                    wait_time = (attempt + 1) * 2.5
+                    print(f"  [Transcriber] Waiting {wait_time}s before retrying YouTube transcript...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"YouTube Transcript Fetch Failed after 3 attempts: {e}")
+                    return None
+        return None
 
     def _llm_merge_segments(self, segments: list, batch_size: int = 50) -> list:
         """
