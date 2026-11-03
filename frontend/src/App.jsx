@@ -32,6 +32,7 @@ function App() {
   const [storageStats, setStorageStats] = useState({ temp_size: '...', output_size: '...' })
   const [datasetCount, setDatasetCount] = useState(0)
   const [cleaning, setCleaning] = useState(false)
+  const [burnSubtitles, setBurnSubtitles] = useState(true)
 
   const fetchStorage = async () => {
     try {
@@ -107,7 +108,8 @@ function App() {
           target_language: language, 
           channel_type: channelType,
           skip_intervals: formattedSkipIntervals,
-          webhook_url: webhookUrl || undefined
+          webhook_url: webhookUrl || undefined,
+          burn_subtitles: burnSubtitles
         })
       })
       const data = await res.json()
@@ -410,7 +412,50 @@ function App() {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px' }}>
+        {/* On-Screen Captions Toggle */}
+        <div style={{
+          padding: '12px 16px',
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: '15px'
+        }}>
+          <div>
+            <div style={{ fontWeight: '600', fontSize: '14px', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>💬 Burn-In Styled Captions</span>
+              <span style={{ fontSize: '11px', background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                ⭐️ Highly Recommended for Facebook
+              </span>
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>
+              Hardcodes crisp bold subtitles (white text + black outline) at bottom-center. Essential since 85% of Facebook users watch on mute.
+            </div>
+          </div>
+          <label style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px', cursor: 'pointer', margin: 0 }}>
+            <input
+              type="checkbox"
+              checked={burnSubtitles}
+              onChange={(e) => setBurnSubtitles(e.target.checked)}
+              style={{ opacity: 0, width: 0, height: 0 }}
+            />
+            <span style={{
+              position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: burnSubtitles ? '#2563eb' : '#cbd5e1',
+              transition: '.2s', borderRadius: '26px'
+            }}>
+              <span style={{
+                position: 'absolute', content: '""', height: '20px', width: '20px', left: burnSubtitles ? '24px' : '4px', bottom: '3px',
+                backgroundColor: 'white', transition: '.2s', borderRadius: '50%',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+              }} />
+            </span>
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
           {/* Channel 1: Movie Recap Only */}
           {channelType === 'movie_recap' && (
             <div style={{ padding: '16px', border: '1px solid #28a745', borderRadius: '8px', background: '#f8fff9' }}>

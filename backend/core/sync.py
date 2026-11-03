@@ -509,14 +509,15 @@ class AudioSynchronizer:
 
     def build_timeline(self, segments: list, original_video_path: str,
                        output_path: str, job_dir: str = "temp", watermark_settings=None, text_watermark_settings=None, skip_intervals=None,
-                       channel_type: str = "movie_recap", intro_path: str = None, watermark_path: str = None, text_watermark_path: str = None):
+                       channel_type: str = "movie_recap", intro_path: str = None, watermark_path: str = None, text_watermark_path: str = None,
+                       burn_subtitles: bool = True):
         """
         Produces the final video:
           0. Compute audio timeline  → where each sentence starts/ends in output
           A. Build unified lossless WAV  → pure Python PCM, zero glitches
           B. Build retimed video-only timeline  → driven by audio timestamps
           C. Mux A+B once with loudnorm  → single encode pass
-          D. Prepend intro with crossfade  → (if intro.mp4 exists)
+          D. Prepend intro with crossfade + Burn-in styled captions (if enabled)
 
         Both audio (A) and video (B) are driven by the SAME timeline computed
         in step 0. This guarantees A/V sync at every sentence boundary.
@@ -538,6 +539,15 @@ class AudioSynchronizer:
         # ── Step 0: Shared timeline ───────────────────────────────────────
         print("\n[Sync] Step 0: Computing audio timeline (sentence pacing)...")
         timeline, total_audio_dur = self._compute_audio_timeline(segments, job_dir)
+
+        # ── Optional: Generate Styled Subtitles ────────────────────────────
+        sub_paths = None
+        if burn_subtitles:
+            try:
+                from core.subtitles import SubtitleGenerator
+                sub_paths = SubtitleGenerator().generate(timeline, job_dir)
+            except Exception as sub_err:
+                print(f"  [Subtitles] ⚠️ Warning generating subtitles: {sub_err}")
 
         # ── Step A: Lossless audio WAV ────────────────────────────────────
         print(f"\n[Sync] Step A: Building unified narrator WAV ({total_audio_dur:.1f}s)...")
@@ -577,9 +587,12 @@ class AudioSynchronizer:
                 print("FFmpeg Error (mux):", e.stderr.decode("utf8") if e.stderr else str(e))
                 raise
 
-        # ── Step D: Prepend Intro ─────────────────────────────────────────
+        # ── Step D: Prepend Intro & Burn Captions ─────────────────────────
+        has_subtitles = sub_paths and os.path.exists(sub_paths["ass_path"])
+        
         if active_intro and os.path.exists(active_intro):
-            print(f"\n[Sync] Step D: Prepending intro ({os.path.basename(active_intro)}) with smooth transition...")
+            sub_msg = "with Burned-in Captions" if has_subtitles else "without Captions"
+            print(f"\n[Sync] Step D: Prepending intro ({os.path.basename(active_intro)}) {sub_msg}...")
             intro_duration = self.get_video_duration(active_intro)
             
             fade_dur = 0.5
@@ -612,8 +625,15 @@ class AudioSynchronizer:
                 .filter("fps", fps=30, round="near")
                 .filter("format", "yuv420p")
                 .filter("setpts", "PTS-STARTPTS")
-                .filter("fade", type="in", start_time=0, duration=0.3)
             )
+            
+            # Burn styled subtitles into main story video (perfect sync with narration)
+            if has_subtitles:
+                print(f"  [Subtitles] 🔥 Burning styled subtitles into video stream: {sub_paths['ass_path']}")
+                main_v = main_v.filter("ass", os.path.abspath(sub_paths["ass_path"]))
+                
+            main_v = main_v.filter("fade", type="in", start_time=0, duration=0.3)
+            
             main_a = (
                 main_in.audio
                 .filter("aresample", TARGET_RATE)
@@ -636,8 +656,30 @@ class AudioSynchronizer:
                 print("FFmpeg Error (intro concat):", e.stderr.decode("utf8") if e.stderr else str(e))
                 raise
         else:
-            ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c="copy", movflags="+faststart").run(
-                quiet=True, overwrite_output=True
-            )
+            if has_subtitles:
+                print(f"\n[Sync] Step D: Burning styled subtitles into final video (no intro)...")
+                main_in = ffmpeg.input(mixed_video_path)
+                main_v = (
+                    main_in.video
+                    .filter("scale", 1280, 720, out_color_matrix="bt709", out_range="tv")
+                    .filter("setsar", 1)
+                    .filter("fps", fps=30, round="near")
+                    .filter("format", "yuv420p")
+                    .filter("ass", os.path.abspath(sub_paths["ass_path"]))
+                )
+                main_a = main_in.audio
+                out = ffmpeg.output(
+                    main_v, main_a, output_path,
+                    vcodec="libx264", acodec="aac",
+                    ac=TARGET_CHANNELS, ar=TARGET_RATE,
+                    pix_fmt="yuv420p",
+                    movflags="+faststart",
+                    **{"crf": "18", "preset": "fast"}
+                )
+                ffmpeg.run(out, quiet=True, overwrite_output=True)
+            else:
+                ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c="copy", movflags="+faststart").run(
+                    quiet=True, overwrite_output=True
+                )
 
         print(f"\n[Sync] ✅ Final output: {output_path}")

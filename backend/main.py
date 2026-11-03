@@ -68,6 +68,7 @@ class VideoRequest(BaseModel):
     textWatermark: Optional[WatermarkSettings] = None
     skip_intervals: Optional[List[TimeRange]] = None
     webhook_url: Optional[str] = None
+    burn_subtitles: bool = True
 
 class SnapshotRequest(BaseModel):
     url: str
@@ -499,6 +500,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 "id": seg["id"],
                 "start": seg["start"],
                 "end": seg["end"],
+                "text": text,
                 "audio_path": audio_path,
                 "use_ai_image": seg.get("use_ai_image", False),
                 "ai_image_path": seg.get("ai_image_path", None)
@@ -508,7 +510,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
         os.makedirs(output_folder, exist_ok=True)
 
         job_status[job_id] = f"Rendering final video ({channel_type})..."
-        print(f"\n[JOB {job_id}] Step 6: Rendering Final Video for {channel_type}...")
+        print(f"\n[JOB {job_id}] Step 6: Rendering Final Video for {channel_type} (Captions: {getattr(request, 'burn_subtitles', True)})...")
         
         # Clear stale render artifacts so we always regenerate with current code.
         # (TTS WAVs and translation JSON are intentionally kept — they are expensive to regenerate.)
@@ -530,8 +532,15 @@ def process_pipeline(job_id: str, request: VideoRequest):
             watermark_settings=request.watermark,
             text_watermark_settings=request.textWatermark,
             skip_intervals=request.skip_intervals,
-            channel_type=channel_type
+            channel_type=channel_type,
+            burn_subtitles=getattr(request, 'burn_subtitles', True)
         )
+        
+        # Archive generated subtitle tracks (.srt & .ass) to output folder
+        for sub_ext in ["srt", "ass"]:
+            sub_f = os.path.join(job_dir, f"subtitles.{sub_ext}")
+            if os.path.exists(sub_f):
+                shutil.copy2(sub_f, os.path.join(output_folder, f"{video_id}.{sub_ext}"))
         
         job_status[job_id] = "Generating SEO Metadata..."
         print(f"\n[JOB {job_id}] Step 7: Generating SEO Metadata...")
