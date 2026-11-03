@@ -163,3 +163,103 @@ code {
 .main-btn {
   width: 100%;
 }
+
+/* Pre-Flight Script Quality Card */
+.quality-badge-container {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: left;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.quality-badge-container.approved {
+  background: rgba(16, 185, 129, 0.08);
+  border: 2px solid #10b981;
+}
+
+.quality-badge-container.rejected {
+  background: rgba(239, 68, 68, 0.1);
+  border: 2px solid #ef4444;
+}
+
+.quality-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.quality-score-pill {
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 0.4rem 0.9rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.quality-badge-container.approved .quality-score-pill {
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+
+.quality-badge-container.rejected .quality-score-pill {
+  color: #f87171;
+  border: 1px solid #ef4444;
+}
+
+.quality-verdict {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+}
+
+.quality-badge-container.approved .quality-verdict {
+  background: #10b981;
+  color: #064e3b;
+}
+
+.quality-badge-container.rejected .quality-verdict {
+  background: #ef4444;
+  color: #450a0a;
+}
+
+.quality-reason {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #e5e7eb;
+  margin: 0.6rem 0;
+}
+
+.quality-flaws-section {
+  margin-top: 0.8rem;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.8rem;
+  border-radius: 8px;
+}
+
+.quality-flaws-list {
+  margin: 0.4rem 0 0 1.2rem;
+  padding: 0;
+  color: #fca5a5;
+  font-size: 0.9rem;
+}
+
+.quality-flaws-list li {
+  margin-bottom: 0.3rem;
+}
+
+.quality-recommendation {
+  margin-top: 0.8rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 3px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #fbbf24;
+}
+

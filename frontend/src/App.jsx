@@ -10,6 +10,7 @@ function App() {
   const [jobId, setJobId] = useState(null)
   const [status, setStatus] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
+  const [evaluation, setEvaluation] = useState(null)
   
   const [skipIntervals, setSkipIntervals] = useState([{ start: '', end: '' }])
   
@@ -112,6 +113,7 @@ function App() {
       const data = await res.json()
       setJobId(data.job_id)
       setStatus('Initializing...')
+      setEvaluation(null)
     } catch (err) {
       setStatus(`Error: ${err.message}`)
     }
@@ -119,12 +121,15 @@ function App() {
 
   useEffect(() => {
     let interval
-    if (jobId && !status.includes('Completed') && !status.includes('Error')) {
+    if (jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')) {
       interval = setInterval(async () => {
         try {
           const res = await fetch(`http://localhost:8000/api/status/${jobId}`)
           const data = await res.json()
           setStatus(data.status)
+          if (data.evaluation) {
+            setEvaluation(data.evaluation)
+          }
           if (data.status.includes('Completed')) {
             const path = data.status.split(': ')[1]
             setVideoUrl(path)
@@ -416,7 +421,7 @@ function App() {
                 <button 
                   type="button" 
                   onClick={(e) => handleSubmit(e, 'english', 'movie_recap')} 
-                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
                   className="main-btn" 
                   style={{ backgroundColor: '#28a745', flex: 1 }}
                 >
@@ -425,7 +430,7 @@ function App() {
                 <button 
                   type="button" 
                   onClick={(e) => handleSubmit(e, 'hindi', 'movie_recap')} 
-                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
                   className="main-btn"
                   style={{ flex: 1 }}
                 >
@@ -448,7 +453,7 @@ function App() {
                 <button 
                   type="button" 
                   onClick={(e) => handleSubmit(e, 'english', 'thriller_story')} 
-                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
                   className="main-btn" 
                   style={{ backgroundColor: '#dc3545', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
                 >
@@ -457,7 +462,7 @@ function App() {
                 <button 
                   type="button" 
                   onClick={(e) => handleSubmit(e, 'hindi', 'thriller_story')} 
-                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
                   className="main-btn" 
                   style={{ backgroundColor: '#6f42c1', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
                 >
@@ -473,6 +478,33 @@ function App() {
         <div className="status-container">
           <h3>Status:</h3>
           <p className="status-text">{status}</p>
+        </div>
+      )}
+
+      {evaluation && (
+        <div className={`quality-badge-container ${evaluation.score >= 90 ? 'approved' : 'rejected'}`}>
+          <div className="quality-header">
+            <span className="quality-score-pill">
+              Score: {evaluation.score}% {evaluation.score >= 90 ? '✅ APPROVED' : '❌ REJECTED (<90% threshold)'}
+            </span>
+            <span className="quality-verdict">{evaluation.verdict}</span>
+          </div>
+          <p className="quality-reason"><strong>Analysis:</strong> {evaluation.reason}</p>
+          {evaluation.detected_flaws && evaluation.detected_flaws.length > 0 && (
+            <div className="quality-flaws-section">
+              <strong>Detected Flaws:</strong>
+              <ul className="quality-flaws-list">
+                {evaluation.detected_flaws.map((flaw, i) => (
+                  <li key={i}>{flaw}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {evaluation.recommendation && (
+            <div className="quality-recommendation">
+              <strong>Recommendation:</strong> {evaluation.recommendation}
+            </div>
+          )}
         </div>
       )}
 

@@ -23,6 +23,7 @@ from core.sync import AudioSynchronizer
 from core.metadata import MetadataGenerator
 from core.api_keys import ApiKeyManager
 from core.image_generator import CloudflareImageGenerator
+from core.quality_evaluator import ScriptQualityEvaluator
 import json
 import urllib.request
 app = FastAPI(title="Movie Recap Automation API")
@@ -76,6 +77,7 @@ class SnapshotRequest(BaseModel):
 
 # In-memory status store for MVP
 job_status = {}
+job_evaluations = {}
 
 def send_webhook_with_n8n_autostart(webhook_url: str, payload: dict, max_retries: int = 3):
     """
@@ -385,6 +387,30 @@ def process_pipeline(job_id: str, request: VideoRequest):
             transcript_path = transcriber.transcribe(raw_audio_path, youtube_url=url)
             print(f"[JOB {job_id}] YouTube Transcript ready. JSON stored at: {transcript_path}")
             
+        # Step 3.5: Pre-Flight Script Quality Gate (Threshold >= 90%)
+        job_status[job_id] = "Evaluating transcript quality & ASR integrity..."
+        print(f"\n[JOB {job_id}] Step 3.5: Evaluating Transcript Quality Gate (Threshold >= 90%)...")
+        evaluator = ScriptQualityEvaluator(api_key=groq_api_key, min_score=90)
+        eval_result = evaluator.evaluate(transcript_path, channel_type=channel_type)
+        job_evaluations[job_id] = eval_result
+        score = eval_result.get("score", 0)
+        verdict = eval_result.get("verdict", "REJECT")
+        
+        if score < 90 or verdict == "REJECT":
+            reason = eval_result.get("reason", "Acoustic distortion and ASR corruption detected.")
+            flaws = "; ".join(eval_result.get("detected_flaws", [])[:2])
+            rejection_msg = f"Rejected (Score: {score}% - Below 90% Threshold): {reason}"
+            job_status[job_id] = rejection_msg
+            print(f"\n[JOB {job_id}] ❌ PIPELINE ABORTED: {rejection_msg}")
+            if flaws:
+                print(f"[JOB {job_id}] Flagged Flaws: {flaws}")
+            # Clean up scratch files immediately to conserve space
+            cleanup_job_temp(video_id)
+            return
+
+        print(f"[JOB {job_id}] ✅ Transcript Quality Approved (Score: {score}%). Proceeding to translation.")
+        job_status[job_id] = f"Transcript approved (Score: {score}%). Proceeding to translation..."
+
         # Step 4: Translation / Script Rewrite
         target_lang = request.target_language.lower()
         script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}{output_suffix}_transcript.json")
@@ -639,7 +665,11 @@ def process_video(request: VideoRequest, background_tasks: BackgroundTasks):
 
 @app.get("/api/status/{job_id}")
 def get_status(job_id: str):
-    return {"job_id": job_id, "status": job_status.get(job_id, "Not found")}
+    return {
+        "job_id": job_id, 
+        "status": job_status.get(job_id, "Not found"),
+        "evaluation": job_evaluations.get(job_id, None)
+    }
 
 @app.get("/api/training-datasets")
 def list_training_datasets():
