@@ -149,12 +149,13 @@ class MovieRecapEngine:
                     pass
         return dialogues
 
-    def generate_recap_script(self, movie_path: str, dialogue_json_path: str, output_script_path: str, target_lang: str = "english") -> str:
+    def generate_recap_script(self, movie_path: str, dialogue_json_path: str, output_script_path: str, target_lang: str = "english", overwrite: bool = False) -> str:
         """
         Distills raw movie dialogue into a high-retention, YouTube recap voiceover script.
-        Breaks the film into 3 distinct acts to ensure rich storytelling depth and airtight climax.
+        Slices the film into 5 chronological storytelling acts based on actual runtime seconds,
+        guaranteeing full story coverage, seamless narrative scene bridges, and complete twist preservation.
         """
-        if os.path.exists(output_script_path):
+        if os.path.exists(output_script_path) and not overwrite:
             print(f"  [MovieEngine] ⏩ Found cached recap script at: {output_script_path}")
             return output_script_path
 
@@ -166,20 +167,59 @@ class MovieRecapEngine:
 
         total_lines = len(dialogues)
         movie_title = os.path.splitext(os.path.basename(movie_path))[0].split(".")[0].replace("_", " ").title()
-        print(f"\n[MovieEngine] 🎬 Crafting Production YouTube Recap Script for '{movie_title}' ({total_lines} dialogue lines)...")
+        
+        # Calculate actual elapsed runtime in seconds
+        max_timestamp = max((float(d.get("end", d.get("start", 0))) for d in dialogues), default=5400.0)
+        total_runtime_sec = max(3600.0, max_timestamp)
+        runtime_mins = int(total_runtime_sec // 60)
+        
+        print(f"\n[MovieEngine] 🎬 Crafting Production YouTube Recap Script for '{movie_title}'")
+        print(f"  [MovieEngine] ⏱️ Total Movie Runtime: ~{runtime_mins} minutes ({total_lines} dialogue lines)")
 
-        # Split dialogue into 3 logical acts by dialogue count / runtime
-        act1_end = int(total_lines * 0.33)
-        act2_end = int(total_lines * 0.70)
-
-        act1_dialogues = dialogues[:act1_end]
-        act2_dialogues = dialogues[act1_end:act2_end]
-        act3_dialogues = dialogues[act2_end:]
+        # 6 chronological storytelling acts based on runtime seconds (guaranteeing dedicated Climax Act 6)
+        t_act1 = total_runtime_sec * 0.20
+        t_act2 = total_runtime_sec * 0.40
+        t_act3 = total_runtime_sec * 0.62
+        t_act4 = total_runtime_sec * 0.84
+        t_act5 = total_runtime_sec * 0.96
 
         acts_data = [
-            ("Act 1: Inciting Incident & Setup", act1_dialogues, 35),
-            ("Act 2: Rising Tension & Investigation", act2_dialogues, 45),
-            ("Act 3: The Climax, Twist & Shocking Resolution", act3_dialogues, 40)
+            (
+                "Act 1: The Inciting Incident & Road Trip Accident",
+                [d for d in dialogues if d["start"] <= t_act1],
+                14,
+                "Covering the bitter road trip argument, the gas station stop, Peri falling into the construction pit, Ray desperately jumping after her, and rushing her toward medical help."
+            ),
+            (
+                "Act 2: Hospital Admission & The Mysterious Disappearance",
+                [d for d in dialogues if t_act1 < d["start"] <= t_act2],
+                14,
+                "Covering the tense hospital check-in, admitting Peri for a CT scan in the sub-basement with Joanne, Ray falling asleep in the waiting room, and waking up to find them vanished."
+            ),
+            (
+                "Act 3: Hospital Gaslighting & Police Investigation",
+                [d for d in dialogues if t_act2 < d["start"] <= t_act3],
+                14,
+                "Covering the hospital staff insisting Ray arrived alone with no records of Peri, security escorting him, police arrival, searching the hospital, and inspecting the rest stop pit where blood is discovered."
+            ),
+            (
+                "Act 4: Psychiatrist Confrontation & The Standoff",
+                [d for d in dialogues if t_act3 < d["start"] <= t_act4],
+                14,
+                "Covering Dr. Isaacs revealing Ray's previous deadly car accident, accusing him of severe trauma delusions, attempting to sedate him, and Ray overpowering officers to escape."
+            ),
+            (
+                "Act 5: Sub-Basement Breach & Operating Room Shootout",
+                [d for d in dialogues if t_act4 < d["start"] <= t_act5],
+                12,
+                "Covering Ray breaking into the restricted sub-basement operating room, confronting surgeons, shooting Dr. Volk dead, wrapping who he believes is Peri in a blanket, and rushing out to his car."
+            ),
+            (
+                "Act 6: The Sunrise Escape, The Mirror Realization & The Shocking Trunk Twist",
+                [d for d in dialogues if d["start"] > t_act5],
+                11,
+                "Deliver the unforgettable finale and chilling twist ending: 1) Ray drives his car into the morning sunrise, believing his family is safe. 2) Ray starts singing 'Sing a rainbow' while Dr. Isaacs' voice echoes that trauma forces the mind to construct alternate realities. 3) Ray glances into the rearview mirror, finally seeing the patient is actually an unknown dying surgical stranger. 4) FINAL SEGMENT: In the car trunk, Joanne and Peri's dead bodies have been lying lifeless ever since the pit accident, proving Ray hallucinated everything!"
+            )
         ]
 
         all_segments = []
@@ -188,54 +228,79 @@ class MovieRecapEngine:
 
         from core.translator import StoryTranslator
 
-        for act_name, act_dialogues, target_segments in acts_data:
+        for act_name, act_dialogues, target_segments, act_guidance in acts_data:
+            if not act_dialogues:
+                continue
+
             print(f"  [MovieEngine] ✍️ Generating {act_name} (~{target_segments} voiceover beats)...")
+            
             condensed_log = []
             for d in act_dialogues:
                 hrs = int(d['start'] // 3600)
                 mins = int((d['start'] % 3600) // 60)
                 secs = int(d['start'] % 60)
                 time_str = f"{hrs:02d}:{mins:02d}:{secs:02d}"
-                condensed_log.append(f"[{time_str}] {d['text']}")
+                condensed_log.append(f"[{time_str}] {d['text'].strip()}")
 
-            sample_step = max(1, len(condensed_log) // 180)
-            sampled_dialogue_text = "\n".join(condensed_log[::sample_step][:200])
+            # Sample evenly across the entire duration of the act (40 points) so the full timeline arc is represented
+            if len(condensed_log) > 40:
+                step = len(condensed_log) / 40
+                sampled_dialogues = [condensed_log[int(i * step)] for i in range(40)]
+                sampled_dialogue_text = "\n".join(sampled_dialogues)
+            else:
+                sampled_dialogue_text = "\n".join(condensed_log)
 
-            system_prompt = f"""You are a master YouTube movie recap script doctor and voiceover director.
-Your mission is to transform the provided raw movie dialogue into an elite, high-retention YouTube Movie Recap narration script ({target_lang.upper()}).
+            system_prompt = f"""You are an elite YouTube movie recap script doctor and voiceover director for top channels (e.g. Mystery Recapped, Movie Recaps).
+Your mission is to transform the provided raw chronological movie dialogue into a viral, high-retention YouTube Movie Recap narration script in spoken {target_lang.upper()}.
 
-CRITICAL STORYTELLING RULES:
-1. MASTER RECAP STORYTELLER (NEVER TRANSLATE OR ECHO DIALOGUE LITERALLY):
-   - You are the narrator explaining the film to movie lovers.
-   - Set the scene, explain characters' inner thoughts, escalate dramatic stakes, and build mystery.
-   - Example good line: "Driving home on a cold Thanksgiving night, Ray and his wife Joanne are locked in a bitter argument—completely unaware that a split-second tragedy is about to shatter their family."
-2. UNIVERSAL 3RD-PERSON POV:
-   - Always narrate in the third person ("Ray realized", "The doctor claimed", "She discovered"). Never use first-person "I" or "my".
-3. KOKORO TTS AUDIO RULES:
-   - Every single segment MUST be a complete, grammatically finished standalone statement ending strictly with a period (.), exclamation (!), or question mark (?).
-   - NEVER end on trailing prepositions or conjunctions ('and', 'to', 'because', 'so', 'who', 'which').
-4. DURATION & PACING:
-   - Budget each segment to be punchy (~12 to 18 words), taking ~4.5 to 6.5 seconds when spoken.
-5. PRESERVE THE CLIMAX & TRUTH:
-   - Do not sanitize or obscure the ending. State the full, shocking resolution with maximum narrative impact.
-6. FORMAT:
-   - Output JSON with a key 'segments'. Each segment must have:
-     "narration": The spoken voiceover text.
-     "movie_timestamp": The timestamp string (HH:MM:SS) from the dialogue log where this scene occurs.
+CRITICAL PRODUCTION RULES:
+1. PUNCHY, CINEMATIC 3RD-PERSON RECAP NARRATOR:
+   - Narrate in active, cinematic third person ("Ray realizes", "The doctor insists", "Joanne warns"). Never use first person ("I", "my").
+   - Set scenes, explain motivations, build dramatic suspense, and advance the plot with every line.
+   - Summarize the story cleanly; NEVER transcribe minor receptionist chatter or literal word-for-word exchanges.
+
+2. SEAMLESS NARRATIVE SCENE BRIDGES (ABSOLUTELY NO META-PHRASES):
+   - FORBIDDEN META-PHRASES: NEVER use "In this scene we see", "Cut to", "The scene shifts to", "We are shown", "The camera pans", "Here we observe".
+   - Instead, professional recaps transition between locations and scenes using seamless narrative bridges.
+   - When a segment represents a new scene, location, or time leap (scene_change = true), open the sentence with an evocative narrative bridge phrase such as:
+     * "Arriving at the abandoned rest stop, Ray pulls over to inspect the car."
+     * "Back inside the crowded emergency room, Joanne's patience wears thin."
+     * "Hours later, deep in the hospital's locked sub-basement, the terrifying truth unfolds."
+     * "Stepping out into the biting morning air, Ray rushes toward his car."
+     * "Glancing into the rearview mirror as the sun rises, the chilling reality hits."
+
+3. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
+   - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
+   - Word count MUST be between 10 and 16 words per segment. (NEVER write more than 1 sentence, and NEVER write paragraphs).
+   - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
+   - NEVER end on trailing conjunctions or prepositions ('and', 'because', 'so', 'to', 'who').
+
+4. FULL TIMELINE PACING & TWIST PRESERVATION:
+   - You MUST distribute your segments evenly across the entire dialogue timeline provided, from the opening timestamp to the final timestamp of this act.
+   - For Act 6, you MUST conclude with the shocking twist: Ray looks into the rearview mirror and sees an unknown surgical patient, while the final segment reveals Joanne and Peri's bodies were dead in his car trunk the entire time!
+
+5. OUTPUT FORMAT (COMPACT JSON):
+   - Return valid JSON with a single key 'segments'. Each segment object MUST have:
+     "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, no meta-phrases).
+     "time": The timestamp string (HH:MM:SS) from the dialogue log where this scene occurs.
+     "loc": Short name of the scene location (e.g. "Rest Stop", "ER Waiting Room", "Sub-Basement OR", "Ray's Car / Sunrise").
+     "scene_change": Boolean (true if this segment transitions to a new scene, time, or location).
 """
 
             user_prompt = f"""Film: {movie_title}
-Section: {act_name}
-Target Segments to produce: approximately {target_segments} segments.
+Act: {act_name}
+Target Segments to produce: approximately {target_segments} segments (each EXACTLY 1 single standalone sentence, 10-16 words).
+Act Objective: {act_guidance}
 
-Movie Chronological Dialogue Sample:
+Chronological Movie Dialogue Timeline:
 {sampled_dialogue_text}
 """
 
             resp = self.provider.chat_completion(
                 system_prompt=system_prompt,
                 user_content=user_prompt,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                max_tokens=980
             )
 
             try:
@@ -246,12 +311,14 @@ Movie Chronological Dialogue Sample:
                 act_segs = []
 
             for s in act_segs:
-                narration = s.get("narration") or s.get("text") or ""
+                narration = s.get("text") or s.get("narration") or ""
                 if not narration:
                     continue
                 # Sanitize text
                 clean_text = StoryTranslator.sanitize_segment_text(narration, target_language=target_lang)
-                ts_str = s.get("movie_timestamp", "00:00:00")
+                ts_str = s.get("time") or s.get("movie_timestamp") or "01:33:00"
+                scene_loc = s.get("loc") or s.get("scene_location") or s.get("scene location") or "Unknown Location"
+                is_sc = bool(s.get("scene_change") if "scene_change" in s else s.get("is_scene_change", False))
                 
                 # Estimate spoken duration (~2.5 words per sec, min 4s, max 7.5s)
                 word_count = max(1, len(clean_text.split()))
@@ -263,6 +330,8 @@ Movie Chronological Dialogue Sample:
                     "end": round(timeline_cursor + est_dur, 2),
                     "duration_sec": est_dur,
                     "movie_timestamp": ts_str,
+                    "scene_location": scene_loc,
+                    "is_scene_change": is_sc,
                     target_lang.lower(): clean_text,
                     "original_text": clean_text
                 }

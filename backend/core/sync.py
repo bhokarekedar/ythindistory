@@ -244,10 +244,169 @@ class AudioSynchronizer:
                 return True
         return False
 
+    @staticmethod
+    def _parse_timestamp(ts) -> float:
+        if isinstance(ts, (int, float)):
+            return float(ts)
+        if not ts or not isinstance(ts, str):
+            return 0.0
+        try:
+            parts = ts.strip().replace(",", ".").split(":")
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+            return float(ts)
+        except Exception:
+            return 0.0
+
+    def _build_full_movie_video_timeline(self, timeline: list, original_video_path: str,
+                                         total_audio_dur: float, job_dir: str,
+                                         watermark_settings=None, text_watermark_settings=None,
+                                         watermark_path: str = None, text_watermark_path: str = None) -> str:
+        """
+        Channel 3: Full Movie Video Timeline Builder.
+        For each narrated segment:
+          - Looks up the scene anchor 'movie_timestamp' (e.g. '01:29:51' -> 5391.0s).
+          - If continuing in the same scene (is_scene_change == False), plays continuous footage from current scene position.
+          - If transitioning to a new scene (is_scene_change == True or time leap), cuts to the new scene timestamp.
+          - Scales with aspect-ratio preservation (pad to 1280x720) for cinematic widescreen scope.
+          - Total output video duration matches total_audio_dur to the millisecond.
+        """
+        chunks_dir = os.path.join(job_dir, "video_chunks")
+        os.makedirs(chunks_dir, exist_ok=True)
+        concat_list_path = os.path.join(chunks_dir, "concat_video.txt")
+        concat_lines = []
+        chunk_idx = 0
+        video_cursor = 0.0
+        audio_cursor = 0.0
+
+        total_video_dur = self.get_video_duration(original_video_path)
+
+        for i, entry in enumerate(timeline):
+            seg_id = entry.get("id", i + 1)
+            audio_start = entry["audio_start"]
+            tts_dur = entry["tts_dur"]
+            ts_str = entry.get("movie_timestamp") or "00:00:00"
+            ts_sec = self._parse_timestamp(ts_str)
+            is_scene_change = bool(entry.get("is_scene_change", False))
+            scene_loc = entry.get("scene_location", "Scene")
+
+            # ── 1. Handle audio gap (natural pause / breath between sentences) ──
+            gap_dur = audio_start - audio_cursor
+            if gap_dur > 0.05:
+                gap_chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
+                if not os.path.exists(gap_chunk_path):
+                    seek_pt = max(0.0, video_cursor - 2.0)
+                    trim_off = video_cursor - seek_pt
+                    v = (
+                        ffmpeg.input(original_video_path, ss=seek_pt).video
+                        .filter("trim", start=trim_off, duration=gap_dur)
+                        .filter("setpts", "PTS-STARTPTS")
+                        .filter("scale", 1280, 720, force_original_aspect_ratio="decrease")
+                        .filter("pad", 1280, 720, "(ow-iw)/2", "(oh-ih)/2")
+                        .filter("setsar", 1)
+                        .filter("fps", fps=30, round="near")
+                        .filter("format", "yuv420p")
+                    )
+                    v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                    v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
+                    a = ffmpeg.input("anullsrc=channel_layout=stereo:sample_rate=48000", format="lavfi", t=gap_dur).audio
+                    out = ffmpeg.output(v, a, gap_chunk_path, t=gap_dur,
+                                        vcodec="libx264", acodec="aac", ac=2, ar=48000,
+                                        pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
+                    ffmpeg.run(out, quiet=True, overwrite_output=True)
+                concat_lines.append(f"file '{os.path.abspath(gap_chunk_path)}'")
+                chunk_idx += 1
+                video_cursor += gap_dur
+                audio_cursor += gap_dur
+
+            # ── 2. Determine clip start in the source movie ──
+            if i == 0 or is_scene_change or abs(ts_sec - video_cursor) > 20.0 or video_cursor < 1.0:
+                clip_start = ts_sec
+            else:
+                clip_start = video_cursor
+
+            # Safety clamp within movie bounds
+            if clip_start + tts_dur > total_video_dur:
+                clip_start = max(0.0, total_video_dur - tts_dur)
+
+            # ── 3. Render segment video chunk ──
+            seg_chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_seg.mp4")
+            if not os.path.exists(seg_chunk_path):
+                print(f"  [Movie Video] Segment #{seg_id}: [{ts_str}] ({scene_loc}) -> cutting {tts_dur:.2f}s from movie @ {clip_start:.1f}s")
+                seek_pt = max(0.0, clip_start - 2.0)
+                trim_off = clip_start - seek_pt
+                v = (
+                    ffmpeg.input(original_video_path, ss=seek_pt).video
+                    .filter("trim", start=trim_off, duration=tts_dur)
+                    .filter("setpts", "PTS-STARTPTS")
+                    .filter("scale", 1280, 720, force_original_aspect_ratio="decrease")
+                    .filter("pad", 1280, 720, "(ow-iw)/2", "(oh-ih)/2")
+                    .filter("setsar", 1)
+                    .filter("fps", fps=30, round="near")
+                    .filter("format", "yuv420p")
+                )
+                v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
+                a = ffmpeg.input("anullsrc=channel_layout=stereo:sample_rate=48000", format="lavfi", t=tts_dur).audio
+                out = ffmpeg.output(v, a, seg_chunk_path, t=tts_dur,
+                                    vcodec="libx264", acodec="aac", ac=2, ar=48000,
+                                    pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
+                ffmpeg.run(out, quiet=True, overwrite_output=True)
+
+            concat_lines.append(f"file '{os.path.abspath(seg_chunk_path)}'")
+            chunk_idx += 1
+            video_cursor = clip_start + tts_dur
+            audio_cursor = audio_start + tts_dur
+
+        # ── 4. Trailing duration handling ──
+        trailing_dur = total_audio_dur - audio_cursor
+        if trailing_dur > 0.1:
+            trail_chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_trail.mp4")
+            if not os.path.exists(trail_chunk_path):
+                seek_pt = max(0.0, video_cursor - 2.0)
+                trim_off = video_cursor - seek_pt
+                v = (
+                    ffmpeg.input(original_video_path, ss=seek_pt).video
+                    .filter("trim", start=trim_off, duration=trailing_dur)
+                    .filter("setpts", "PTS-STARTPTS")
+                    .filter("scale", 1280, 720, force_original_aspect_ratio="decrease")
+                    .filter("pad", 1280, 720, "(ow-iw)/2", "(oh-ih)/2")
+                    .filter("setsar", 1)
+                    .filter("fps", fps=30, round="near")
+                    .filter("format", "yuv420p")
+                )
+                v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
+                a = ffmpeg.input("anullsrc=channel_layout=stereo:sample_rate=48000", format="lavfi", t=trailing_dur).audio
+                out = ffmpeg.output(v, a, trail_chunk_path, t=trailing_dur,
+                                    vcodec="libx264", acodec="aac", ac=2, ar=48000,
+                                    pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
+                ffmpeg.run(out, quiet=True, overwrite_output=True)
+            concat_lines.append(f"file '{os.path.abspath(trail_chunk_path)}'")
+
+        # ── 5. Concatenate chunks ──
+        with open(concat_list_path, "w") as f:
+            f.write("\n".join(concat_lines))
+
+        video_only_path = os.path.join(job_dir, "video_only.mp4")
+        if not os.path.exists(video_only_path):
+            try:
+                out = ffmpeg.input(concat_list_path, format="concat", safe=0)
+                ffmpeg.output(out, video_only_path, c="copy").run(quiet=True, overwrite_output=True)
+            except ffmpeg.Error as e:
+                print("FFmpeg Error (full movie video concat):", e.stderr.decode("utf8") if e.stderr else str(e))
+                raise
+
+        print(f"  [Movie Video] DONE: {video_only_path}")
+        return video_only_path
+
     def _build_video_timeline(self, timeline: list, original_video_path: str,
                               total_audio_dur: float, job_dir: str, watermark_settings=None, text_watermark_settings=None, skip_intervals=None,
                               watermark_path: str = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png",
-                              text_watermark_path: str = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png") -> str:
+                              text_watermark_path: str = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png",
+                              channel_type: str = "movie_recap") -> str:
         """
         Produces a video-only MP4 retimed to exactly match the audio timeline.
 
@@ -264,6 +423,17 @@ class AudioSynchronizer:
         Audio is NOT embedded here; it comes from the unified WAV.
         The total video duration = total_audio_dur (perfectly matches audio).
         """
+        if channel_type == "full_movie":
+            return self._build_full_movie_video_timeline(
+                timeline=timeline,
+                original_video_path=original_video_path,
+                total_audio_dur=total_audio_dur,
+                job_dir=job_dir,
+                watermark_settings=watermark_settings,
+                text_watermark_settings=text_watermark_settings,
+                watermark_path=watermark_path,
+                text_watermark_path=text_watermark_path
+            )
         chunks_dir = os.path.join(job_dir, "video_chunks")
         os.makedirs(chunks_dir, exist_ok=True)
         concat_list_path = os.path.join(chunks_dir, "concat_video.txt")
@@ -527,6 +697,10 @@ class AudioSynchronizer:
             default_intro = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro_thriller.mp4"
             default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark thriller.png"
             default_twm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark_thriller.png"
+        elif channel_type == "full_movie":
+            default_intro = None
+            default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
+            default_twm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
         else:
             default_intro = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro.mp4"
             default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
@@ -558,7 +732,8 @@ class AudioSynchronizer:
         video_only_path = self._build_video_timeline(
             timeline, original_video_path, total_audio_dur, job_dir,
             watermark_settings, text_watermark_settings, skip_intervals,
-            watermark_path=active_wm, text_watermark_path=active_twm
+            watermark_path=active_wm, text_watermark_path=active_twm,
+            channel_type=channel_type
         )
 
         # ── Step C: Mux video + clean audio ──────────────────────────────

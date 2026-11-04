@@ -71,6 +71,7 @@ class VideoRequest(BaseModel):
     webhook_url: Optional[str] = None
     burn_subtitles: bool = True
     pause_for_review: bool = True
+    force_regenerate_script: bool = False
 
 class SnapshotRequest(BaseModel):
     url: str
@@ -378,14 +379,14 @@ def process_pipeline(job_id: str, request: VideoRequest):
             # Step 3: Distill Dialogue into Master YouTube Recap Script
             target_lang = request.target_language.lower()
             script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}_transcript.json")
-            if os.path.exists(script_path):
+            if os.path.exists(script_path) and not request.force_regenerate_script:
                 job_status[job_id] = f"Script generation skipped (using cache)"
                 print(f"\n[JOB {job_id}] Step 3: {target_lang.capitalize()} recap script found in cache. Skipping.")
             else:
                 job_status[job_id] = f"Generating {target_lang} master movie recap script..."
                 print(f"\n[JOB {job_id}] Step 3: Generating {target_lang} master movie recap script...")
                 script_path = recap_engine.generate_recap_script(
-                    video_path, transcript_path, script_path, target_lang=target_lang
+                    video_path, transcript_path, script_path, target_lang=target_lang, overwrite=True
                 )
                 print(f"[JOB {job_id}] Full movie recap script ready: {script_path}")
         else:
@@ -625,6 +626,9 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 "end": seg["end"],
                 "text": text,
                 "audio_path": audio_path,
+                "movie_timestamp": seg.get("movie_timestamp"),
+                "is_scene_change": seg.get("is_scene_change", False),
+                "scene_location": seg.get("scene_location", ""),
                 "use_ai_image": seg.get("use_ai_image", False),
                 "ai_image_path": seg.get("ai_image_path", None)
             })

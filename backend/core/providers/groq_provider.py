@@ -146,7 +146,7 @@ class GroqProvider(LLMProvider):
             raise last_exception
         return []
 
-    def chat_completion(self, system_prompt: str, user_content: str, response_format: dict = None, temperature: float = 0.4) -> str:
+    def chat_completion(self, system_prompt: str, user_content: str, response_format: dict = None, temperature: float = 0.4, max_tokens: int = 900) -> str:
         """
         General chat completion with automatic key rotation and rate-limit recovery.
         """
@@ -155,7 +155,7 @@ class GroqProvider(LLMProvider):
             raise RuntimeError("No Groq API keys available to process request.")
 
         last_exception = None
-        max_total_attempts = len(self.api_keys) * 2
+        max_total_attempts = len(self.api_keys) * 3
 
         for attempt in range(max_total_attempts):
             now = time.time()
@@ -182,7 +182,8 @@ class GroqProvider(LLMProvider):
                         {"role": "user", "content": user_content}
                     ],
                     "model": self.model,
-                    "temperature": temperature
+                    "temperature": temperature,
+                    "max_tokens": max_tokens
                 }
                 if response_format:
                     kwargs["response_format"] = response_format
@@ -191,7 +192,7 @@ class GroqProvider(LLMProvider):
                 return response.choices[0].message.content
             except Exception as e:
                 err_str = str(e).lower()
-                is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per day" in err_str or "tpd" in err_str
+                is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per day" in err_str or "tpd" in err_str or "limit 1000" in err_str
                 last_exception = e
                 if is_rate_limit:
                     cd_sec = self._parse_cooldown_seconds(str(e))
@@ -204,6 +205,12 @@ class GroqProvider(LLMProvider):
                         print(f"  [Groq Pool] 🔄 Switching to unlocked Key #{self.current_idx + 1} immediately.")
                         continue
                     else:
+                        soonest_idx = min(self.cooldowns, key=self.cooldowns.get)
+                        wait_sec = max(2.0, min(65.0, self.cooldowns[soonest_idx] - time.time() + 1))
+                        print(f"  [Groq Pool] ⏳ All keys on cooldown. Waiting {int(wait_sec)}s for Key #{soonest_idx + 1}...")
+                        time.sleep(wait_sec)
+                        self.current_idx = soonest_idx
+                        self.client = Groq(api_key=self.api_keys[self.current_idx])
                         continue
                 else:
                     raise e
