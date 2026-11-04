@@ -560,8 +560,8 @@ def execute_resume_pipeline(job_id: str, state: dict):
         aligned_audio_segments = []
         for i, seg in enumerate(segments):
             text = seg.get(target_lang, "").strip()
-            if not text or text.lower() in ["translation/rewrite failed", "error", "failed"]:
-                print(f"  [TTS] Skipping segment {seg['id']} (Empty text or error placeholder: '{text}')")
+            if not text or text.lower() in ["translation/rewrite failed", "error", "failed", "[skip_promo]", "skip_promo"]:
+                print(f"  [TTS] Skipping segment {seg['id']} (Empty text or promo placeholder: '{text}')")
                 continue
 
             text = StoryTranslator.sanitize_segment_text(text, target_language=target_lang)

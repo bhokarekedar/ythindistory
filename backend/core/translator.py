@@ -200,7 +200,7 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
    - Kokoro Text-to-Speech (TTS) makes bizarre glitched breathing noises when sentences end abruptly on clauses or conjunctions.
    - Every single segment MUST be a complete, grammatically sound, finished standalone sentence or dialogue ending strictly with a period (.), exclamation point (!), or question mark (?).
    - NEVER start a segment with a lowercase continuation word (e.g., 'inside to look', 'and her', 'began to clean'). Always capitalize the first word.
-   - NEVER end a segment on a comma (,), an unfinished preposition, or a trailing conjunction (e.g., 'when she went', 'and her', 'it then', 'just then', 'and', 'but', 'because', 'so', 'to').
+   - NEVER end a segment on a comma (,), an unfinished preposition, a relative pronoun, or a trailing conjunction (e.g., 'who', 'which', 'that', 'the one who', 'the very one who', 'when she went', 'and her', 'it then', 'just then', 'and', 'but', 'because', 'so', 'to', 'with', 'from').
    - If the input Hindi subtitle chunk is short (3-5 words) or cut off mid-thought, DO NOT translate it literally as a half-sentence fragment. Use the story context to complete the full, independent thought cleanly within that segment!
 4. SEAMLESS BOUNDARY HARMONIZATION & NO DUPLICATE REPETITIONS:
    - When an input segment begins with a fragment or trailing clause from a sentence that was already completed in the previous segment, DO NOT re-translate or paraphrase that thought again.
@@ -228,7 +228,24 @@ CRITICAL RULES FOR NARRATIVE EXCELLENCE:
 11. FIX TRANSCRIPTION TYPOS: Correct phonetic transcription errors using context.
 12. PRESERVE STORY INTEGRITY & SEGMENT IDS:
    - For all movie story plot events, maintain strict 1-to-1 narrative progression without compressing or skipping plot points.
-   - Return exactly one translation object for every input ID. If an ID contains promotional chatter, set its text to "[SKIP_PROMO]". Do not merge or omit ID numbers from the output JSON."""
+   - Return exactly one translation object for every input ID. If an ID contains promotional chatter, set its text to "[SKIP_PROMO]". Do not merge or omit ID numbers from the output JSON.
+13. UNIVERSAL 3RD-PERSON POV & UNAMBIGUOUS CHARACTER ATTRIBUTION:
+   - The narration must remain 100% in the third-person voice ("Alice said", "Dr. Alvar revealed", "She realized").
+   - NEVER slip into first-person pronouns ("I", "my", "we", "mine") during character dialogue or testimony unless explicitly enclosed in direct quotation marks: e.g., Alice said, "I will go in alone."
+   - When the source narrator recounts a character speaking about their family ("मेरा बेटा"), attribute kinship explicitly to that specific character (e.g., "García del Olmo swore his son would never commit suicide," NEVER "my son").
+14. PHONETIC ASR REPAIR & HINDI IDIOM RESOLUTION:
+   - Recognize common ASR phonetic mishearings in crime/mystery settings:
+     * "कॉर्नर" / "लुसिया कॉर्नर" in forensic contexts -> MUST be translated as "Coroner" / "the forensic coroner" (NEVER "Lucia Corner").
+     * "मेल वर्ल्ड" in an asylum/hospital context -> MUST be translated as "Male Ward" (NEVER "male world").
+     * "tlegram" / "टेलीग्राम" -> "telegram".
+     * Completely IGNORE and STRIP all acoustic tags such as [गला साफ़ करने की आवाज़], [संगीत], [हंसी], or [तालियां]. Never let them influence grammar or sentence flow.
+   - Cultural idioms: "मुंह बोली बहन" / "मुंह बोला भाई" MUST be translated as "adoptive sister/brother", "foster sister/brother", or "the girl he considered his sister". Strictly BAN "verbal sister", "talking sister", or "mouth sister".
+15. CLIMAX MASTER TWIST PRESERVATION (FINAL 15% OF SCRIPT):
+   - In psychological thrillers and mystery recaps, the resolution holds 80% of audience satisfaction.
+   - You are FORBIDDEN from omitting, skipping, or diluting character identity reveals, motives, or plot deductions.
+   - When the true identity of a culprit or key figure is revealed (e.g. Dr. Donadío being the fake client), you MUST explicitly state the deduction and its narrative impact clearly.
+16. OUTRO CHATTER & META-COMMENTARY PURGE ([SKIP_PROMO]):
+   - Any segment where the creator addresses video length ("video bohot lambi ho gayi hai"), asks for likes/subscribes, talks about reels, or says goodbye MUST be translated strictly as "[SKIP_PROMO]"."""
 
         if glossary:
             base_prompt += f"\n\nCRITICAL STORY GLOSSARY (Use these to resolve typos, character genders, and ambiguous terms):\n{glossary}"
@@ -552,7 +569,10 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         import re
         lang = target_language.lower()
         
-        # 1. Purge any Devanagari text leaking into English
+        # 1. Strip bracketed acoustic tags (e.g. [गला साफ़ करने की आवाज़], [संगीत], [हंसी])
+        text = re.sub(r'\[(?:गला साफ़ करने की आवाज़|संगीत|हंसी|तालियां|throat clearing|cough|applause)[^\]]*\]', '', text, flags=re.IGNORECASE)
+
+        # 2. Purge any Devanagari text leaking into English
         if lang == "english" and re.search(r'[\u0900-\u097F]', text):
             cleaned = re.sub(r'[\u0900-\u097F\s।॥]+', ' ', text).strip()
             if len(cleaned.split()) >= 4:
@@ -560,12 +580,23 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
             elif cleaned:
                 text = cleaned
 
-        # 2. Fix dangling word cutoffs at the end of segments for Kokoro TTS
-        text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for)\.?$', '.', text, flags=re.IGNORECASE)
-        text = re.sub(r'\s+to$', '.', text)
+        # 3. Fix dangling word cutoffs at the end of segments for Kokoro TTS
+        text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|who|whom|whose|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for|is the one who|the one who|very one who)\.?$', '.', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s+(?:who|to|with|from|at)\.?$', '.', text, flags=re.IGNORECASE)
         text = re.sub(r',\s*$', '.', text)
 
-        # 3. Punctuation collision / glitch removal
+        # 4. Map known ASR phonetic and transliteration distortions in English
+        if lang == "english":
+            text = re.sub(r'\bverbal sister\b', 'adoptive sister', text, flags=re.IGNORECASE)
+            text = re.sub(r'\btalking sister\b', 'adoptive sister', text, flags=re.IGNORECASE)
+            text = re.sub(r'\bmouth sister\b', 'adoptive sister', text, flags=re.IGNORECASE)
+            text = re.sub(r'\bLucia Corner\b', 'the forensic coroner', text, flags=re.IGNORECASE)
+            text = re.sub(r'\bdoctor Corner\b', 'the coroner', text, flags=re.IGNORECASE)
+            text = re.sub(r'\bMale world\b', 'Male ward', text)
+            text = re.sub(r'\bmale world\b', 'male ward', text)
+            text = re.sub(r'\btlegram\b', 'telegram', text, flags=re.IGNORECASE)
+
+        # 5. Punctuation collision / glitch removal
         text = re.sub(r'\?+\s*\.+', '?', text)              # '?.', '?..' -> '?'
         text = re.sub(r'!+\s*\.+', '!', text)               # '!.', '!..' -> '!'
         text = re.sub(r'\.+\s*\?+', '?', text)              # '.?' -> '?'
@@ -577,7 +608,7 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         text = re.sub(r'([.!?])\s*[,;:–—-]', r'\1', text)   # '.,', '?:' -> '.', '?'
         text = re.sub(r'[,;]{2,}', ',', text)               # ',,', ';;' -> ','
         text = re.sub(r'[,;:–—-]\s*$', '.', text)           # Trailing comma, semicolon, dash -> '.'
-        # 4. Smart Duplicate Word Deduplication (Whitelist-Aware)
+        # 6. Smart Duplicate Word Deduplication (Whitelist-Aware)
         # Prevents glossary collisions ("Apartment Apartment 604" -> "Apartment 604") 
         # while strictly preserving legitimate English grammar ("that that", "had had", "very very", "do do", "Jong-in in").
         legitimate_duplicates = {'that', 'had', 'very', 'do'}
@@ -590,17 +621,17 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
         # Match consecutive identical words, ignoring hyphens so hyphenated names ("Jong-in in") are preserved
         text = re.sub(r'(?<!-)\b([A-Za-z]{2,})\s+\1\b(?!-)', _collapse_dup, text, flags=re.IGNORECASE)
 
-        # 5. Ensure proper capitalization
+        # 7. Ensure proper capitalization
         text = text.strip()
         if text and text[0].islower():
             text = text[0].upper() + text[1:]
 
-        # 5. Ensure terminal punctuation without corrupting '?' or '!'
+        # 8. Ensure terminal punctuation without corrupting '?' or '!'
         valid_terminals = ('.', '!', '?', '"', "'", '।', '॥')
         if text and not text.endswith(valid_terminals):
             text += '.'
 
-        # 6. Post-pass safety cleanup for any mixed marks (guarantees zero '?.')
+        # 9. Post-pass safety cleanup for any mixed marks (guarantees zero '?.')
         text = re.sub(r'\?\s*\.+', '?', text)               # Guaranteed cleanup of '?.', '?..' -> '?'
         text = re.sub(r'!\s*\.+', '!', text)                # Guaranteed cleanup of '!.', '!..' -> '!'
         text = re.sub(r'[,;]\s*\.', '.', text)
@@ -630,8 +661,11 @@ Rules:
 7. DURATION PACING & WORD-COUNT BUDGET:
    - Check if any segment is overly verbose and far exceeds its duration budget.
    - If a sentence is bloated with filler or excessive description, tighten it into a punchy, complete sentence so voiceover finishes synchronously with the video scene cut.
-8. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
-9. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
+8. UNIVERSAL 3RD-PERSON POV: Maintain strict third-person narration. Disallow unquoted first-person pronoun slips ("I", "my") during character exposition.
+9. CLIMAX PRESERVATION MANDATE: Ensure major plot twists, true character identities, and forensic deductions are never omitted or watered down.
+10. ASR & IDIOM DISAMBIGUATION: Ensure forensic/institutional terms are correct (e.g. 'coroner' instead of 'corner', 'ward' instead of 'world', 'adoptive sister' instead of 'verbal sister').
+11. CRITICAL: You MUST return a JSON object with a single key 'translations' containing EXACTLY the same 'id's as provided.
+12. Do not merge segments. Do not delete IDs. Return ALL provided IDs.
 """
         if qa_defects:
             prompt += "\n\nCRITICAL IDENTIFIED DEFECTS TO FIX IN THIS BATCH:\n"
@@ -1194,8 +1228,8 @@ CRITICAL INSTRUCTIONS:
         # Layer 4: Universal Outro / YouTube Meta-Chatter Purge for final 5%
         tail_idx_threshold = max(0, int(len(segments) * 0.95))
         yt_tail_pattern = re.compile(
-            r'\b(subscribe|subscribing|channel|bell icon|notification|leave a like|hit like|comment below|thanks for watching|see you in the next|share this video|share with your friends|stay tuned|keep watching|watch the rest|watch the series)\b'
-            r'|[\u0900-\u097F]*(?:सब्सक्राइब|लाइक|घंटी|बेल|शेयर|कमेंट|चैनल|ॐ|ओम)[\u0900-\u097F]*'
+            r'\b(subscribe|subscribing|channel|bell icon|notification|leave a like|hit like|comment below|thanks for watching|see you in the next|share this video|share with your friends|stay tuned|keep watching|watch the rest|watch the series|video is quite long|video is too long|that is all for today|thank you for watching this far|until our next journey|reels? ke zamane)\b'
+            r'|[\u0900-\u097F]*(?:सब्सक्राइब|लाइक|घंटी|बेल|शेयर|कमेंट|चैनल|ॐ|ओम|लंबी हो गई|इतना ही|टाटा बाय|अगली वीडियो|अगले वीडियो)[\u0900-\u097F]*'
             r'|^\s*(?:om|shanti|namaste|peace|bye|thanks)\b\.?$',
             re.IGNORECASE
         )
@@ -1242,8 +1276,8 @@ CRITICAL INSTRUCTIONS:
                         text = cleaned if cleaned else text
 
                 # 2. Fix dangling word cutoffs at the end of segments for Kokoro TTS
-                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for)\.?$', '.', text, flags=re.IGNORECASE)
-                text = re.sub(r'\s+to$', '.', text)
+                text = re.sub(r'[,;\s]+(?:and|but|or|so|to|then|which|that|who|whom|whose|because|when|while|with|and her|when she went|it then|just then|as well as|the door|waiting for|is the one who|the one who|very one who)\.?$', '.', text, flags=re.IGNORECASE)
+                text = re.sub(r'\s+(?:who|to|with|from|at)\.?$', '.', text, flags=re.IGNORECASE)
                 text = re.sub(r',\s*$', '.', text)
 
                 # 3. Dynamic Term & Character Title Harmonization
