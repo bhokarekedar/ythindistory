@@ -292,17 +292,25 @@ class AudioSynchronizer:
             is_scene_change = bool(entry.get("is_scene_change", False))
             scene_loc = entry.get("scene_location", "Scene")
 
+            # Always anchor clip to the exact movie scene timestamp
+            clip_start = ts_sec if ts_sec > 0.0 else video_cursor
+            if clip_start + tts_dur > total_video_dur:
+                clip_start = max(0.0, total_video_dur - tts_dur)
+
             # ── 1. Handle audio gap (natural pause / breath between sentences) ──
             gap_dur = audio_start - audio_cursor
             if gap_dur > 0.05:
                 gap_chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
                 if not os.path.exists(gap_chunk_path):
-                    seek_pt = max(0.0, video_cursor - 2.0)
-                    trim_off = video_cursor - seek_pt
+                    # Gap leads smoothly right up to the segment's clip_start
+                    gap_start = max(0.0, clip_start - gap_dur)
+                    seek_pt = max(0.0, gap_start - 2.0)
+                    trim_off = gap_start - seek_pt
                     v = (
                         ffmpeg.input(original_video_path, ss=seek_pt).video
                         .filter("trim", start=trim_off, duration=gap_dur)
                         .filter("setpts", "PTS-STARTPTS")
+                        .filter("scale", "iw*1.04", "ih*1.04")
                         .filter("scale", 1280, 720, force_original_aspect_ratio="decrease")
                         .filter("pad", 1280, 720, "(ow-iw)/2", "(oh-ih)/2")
                         .filter("setsar", 1)
@@ -318,20 +326,9 @@ class AudioSynchronizer:
                     ffmpeg.run(out, quiet=True, overwrite_output=True)
                 concat_lines.append(f"file '{os.path.abspath(gap_chunk_path)}'")
                 chunk_idx += 1
-                video_cursor += gap_dur
                 audio_cursor += gap_dur
 
-            # ── 2. Determine clip start in the source movie ──
-            if i == 0 or is_scene_change or abs(ts_sec - video_cursor) > 20.0 or video_cursor < 1.0:
-                clip_start = ts_sec
-            else:
-                clip_start = video_cursor
-
-            # Safety clamp within movie bounds
-            if clip_start + tts_dur > total_video_dur:
-                clip_start = max(0.0, total_video_dur - tts_dur)
-
-            # ── 3. Render segment video chunk ──
+            # ── 2. Render segment video chunk with Anti-Content-ID Protection ──
             seg_chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_seg.mp4")
             if not os.path.exists(seg_chunk_path):
                 print(f"  [Movie Video] Segment #{seg_id}: [{ts_str}] ({scene_loc}) -> cutting {tts_dur:.2f}s from movie @ {clip_start:.1f}s")
@@ -341,6 +338,7 @@ class AudioSynchronizer:
                     ffmpeg.input(original_video_path, ss=seek_pt).video
                     .filter("trim", start=trim_off, duration=tts_dur)
                     .filter("setpts", "PTS-STARTPTS")
+                    .filter("scale", "iw*1.04", "ih*1.04")
                     .filter("scale", 1280, 720, force_original_aspect_ratio="decrease")
                     .filter("pad", 1280, 720, "(ow-iw)/2", "(oh-ih)/2")
                     .filter("setsar", 1)
@@ -360,7 +358,7 @@ class AudioSynchronizer:
             video_cursor = clip_start + tts_dur
             audio_cursor = audio_start + tts_dur
 
-        # ── 4. Trailing duration handling ──
+        # ── 3. Trailing duration handling ──
         trailing_dur = total_audio_dur - audio_cursor
         if trailing_dur > 0.1:
             trail_chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_trail.mp4")
@@ -371,6 +369,7 @@ class AudioSynchronizer:
                     ffmpeg.input(original_video_path, ss=seek_pt).video
                     .filter("trim", start=trim_off, duration=trailing_dur)
                     .filter("setpts", "PTS-STARTPTS")
+                    .filter("scale", "iw*1.04", "ih*1.04")
                     .filter("scale", 1280, 720, force_original_aspect_ratio="decrease")
                     .filter("pad", 1280, 720, "(ow-iw)/2", "(oh-ih)/2")
                     .filter("setsar", 1)
