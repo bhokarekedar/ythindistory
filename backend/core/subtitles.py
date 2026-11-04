@@ -37,18 +37,20 @@ class SubtitleGenerator:
         return f"{hrs:02d}:{mins:02d}:{secs:02d},{ms:03d}"
 
     @staticmethod
-    def wrap_text(text: str, max_chars_per_line: int = 32) -> str:
+    def get_lines(text: str, max_chars_per_line: int = 44) -> list:
         """
-        Wraps long sentence lines cleanly for ASS subtitles using \\N.
+        Splits text cleanly into wrapped lines respecting word boundaries.
         Prevents captions from extending past screen margins on mobile.
         """
         text = text.strip()
+        if not text:
+            return []
         if len(text) <= max_chars_per_line:
-            return text
-            
+            return [text]
+
         words = text.split()
         if len(words) <= 2:
-            return text
+            return [text]
 
         lines = []
         current_line = []
@@ -66,8 +68,21 @@ class SubtitleGenerator:
         if current_line:
             lines.append(" ".join(current_line))
 
-        # Join lines using ASS line break tag
-        return "\\N".join(lines[:2])  # Max 2 lines per screen to avoid clutter
+        return lines
+
+    @classmethod
+    def wrap_text(cls, text: str, max_chars_per_line: int = 44, max_lines: int = None) -> str:
+        """
+        Wraps long sentence lines cleanly for ASS subtitles using \\N.
+        Supports 1, 2, or 3 lines without cutting off text.
+        If max_lines is specified, limits to that count, otherwise retains all lines.
+        """
+        lines = cls.get_lines(text, max_chars_per_line=max_chars_per_line)
+        if not lines:
+            return ""
+        if max_lines and len(lines) > max_lines:
+            lines = lines[:max_lines]
+        return "\\N".join(lines)
 
     def generate(self, timeline: list, job_dir: str, base_name: str = "subtitles") -> dict:
         """
@@ -118,18 +133,61 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if end_sec <= start_sec:
                 end_sec = start_sec + 1.0
 
-            # 1. ASS Dialogue entry
-            start_ass = self.format_timestamp_ass(start_sec)
-            end_ass = self.format_timestamp_ass(end_sec)
-            wrapped_ass = self.wrap_text(text, max_chars_per_line=44)
-            ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{wrapped_ass}")
+            lines = self.get_lines(text, max_chars_per_line=44)
+            if not lines:
+                continue
 
-            # 2. SRT Entry
-            start_srt = self.format_timestamp_srt(start_sec)
-            end_srt = self.format_timestamp_srt(end_sec)
-            wrapped_srt = wrapped_ass.replace("\\N", "\n")
-            srt_entries.append(f"{srt_idx}\n{start_srt} --> {end_srt}\n{wrapped_srt}\n")
-            srt_idx += 1
+            duration = end_sec - start_sec
+
+            # Case 1: 1, 2, or 3 lines -> Display all lines simultaneously
+            if len(lines) <= 3:
+                wrapped_ass = "\\N".join(lines)
+                start_ass = self.format_timestamp_ass(start_sec)
+                end_ass = self.format_timestamp_ass(end_sec)
+                ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{wrapped_ass}")
+
+                start_srt = self.format_timestamp_srt(start_sec)
+                end_srt = self.format_timestamp_srt(end_sec)
+                wrapped_srt = wrapped_ass.replace("\\N", "\n")
+                srt_entries.append(f"{srt_idx}\n{start_srt} --> {end_srt}\n{wrapped_srt}\n")
+                srt_idx += 1
+            else:
+                # Case 2: 4+ lines -> Paginate across duration into 2 timed cues so screen is never crowded
+                mid_idx = (len(lines) + 1) // 2
+                page1_lines = lines[:mid_idx]
+                page2_lines = lines[mid_idx:]
+
+                p1_words = max(1, sum(len(l.split()) for l in page1_lines))
+                total_words = max(1, sum(len(l.split()) for l in lines))
+
+                # Divide time proportionally to word count
+                split_sec = start_sec + (duration * (p1_words / total_words))
+                if duration >= 2.4:
+                    split_sec = max(start_sec + 1.0, min(end_sec - 1.0, split_sec))
+
+                # Page 1
+                wrapped_ass_1 = "\\N".join(page1_lines)
+                start_ass_1 = self.format_timestamp_ass(start_sec)
+                end_ass_1 = self.format_timestamp_ass(split_sec)
+                ass_dialogues.append(f"Dialogue: 0,{start_ass_1},{end_ass_1},Default,,0,0,0,,{wrapped_ass_1}")
+
+                start_srt_1 = self.format_timestamp_srt(start_sec)
+                end_srt_1 = self.format_timestamp_srt(split_sec)
+                wrapped_srt_1 = wrapped_ass_1.replace("\\N", "\n")
+                srt_entries.append(f"{srt_idx}\n{start_srt_1} --> {end_srt_1}\n{wrapped_srt_1}\n")
+                srt_idx += 1
+
+                # Page 2
+                wrapped_ass_2 = "\\N".join(page2_lines)
+                start_ass_2 = self.format_timestamp_ass(split_sec)
+                end_ass_2 = self.format_timestamp_ass(end_sec)
+                ass_dialogues.append(f"Dialogue: 0,{start_ass_2},{end_ass_2},Default,,0,0,0,,{wrapped_ass_2}")
+
+                start_srt_2 = self.format_timestamp_srt(split_sec)
+                end_srt_2 = self.format_timestamp_srt(end_sec)
+                wrapped_srt_2 = wrapped_ass_2.replace("\\N", "\n")
+                srt_entries.append(f"{srt_idx}\n{start_srt_2} --> {end_srt_2}\n{wrapped_srt_2}\n")
+                srt_idx += 1
 
         # Write ASS file
         with open(ass_path, "w", encoding="utf-8") as f:
