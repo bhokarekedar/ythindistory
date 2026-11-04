@@ -764,10 +764,13 @@ def generate_snapshot(request: SnapshotRequest):
         video_id = video_id_match.group(1)
         
         video_path = f"temp/videos/{video_id}.mp4"
+        # Check if video is already fully downloaded
         if not os.path.exists(video_path) or os.path.getsize(video_path) < 1024 * 1024:
-            if os.path.exists(video_path):
-                try: os.remove(video_path)
-                except: pass
+            # Check if an active download is currently in progress (.part file)
+            part_files = [f for f in os.listdir("temp/videos") if f.startswith(f"{video_id}.") and f.endswith(".part")] if os.path.exists("temp/videos") else []
+            if part_files:
+                return {"error": "Video download is currently in progress. Please wait a moment before generating a preview snapshot."}
+
             os.makedirs("temp/videos", exist_ok=True)
             downloader = YouTubeDownloader(output_dir="temp/videos")
             try:

@@ -37,7 +37,7 @@ class SubtitleGenerator:
         return f"{hrs:02d}:{mins:02d}:{secs:02d},{ms:03d}"
 
     @staticmethod
-    def wrap_text(text: str, max_chars_per_line: int = 42) -> str:
+    def wrap_text(text: str, max_chars_per_line: int = 32) -> str:
         """
         Wraps long sentence lines cleanly for ASS subtitles using \\N.
         Prevents captions from extending past screen margins on mobile.
@@ -78,12 +78,13 @@ class SubtitleGenerator:
         ass_path = os.path.join(job_dir, f"{base_name}.ass")
         srt_path = os.path.join(job_dir, f"{base_name}.srt")
 
-        # ASS header with Netflix / Facebook viral styling:
+        # ASS header with Mobile / Facebook viral styling:
         # - Crisp pure white text (&H00FFFFFF)
-        # - 2.5px solid black outline (&H00000000) for high contrast on light/dark scenes
-        # - Subtle 1.5px shadow for depth
+        # - 34px bold font for clear readability on mobile phone screens
+        # - 3.2px solid black outline (&H00000000) for sharp contrast on light/dark scenes
+        # - 1.5px shadow for depth
         # - Alignment 2 (bottom-center)
-        # - MarginV 42px (comfortably above bottom scrubbers without covering faces)
+        # - MarginV 46px (comfortably above bottom scrubbers without covering faces)
         ass_header = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1280
@@ -92,7 +93,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,22,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1.5,2,60,60,42,1
+Style: Default,Arial,34,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3.2,1.5,2,50,50,46,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
