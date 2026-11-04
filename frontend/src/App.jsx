@@ -28,11 +28,12 @@ function App() {
   })
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
-  const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap' or 'thriller_story'
+  const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap', 'thriller_story', or 'full_movie'
   const [storageStats, setStorageStats] = useState({ temp_size: '...', output_size: '...' })
   const [datasetCount, setDatasetCount] = useState(0)
   const [cleaning, setCleaning] = useState(false)
   const [burnSubtitles, setBurnSubtitles] = useState(true)
+  const [localMovies, setLocalMovies] = useState([])
 
   // Script Review & Dynamic Resume State
   const [waitingReview, setWaitingReview] = useState(false)
@@ -64,9 +65,20 @@ function App() {
     }
   }
 
+  const fetchLocalMovies = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/local-movies')
+      const data = await res.json()
+      setLocalMovies(data.movies || [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   useEffect(() => {
     fetchStorage()
     fetchDatasets()
+    fetchLocalMovies()
   }, [status])
 
   const handleClearStorage = async () => {
@@ -98,7 +110,7 @@ function App() {
   const handleSubmit = async (e, language, channelType = 'movie_recap') => {
     e.preventDefault()
     if (!url) return
-    setStatus(`Starting ${channelType === 'thriller_story' ? 'Thriller Story' : 'Movie Recap'}...`)
+    setStatus(`Starting ${channelType === 'full_movie' ? 'Full Movie Recap' : channelType === 'thriller_story' ? 'Thriller Story' : 'Movie Recap'}...`)
     
     const formattedSkipIntervals = skipIntervals
       .filter(s => s.start !== '' && s.end !== '')
@@ -368,15 +380,69 @@ function App() {
               True Incidents (No movie terms) • 70/30 AI • <strong>watermark thriller.png</strong>
             </div>
           </button>
+
+          <button
+            type="button"
+            onClick={() => { 
+              setChannelType('full_movie'); 
+              setSnapshotImg(null); 
+              fetchLocalMovies();
+            }}
+            style={{
+              flex: 1,
+              padding: '12px 14px',
+              borderRadius: '8px',
+              border: channelType === 'full_movie' ? '2px solid #0284c7' : '1px solid #ccc',
+              background: channelType === 'full_movie' ? '#f0f9ff' : '#f9f9f9',
+              color: channelType === 'full_movie' ? '#0284c7' : '#666',
+              fontWeight: channelType === 'full_movie' ? 'bold' : 'normal',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ fontSize: '15px' }}>🎥 Channel 3: Full Movie to Recap</div>
+            <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
+              Local Movie Container (.mkv/.mp4) • Studio Subtitles • LLM Script
+            </div>
+          </button>
         </div>
 
         <input 
-          type="url" 
-          placeholder="Enter YouTube URL" 
+          type={channelType === 'full_movie' ? 'text' : 'url'} 
+          placeholder={channelType === 'full_movie' ? "Enter local movie file path (e.g. /path/to/movie.mkv) or YouTube URL" : "Enter YouTube URL"} 
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           required
         />
+
+        {channelType === 'full_movie' && localMovies.length > 0 && (
+          <div style={{ marginTop: '8px', marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#0369a1' }}>📂 Detected Movies in backend:</span>
+            {localMovies.map((m, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setUrl(m.path)}
+                style={{
+                  fontSize: '11px',
+                  padding: '4px 10px',
+                  borderRadius: '16px',
+                  border: url === m.path ? '1px solid #0284c7' : '1px solid #cbd5e1',
+                  background: url === m.path ? '#e0f2fe' : '#ffffff',
+                  color: url === m.path ? '#0369a1' : '#475569',
+                  cursor: 'pointer',
+                  fontWeight: url === m.path ? 'bold' : 'normal',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  transition: 'all 0.15s ease'
+                }}
+                title={m.path}
+              >
+                🎬 {m.name} ({m.size_mb} MB)
+              </button>
+            ))}
+          </div>
+        )}
 
         <input 
           type="url" 
@@ -393,10 +459,10 @@ function App() {
               fontSize: '12px', 
               padding: '3px 8px', 
               borderRadius: '4px', 
-              background: channelType === 'thriller_story' ? '#fdeeed' : '#e8f7ec', 
-              color: channelType === 'thriller_story' ? '#c82333' : '#1e7e34', 
+              background: channelType === 'thriller_story' ? '#fdeeed' : channelType === 'full_movie' ? '#e0f2fe' : '#e8f7ec', 
+              color: channelType === 'thriller_story' ? '#c82333' : channelType === 'full_movie' ? '#0369a1' : '#1e7e34', 
               fontWeight: 'bold',
-              border: `1px solid ${channelType === 'thriller_story' ? '#f5c6cb' : '#c3e6cb'}`
+              border: `1px solid ${channelType === 'thriller_story' ? '#f5c6cb' : channelType === 'full_movie' ? '#bae6fd' : '#c3e6cb'}`
             }}>
               Using: {channelType === 'thriller_story' ? 'watermark thriller.png' : 'watermark.png'}
             </span>
@@ -590,6 +656,39 @@ function App() {
               </div>
             </div>
           )}
+
+          {/* Channel 3: Full Movie to Recap */}
+          {channelType === 'full_movie' && (
+            <div style={{ padding: '16px', border: '1px solid #0284c7', borderRadius: '8px', background: '#f0f9ff' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🎥 Channel 3: Full Movie to Production Recap Script</span>
+              </h4>
+              <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 12px 0' }}>
+                Extracts studio dialogues directly from container subtitles (.srt/.ass) without Whisper noise hallucinations, then crafts a 3-act YouTube recap script.
+                <br /><strong>⏸️ The pipeline automatically pauses at review stage</strong> so you can inspect and polish the narration before audio and video are generated.
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'english', 'full_movie')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#0284c7', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
+                >
+                  Generate English Movie Recap Script
+                </button>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'hindi', 'full_movie')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#0891b2', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
+                >
+                  Generate Hindi Movie Recap Script
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </form>
 
@@ -668,12 +767,12 @@ function App() {
                   .filter(s => {
                     if (!scriptFilter.trim()) return true
                     const q = scriptFilter.toLowerCase()
-                    const eng = (s.english || s.text || s.hi || '').toLowerCase()
+                    const eng = (s.english || s.hindi || s.hi || s.text || '').toLowerCase()
                     const orig = (s.original_text || '').toLowerCase()
                     return eng.includes(q) || orig.includes(q) || String(s.id).includes(q)
                   })
                   .map((seg) => {
-                    const textField = seg.english !== undefined ? 'english' : seg.hi !== undefined ? 'hi' : 'text'
+                    const textField = seg.english !== undefined ? 'english' : seg.hindi !== undefined ? 'hindi' : seg.hi !== undefined ? 'hi' : 'text'
                     return (
                       <div key={seg.id} className="segment-card">
                         <div className="segment-meta">

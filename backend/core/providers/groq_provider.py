@@ -145,3 +145,69 @@ class GroqProvider(LLMProvider):
         if last_exception:
             raise last_exception
         return []
+
+    def chat_completion(self, system_prompt: str, user_content: str, response_format: dict = None, temperature: float = 0.4) -> str:
+        """
+        General chat completion with automatic key rotation and rate-limit recovery.
+        """
+        import time
+        if not self.client or not self.api_keys:
+            raise RuntimeError("No Groq API keys available to process request.")
+
+        last_exception = None
+        max_total_attempts = len(self.api_keys) * 2
+
+        for attempt in range(max_total_attempts):
+            now = time.time()
+            if self.cooldowns.get(self.current_idx, 0) > now:
+                unlocked_keys = [i for i in range(len(self.api_keys)) if self.cooldowns.get(i, 0) <= now]
+                if unlocked_keys:
+                    self.current_idx = unlocked_keys[0]
+                    self.client = Groq(api_key=self.api_keys[self.current_idx])
+                else:
+                    soonest_idx = min(self.cooldowns, key=self.cooldowns.get)
+                    wait_sec = max(1.0, self.cooldowns[soonest_idx] - now)
+                    if wait_sec <= 600:
+                        print(f"\n  [Groq Pool] ⏳ All keys on cooldown. Waiting {int(wait_sec)}s for Key #{soonest_idx + 1}...")
+                        time.sleep(min(30.0, wait_sec + 1))
+                        self.current_idx = soonest_idx
+                        self.client = Groq(api_key=self.api_keys[self.current_idx])
+                    else:
+                        break
+
+            try:
+                kwargs = {
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    "model": self.model,
+                    "temperature": temperature
+                }
+                if response_format:
+                    kwargs["response_format"] = response_format
+
+                response = self.client.chat.completions.create(**kwargs)
+                return response.choices[0].message.content
+            except Exception as e:
+                err_str = str(e).lower()
+                is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per day" in err_str or "tpd" in err_str
+                last_exception = e
+                if is_rate_limit:
+                    cd_sec = self._parse_cooldown_seconds(str(e))
+                    self.cooldowns[self.current_idx] = time.time() + cd_sec
+                    print(f"\n  [Groq Pool] ⚠️ Key #{self.current_idx + 1} reached quota/limit (429). Cooldown: {int(cd_sec)}s.")
+                    available = [i for i in range(len(self.api_keys)) if i != self.current_idx and self.cooldowns.get(i, 0) <= time.time()]
+                    if available:
+                        self.current_idx = available[0]
+                        self.client = Groq(api_key=self.api_keys[self.current_idx])
+                        print(f"  [Groq Pool] 🔄 Switching to unlocked Key #{self.current_idx + 1} immediately.")
+                        continue
+                    else:
+                        continue
+                else:
+                    raise e
+
+        if last_exception:
+            raise last_exception
+        return ""

@@ -345,94 +345,142 @@ def process_pipeline(job_id: str, request: VideoRequest):
         config = {}
         
     try:
-        # Step 1: Video Download
-        if is_local_file:
-            video_path = url
-            job_status[job_id] = "Using local video file"
-            print(f"\n[JOB {job_id}] Step 1: Using local video file: {video_path}")
-        else:
-            video_path = f"temp/videos/{video_id}.mp4"
-            if os.path.exists(video_path) and os.path.getsize(video_path) >= 1024 * 1024:
-                job_status[job_id] = "Video download skipped (using cache)"
-                print(f"\n[JOB {job_id}] Step 1: Video found in cache. Skipping download.")
+        if channel_type == "full_movie":
+            # ─────────────────────────────────────────────────────────────
+            # CHANNEL 3: FULL MOVIE TO YOUTUBE RECAP (LOCAL MOVIE FILE)
+            # ─────────────────────────────────────────────────────────────
+            from core.movie_recap_engine import MovieRecapEngine
+            recap_engine = MovieRecapEngine(
+                api_key=groq_api_key,
+                model=config.get("groq", {}).get("translation_model", "qwen/qwen3.8-27b")
+            )
+
+            # Step 1: Video File
+            if is_local_file:
+                video_path = url
+                job_status[job_id] = "Using local movie video file"
+                print(f"\n[JOB {job_id}] Step 1: Using local movie video file: {video_path}")
             else:
-                if os.path.exists(video_path):
-                    try: os.remove(video_path)
-                    except: pass
-                job_status[job_id] = "Downloading video..."
-                print(f"\n[JOB {job_id}] Step 1: Downloading Video from {url}")
-                downloader = YouTubeDownloader(output_dir="temp/videos")
-                video_path = downloader.download(url)
-            print(f"[JOB {job_id}] Video stored at: {video_path}")
-            
-        # Step 2: Audio Extraction
-        raw_audio_path = os.path.join(job_dir, f"{video_id}_audio.mp3")
-        if os.path.exists(raw_audio_path):
-            job_status[job_id] = "Audio extraction skipped (using cache)"
-            print(f"\n[JOB {job_id}] Step 2: Extracted audio found in cache. Skipping.")
-        else:
-            job_status[job_id] = "Extracting audio..."
-            print(f"\n[JOB {job_id}] Step 2: Extracting Audio...")
-            extractor = AudioExtractor(output_dir=job_dir)
-            raw_audio_path = extractor.extract_audio(video_path)
-            print(f"[JOB {job_id}] Audio extracted to: {raw_audio_path}")
-            
-        # Step 3: Transcription
-        transcript_path = os.path.join(job_dir, f"{video_id}_audio_transcript.json")
-        if os.path.exists(transcript_path):
-            job_status[job_id] = "Transcription skipped (using cache)"
-            print(f"\n[JOB {job_id}] Step 3: Transcript found in cache. Skipping.")
-        else:
-            job_status[job_id] = "Fetching YouTube transcript..."
-            print(f"\n[JOB {job_id}] Step 3: Fetching Official YouTube Transcript...")
-            transcriber = Transcriber(
-                output_dir=job_dir, 
-                api_key=groq_api_key
-            )
-            transcript_path = transcriber.transcribe(raw_audio_path, youtube_url=url)
-            print(f"[JOB {job_id}] YouTube Transcript ready. JSON stored at: {transcript_path}")
-            
-        # Step 3.5: Pre-Flight Script Quality Gate (Threshold >= 90%)
-        job_status[job_id] = "Evaluating transcript quality & ASR integrity..."
-        print(f"\n[JOB {job_id}] Step 3.5: Evaluating Transcript Quality Gate (Threshold >= 90%)...")
-        evaluator = ScriptQualityEvaluator(api_key=groq_api_key, min_score=90)
-        eval_result = evaluator.evaluate(transcript_path, channel_type=channel_type)
-        job_evaluations[job_id] = eval_result
-        score = eval_result.get("score", 0)
-        verdict = eval_result.get("verdict", "REJECT")
-        
-        if score < 90 or verdict == "REJECT":
-            reason = eval_result.get("reason", "Acoustic distortion and ASR corruption detected.")
-            flaws = "; ".join(eval_result.get("detected_flaws", [])[:2])
-            rejection_msg = f"Rejected (Score: {score}% - Below 90% Threshold): {reason}"
-            job_status[job_id] = rejection_msg
-            print(f"\n[JOB {job_id}] ❌ PIPELINE ABORTED: {rejection_msg}")
-            if flaws:
-                print(f"[JOB {job_id}] Flagged Flaws: {flaws}")
-            # Clean up scratch files immediately to conserve space
-            cleanup_job_temp(video_id)
-            return
+                video_path = f"temp/videos/{video_id}.mp4"
+                if not os.path.exists(video_path):
+                    downloader = YouTubeDownloader(output_dir="temp/videos")
+                    video_path = downloader.download(url)
 
-        print(f"[JOB {job_id}] ✅ Transcript Quality Approved (Score: {score}%). Proceeding to translation.")
-        job_status[job_id] = f"Transcript approved (Score: {score}%). Proceeding to translation..."
+            # Step 2: Extract Embedded Studio Subtitles
+            transcript_path = os.path.join(job_dir, f"{video_id}_audio_transcript.json")
+            if os.path.exists(transcript_path):
+                print(f"\n[JOB {job_id}] Step 2: Found cached movie dialogue JSON. Skipping extraction.")
+            else:
+                job_status[job_id] = "Extracting studio dialogue tracks from movie..."
+                print(f"\n[JOB {job_id}] Step 2: Extracting studio dialogue tracks from movie container...")
+                transcript_path = recap_engine.extract_subtitles_to_json(video_path, job_dir, preferred_lang=target_lang)
 
-        # Step 4: Translation / Script Rewrite
-        target_lang = request.target_language.lower()
-        script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}{output_suffix}_transcript.json")
-        if os.path.exists(script_path):
-            job_status[job_id] = f"Script generation skipped (using cache)"
-            print(f"\n[JOB {job_id}] Step 4: {target_lang.capitalize()} script found in cache. Skipping.")
+            # Step 3: Distill Dialogue into Master YouTube Recap Script
+            target_lang = request.target_language.lower()
+            script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}_transcript.json")
+            if os.path.exists(script_path):
+                job_status[job_id] = f"Script generation skipped (using cache)"
+                print(f"\n[JOB {job_id}] Step 3: {target_lang.capitalize()} recap script found in cache. Skipping.")
+            else:
+                job_status[job_id] = f"Generating {target_lang} master movie recap script..."
+                print(f"\n[JOB {job_id}] Step 3: Generating {target_lang} master movie recap script...")
+                script_path = recap_engine.generate_recap_script(
+                    video_path, transcript_path, script_path, target_lang=target_lang
+                )
+                print(f"[JOB {job_id}] Full movie recap script ready: {script_path}")
         else:
-            job_status[job_id] = f"Generating {target_lang} script ({channel_type})..."
-            print(f"\n[JOB {job_id}] Step 4: Generating {target_lang} script for {channel_type}...")
-            translator = StoryTranslator(
-                primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
-                fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
-                translation_model=config.get("groq", {}).get("translation_model", "llama-3.1-70b-versatile"),
-                batch_size=config.get("translation", {}).get("batch_size", 20),
-                api_key=groq_api_key
-            )
-            script_path = translator.translate_transcript(transcript_path, target_language=target_lang, output_dir=job_dir, channel_type=channel_type)
+            # ─────────────────────────────────────────────────────────────
+            # CHANNELS 1 & 2: YOUTUBE MOVIE RECAP & THRILLER STORY
+            # ─────────────────────────────────────────────────────────────
+            # Step 1: Video Download
+            if is_local_file:
+                video_path = url
+                job_status[job_id] = "Using local video file"
+                print(f"\n[JOB {job_id}] Step 1: Using local video file: {video_path}")
+            else:
+                video_path = f"temp/videos/{video_id}.mp4"
+                if os.path.exists(video_path) and os.path.getsize(video_path) >= 1024 * 1024:
+                    job_status[job_id] = "Video download skipped (using cache)"
+                    print(f"\n[JOB {job_id}] Step 1: Video found in cache. Skipping download.")
+                else:
+                    if os.path.exists(video_path):
+                        try: os.remove(video_path)
+                        except: pass
+                    job_status[job_id] = "Downloading video..."
+                    print(f"\n[JOB {job_id}] Step 1: Downloading Video from {url}")
+                    downloader = YouTubeDownloader(output_dir="temp/videos")
+                    video_path = downloader.download(url)
+                print(f"[JOB {job_id}] Video stored at: {video_path}")
+                
+            # Step 2: Audio Extraction
+            raw_audio_path = os.path.join(job_dir, f"{video_id}_audio.mp3")
+            if os.path.exists(raw_audio_path):
+                job_status[job_id] = "Audio extraction skipped (using cache)"
+                print(f"\n[JOB {job_id}] Step 2: Extracted audio found in cache. Skipping.")
+            else:
+                job_status[job_id] = "Extracting audio..."
+                print(f"\n[JOB {job_id}] Step 2: Extracting Audio...")
+                extractor = AudioExtractor(output_dir=job_dir)
+                raw_audio_path = extractor.extract_audio(video_path)
+                print(f"[JOB {job_id}] Audio extracted to: {raw_audio_path}")
+                
+            # Step 3: Transcription
+            transcript_path = os.path.join(job_dir, f"{video_id}_audio_transcript.json")
+            if os.path.exists(transcript_path):
+                job_status[job_id] = "Transcription skipped (using cache)"
+                print(f"\n[JOB {job_id}] Step 3: Transcript found in cache. Skipping.")
+            else:
+                job_status[job_id] = "Fetching YouTube transcript..."
+                print(f"\n[JOB {job_id}] Step 3: Fetching Official YouTube Transcript...")
+                transcriber = Transcriber(
+                    output_dir=job_dir, 
+                    api_key=groq_api_key
+                )
+                transcript_path = transcriber.transcribe(raw_audio_path, youtube_url=url)
+                print(f"[JOB {job_id}] YouTube Transcript ready. JSON stored at: {transcript_path}")
+                
+            # Step 3.5: Pre-Flight Script Quality Gate (Threshold >= 90%)
+            job_status[job_id] = "Evaluating transcript quality & ASR integrity..."
+            print(f"\n[JOB {job_id}] Step 3.5: Evaluating Transcript Quality Gate (Threshold >= 90%)...")
+            evaluator = ScriptQualityEvaluator(api_key=groq_api_key, min_score=90)
+            eval_result = evaluator.evaluate(transcript_path, channel_type=channel_type)
+            job_evaluations[job_id] = eval_result
+            score = eval_result.get("score", 0)
+            verdict = eval_result.get("verdict", "REJECT")
+            
+            if score < 90 or verdict == "REJECT":
+                reason = eval_result.get("reason", "Acoustic distortion and ASR corruption detected.")
+                flaws = "; ".join(eval_result.get("detected_flaws", [])[:2])
+                rejection_msg = f"Rejected (Score: {score}% - Below 90% Threshold): {reason}"
+                job_status[job_id] = rejection_msg
+                print(f"\n[JOB {job_id}] ❌ PIPELINE ABORTED: {rejection_msg}")
+                if flaws:
+                    print(f"[JOB {job_id}] Flagged Flaws: {flaws}")
+                # Clean up scratch files immediately to conserve space
+                cleanup_job_temp(video_id)
+                return
+
+            print(f"[JOB {job_id}] ✅ Transcript Quality Approved (Score: {score}%). Proceeding to translation.")
+            job_status[job_id] = f"Transcript approved (Score: {score}%). Proceeding to translation..."
+
+            # Step 4: Translation / Script Rewrite
+            target_lang = request.target_language.lower()
+            script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}{output_suffix}_transcript.json")
+            if os.path.exists(script_path):
+                job_status[job_id] = f"Script generation skipped (using cache)"
+                print(f"\n[JOB {job_id}] Step 4: {target_lang.capitalize()} script found in cache. Skipping.")
+            else:
+                job_status[job_id] = f"Generating {target_lang} script ({channel_type})..."
+                print(f"\n[JOB {job_id}] Step 4: Generating {target_lang} script for {channel_type}...")
+                translator = StoryTranslator(
+                    primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
+                    fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
+                    translation_model=config.get("groq", {}).get("translation_model", "llama-3.1-70b-versatile"),
+                    batch_size=config.get("translation", {}).get("batch_size", 20),
+                    api_key=groq_api_key
+                )
+                script_path = translator.translate_transcript(transcript_path, target_language=target_lang, output_dir=job_dir, channel_type=channel_type)
+                print(f"[JOB {job_id}] Script generation complete. JSON stored at: {script_path}")
             print(f"[JOB {job_id}] Script generation complete. JSON stored at: {script_path}")
             
         # Archive script permanently for LLM training dataset before any cleanup can occur
@@ -833,6 +881,34 @@ def list_training_datasets():
                     "total_pairs": total_pairs
                 })
     return {"datasets": datasets, "total_datasets": len(datasets), "directory": TRAINING_DATASET_DIR}
+
+@app.get("/api/local-movies")
+def list_local_movies():
+    """Lists video and movie files found in local directories for easy Channel 3 selection."""
+    movies = []
+    scan_dirs = ["donwloadedmovies", "downloadedmovies", "temp/videos", "backend/donwloadedmovies"]
+    valid_extensions = (".mkv", ".mp4", ".mov", ".avi", ".webm")
+    seen_paths = set()
+    
+    for d in scan_dirs:
+        if os.path.exists(d) and os.path.isdir(d):
+            for fname in sorted(os.listdir(d)):
+                if fname.lower().endswith(valid_extensions):
+                    fpath = os.path.join(d, fname)
+                    abs_path = os.path.abspath(fpath)
+                    if abs_path not in seen_paths:
+                        seen_paths.add(abs_path)
+                        try:
+                            size_mb = round(os.path.getsize(abs_path) / (1024 * 1024), 1)
+                            movies.append({
+                                "name": fname,
+                                "path": abs_path,
+                                "size_mb": size_mb,
+                                "folder": d
+                            })
+                        except Exception:
+                            pass
+    return {"movies": movies, "total": len(movies)}
 
 def apply_watermarks_to_ffmpeg(stream, watermark_path, settings: WatermarkSettings, main_w="main_w", main_h="main_h"):
     """Helper to apply the watermark to an ffmpeg video stream at multiple corners."""
