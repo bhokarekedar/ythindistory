@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -9,6 +9,7 @@ import threading
 import ffmpeg
 import yaml
 import re
+import glob
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -69,6 +70,7 @@ class VideoRequest(BaseModel):
     skip_intervals: Optional[List[TimeRange]] = None
     webhook_url: Optional[str] = None
     burn_subtitles: bool = True
+    pause_for_review: bool = True
 
 class SnapshotRequest(BaseModel):
     url: str
@@ -79,6 +81,7 @@ class SnapshotRequest(BaseModel):
 # In-memory status store for MVP
 job_status = {}
 job_evaluations = {}
+pending_jobs = {}
 
 def send_webhook_with_n8n_autostart(webhook_url: str, payload: dict, max_retries: int = 3):
     """
@@ -435,13 +438,87 @@ def process_pipeline(job_id: str, request: VideoRequest):
         # Archive script permanently for LLM training dataset before any cleanup can occur
         archive_training_script(video_id, channel_type, target_lang, script_path, transcript_path)
             
-        # Step 5: TTS Generation
+        # Prepare pipeline state to support pause/resume
+        req_dict = request.model_dump() if hasattr(request, "model_dump") else request.dict()
+        state = {
+            "job_id": job_id,
+            "video_id": video_id,
+            "channel_type": channel_type,
+            "target_lang": target_lang,
+            "script_path": os.path.abspath(script_path),
+            "job_dir": os.path.abspath(job_dir),
+            "video_path": os.path.abspath(video_path),
+            "final_output": os.path.abspath(final_output),
+            "metadata_output": os.path.abspath(metadata_output),
+            "output_folder": os.path.abspath(output_folder),
+            "url": url,
+            "groq_api_key": groq_api_key,
+            "request": req_dict
+        }
+        pending_jobs[job_id] = state
+
+        # Save to disk for crash recovery
+        state_file = os.path.join(job_dir, "job_state.json")
+        try:
+            with open(state_file, "w", encoding="utf-8") as sf:
+                json.dump(state, sf, indent=2)
+        except Exception as e:
+            print(f"  [Resume] Warning writing job_state.json: {e}")
+
+        # Pause for manual script review and verification (default True for both movie_recap and thriller_story)
+        if getattr(request, "pause_for_review", True):
+            job_status[job_id] = "waiting_review"
+            print(f"\n[JOB {job_id}] ⏸️ SCRIPT GENERATED! Pipeline paused for manual review & fixes.")
+            print(f"  [Review] Script path: {script_path}")
+            print(f"  [Review] Inspect/edit the script on the UI or in your editor, then click 'Resume' to generate audio and video.\n")
+            return
+
+        # Otherwise continue immediately
+        execute_resume_pipeline(job_id, state)
+
+    except ffmpeg.Error as e:
+        err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
+        job_status[job_id] = f"FFmpeg Error: {err_msg}"
+        print(f"\n[JOB {job_id}] FFmpeg Error:\n{err_msg}")
+    except Exception as e:
+        job_status[job_id] = f"Error: {str(e)}"
+        print(f"\n[JOB {job_id}] Exception: {str(e)}")
+
+
+def execute_resume_pipeline(job_id: str, state: dict):
+    """
+    Resumes pipeline from Step 5 (TTS Voice Generation) using the latest,
+    potentially manually corrected script from disk, then renders final video,
+    burns in styled subtitles, generates SEO metadata, and publishes.
+    """
+    try:
+        video_id = state["video_id"]
+        channel_type = state["channel_type"]
+        target_lang = state["target_lang"]
+        script_path = state["script_path"]
+        job_dir = state["job_dir"]
+        video_path = state["video_path"]
+        final_output = state["final_output"]
+        metadata_output = state["metadata_output"]
+        output_folder = state["output_folder"]
+        url = state["url"]
+        groq_api_key = state.get("groq_api_key") or os.getenv("GROQ_API_KEY", "")
+
+        req_data = state.get("request", {})
+        request = VideoRequest(**req_data) if isinstance(req_data, dict) else req_data
+
+        try:
+            with open("config.yaml", "r") as f:
+                config = yaml.safe_load(f)
+        except Exception:
+            config = {}
+
+        # Step 5: TTS Generation from latest script on disk
         tts_provider = config.get("tts", {}).get("provider", "gemini")
         job_status[job_id] = f"Generating {target_lang.capitalize()} voice via {tts_provider.capitalize()}..."
         print(f"\n[JOB {job_id}] Step 5: Generating {target_lang.capitalize()} Voice via {tts_provider.capitalize()}...")
-        
+
         if tts_provider == "kokoro":
-            # For Hindi, default to hf_alpha. For English, default to af_heart
             default_voice = "hf_alpha" if target_lang == "hindi" else "af_heart"
             speaker = default_voice 
             lang_code_char = 'h' if target_lang == "hindi" else 'a'
@@ -450,15 +527,16 @@ def process_pipeline(job_id: str, request: VideoRequest):
             speaker = config.get("gemini_tts", {}).get("voice", "Zephyr")
             model = config.get("gemini_tts", {}).get("model", "gemini-3.1-flash-tts-preview")
             tts = GeminiTTS(output_dir=f"{job_dir}/segments", voice_name=speaker, model=model)
-        
+
         sync = AudioSynchronizer(
             max_speed_change=config.get("sync", {}).get("max_speed_change", 0.15),
             rewrite_threshold=config.get("sync", {}).get("rewrite_threshold", 1.15)
         )
-        
-        with open(script_path, "r") as f:
+
+        # Always read fresh script from disk so any manual fixes are honored!
+        with open(script_path, "r", encoding="utf-8") as f:
             segments = json.load(f)
-            
+
         # Step 5B: Generate AI Visual Images via Cloudflare FLUX.1 if thriller story
         if channel_type == "thriller_story":
             print(f"\n[JOB {job_id}] Step 5B: Generating Cloudflare FLUX.1 AI Images for Tagged Segments...")
@@ -482,20 +560,17 @@ def process_pipeline(job_id: str, request: VideoRequest):
         aligned_audio_segments = []
         for i, seg in enumerate(segments):
             text = seg.get(target_lang, "").strip()
-            
-            # Skip empty segments or error placeholders to ensure TTS never speaks errors aloud
             if not text or text.lower() in ["translation/rewrite failed", "error", "failed"]:
                 print(f"  [TTS] Skipping segment {seg['id']} (Empty text or error placeholder: '{text}')")
                 continue
 
             text = StoryTranslator.sanitize_segment_text(text, target_language=target_lang)
-
             audio_path = os.path.join(f"{job_dir}/segments", f"{seg['id']:04d}.wav")
             
             if not os.path.exists(audio_path):
                 print(f"  [TTS] Generating Audio for Segment {seg['id']} ({i+1}/{len(segments)})...")
                 tts.generate_audio(seg["id"], text)
-                
+
             aligned_audio_segments.append({
                 "id": seg["id"],
                 "start": seg["start"],
@@ -505,16 +580,14 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 "use_ai_image": seg.get("use_ai_image", False),
                 "ai_image_path": seg.get("ai_image_path", None)
             })
-            
+
         output_folder = os.path.join("output", video_id)
         os.makedirs(output_folder, exist_ok=True)
 
         job_status[job_id] = f"Rendering final video ({channel_type})..."
         print(f"\n[JOB {job_id}] Step 6: Rendering Final Video for {channel_type} (Captions: {getattr(request, 'burn_subtitles', True)})...")
-        
-        # Clear stale render artifacts so we always regenerate with current code.
-        # (TTS WAVs and translation JSON are intentionally kept — they are expensive to regenerate.)
-        import shutil
+
+        # Clear stale render artifacts
         for stale in ["video_only.mp4", "mixed_temp.mp4", "narrator_audio_track.wav"]:
             p = os.path.join(job_dir, stale)
             if os.path.exists(p):
@@ -525,7 +598,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
             if os.path.exists(p):
                 shutil.rmtree(p)
                 print(f"  [Cache] Removed stale dir: {stale_dir}/")
-        
+
         sync.build_timeline(
             aligned_audio_segments, video_path, final_output,
             job_dir=job_dir,
@@ -535,29 +608,25 @@ def process_pipeline(job_id: str, request: VideoRequest):
             channel_type=channel_type,
             burn_subtitles=getattr(request, 'burn_subtitles', True)
         )
-        
-        # Archive generated subtitle tracks (.srt & .ass) to output folder
+
         for sub_ext in ["srt", "ass"]:
             sub_f = os.path.join(job_dir, f"subtitles.{sub_ext}")
             if os.path.exists(sub_f):
                 shutil.copy2(sub_f, os.path.join(output_folder, f"{video_id}.{sub_ext}"))
-        
+
         job_status[job_id] = "Generating SEO Metadata..."
         print(f"\n[JOB {job_id}] Step 7: Generating SEO Metadata...")
         metadata_generator = MetadataGenerator(api_key=groq_api_key)
         metadata_generator.generate(script_path, metadata_output, target_lang=target_lang)
-        
+
         job_status[job_id] = f"Completed: {final_output}"
         print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
-        
+
         if request.webhook_url:
             abs_video_path = os.path.abspath(final_output)
             abs_metadata_path = os.path.abspath(metadata_output)
-            
-            # Load metadata to send it directly in the webhook!
             with open(abs_metadata_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
-            
             payload = {
                 "job_id": job_id,
                 "channel_type": channel_type,
@@ -573,7 +642,6 @@ def process_pipeline(job_id: str, request: VideoRequest):
             }
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
 
-        # Auto-publish directly to Facebook Page (Woivy Recaps)
         if os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID"):
             try:
                 from core.facebook_uploader import FacebookUploader
@@ -587,11 +655,9 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 )
             except Exception as fb_err:
                 print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
-        
-        # Immediately clean up heavy scratch files (video chunks, resampled audio, mixed temp files)
+
         cleanup_job_temp(video_id)
-        
-        # If webhook was sent, schedule output folder deletion after n8n has finished uploading it (3 mins)
+
         if request.webhook_url:
             schedule_delayed_output_cleanup(video_id, delay_seconds=180)
         
@@ -667,6 +733,21 @@ def cleanup_single(video_id: str):
         shutil.rmtree(out_dir, ignore_errors=True)
     return {"status": "success", "message": f"Cleared {video_id} temp and output."}
 
+def find_pending_job(job_id: str) -> Optional[dict]:
+    p_job = pending_jobs.get(job_id)
+    if not p_job:
+        for candidate in glob.glob("temp/*/job_state.json"):
+            try:
+                with open(candidate, "r", encoding="utf-8") as cf:
+                    cdata = json.load(cf)
+                    if cdata.get("job_id") == job_id:
+                        p_job = cdata
+                        pending_jobs[job_id] = p_job
+                        break
+            except Exception:
+                pass
+    return p_job
+
 @app.post("/api/process")
 def process_video(request: VideoRequest, background_tasks: BackgroundTasks):
     import uuid
@@ -676,11 +757,58 @@ def process_video(request: VideoRequest, background_tasks: BackgroundTasks):
 
 @app.get("/api/status/{job_id}")
 def get_status(job_id: str):
+    st = job_status.get(job_id, "Not found")
+    p_job = find_pending_job(job_id)
     return {
         "job_id": job_id, 
-        "status": job_status.get(job_id, "Not found"),
-        "evaluation": job_evaluations.get(job_id, None)
+        "status": st,
+        "evaluation": job_evaluations.get(job_id, None),
+        "waiting_review": st == "waiting_review",
+        "script_path": p_job.get("script_path") if p_job else None,
+        "video_id": p_job.get("video_id") if p_job else None,
+        "channel_type": p_job.get("channel_type") if p_job else None
     }
+
+@app.post("/api/resume/{job_id}")
+def resume_pipeline_endpoint(job_id: str, background_tasks: BackgroundTasks):
+    p_job = find_pending_job(job_id)
+    if not p_job:
+        raise HTTPException(status_code=404, detail=f"No pending job found with id {job_id}")
+
+    job_status[job_id] = "Resuming pipeline (generating audio)..."
+    background_tasks.add_task(execute_resume_pipeline, job_id, p_job)
+    return {"status": "resumed", "job_id": job_id}
+
+@app.get("/api/script/{job_id}")
+def get_script_endpoint(job_id: str):
+    p_job = find_pending_job(job_id)
+    if not p_job or not os.path.exists(p_job.get("script_path", "")):
+        raise HTTPException(status_code=404, detail="Script file not found for this job")
+
+    with open(p_job["script_path"], "r", encoding="utf-8") as f:
+        segments = json.load(f)
+    return {
+        "job_id": job_id,
+        "video_id": p_job.get("video_id"),
+        "script_path": p_job.get("script_path"),
+        "target_lang": p_job.get("target_lang", "english"),
+        "total_segments": len(segments),
+        "segments": segments
+    }
+
+class ScriptUpdateRequest(BaseModel):
+    segments: List[dict]
+
+@app.post("/api/script/{job_id}")
+def update_script_endpoint(job_id: str, payload: ScriptUpdateRequest):
+    p_job = find_pending_job(job_id)
+    if not p_job or not os.path.exists(p_job.get("script_path", "")):
+        raise HTTPException(status_code=404, detail="Script file not found for this job")
+
+    with open(p_job["script_path"], "w", encoding="utf-8") as f:
+        json.dump(payload.segments, f, indent=4, ensure_ascii=False)
+    
+    return {"status": "success", "message": f"Saved {len(payload.segments)} segments to script."}
 
 @app.get("/api/training-datasets")
 def list_training_datasets():

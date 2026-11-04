@@ -34,6 +34,16 @@ function App() {
   const [cleaning, setCleaning] = useState(false)
   const [burnSubtitles, setBurnSubtitles] = useState(true)
 
+  // Script Review & Dynamic Resume State
+  const [waitingReview, setWaitingReview] = useState(false)
+  const [scriptInfo, setScriptInfo] = useState(null)
+  const [showScriptEditor, setShowScriptEditor] = useState(false)
+  const [scriptSegments, setScriptSegments] = useState([])
+  const [scriptFilter, setScriptFilter] = useState('')
+  const [isResuming, setIsResuming] = useState(false)
+  const [isSavingScript, setIsSavingScript] = useState(false)
+  const [scriptSaveMessage, setScriptSaveMessage] = useState('')
+
   const fetchStorage = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/storage-stats')
@@ -116,8 +126,62 @@ function App() {
       setJobId(data.job_id)
       setStatus('Initializing...')
       setEvaluation(null)
+      setWaitingReview(false)
+      setScriptInfo(null)
+      setShowScriptEditor(false)
+      setScriptSegments([])
     } catch (err) {
       setStatus(`Error: ${err.message}`)
+    }
+  }
+
+  const handleResume = async () => {
+    if (!jobId) return
+    setIsResuming(true)
+    try {
+      const res = await fetch(`http://localhost:8000/api/resume/${jobId}`, {
+        method: 'POST'
+      })
+      const data = await res.json()
+      setStatus('Resuming pipeline: generating voiceover and rendering video...')
+      setWaitingReview(false)
+      setShowScriptEditor(false)
+    } catch (err) {
+      alert(`Error resuming pipeline: ${err.message}`)
+    } finally {
+      setIsResuming(false)
+    }
+  }
+
+  const handleOpenScriptEditor = async () => {
+    if (!jobId) return
+    setShowScriptEditor(true)
+    setScriptSaveMessage('')
+    try {
+      const res = await fetch(`http://localhost:8000/api/script/${jobId}`)
+      const data = await res.json()
+      setScriptSegments(data.segments || [])
+    } catch (err) {
+      alert(`Error loading script: ${err.message}`)
+    }
+  }
+
+  const handleSaveScript = async () => {
+    if (!jobId) return
+    setIsSavingScript(true)
+    setScriptSaveMessage('')
+    try {
+      const res = await fetch(`http://localhost:8000/api/script/${jobId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ segments: scriptSegments })
+      })
+      const data = await res.json()
+      setScriptSaveMessage(`✅ Script saved (${scriptSegments.length} segments)! Click 'Resume' below when ready.`)
+    } catch (err) {
+      setScriptSaveMessage(`❌ Error saving script: ${err.message}`)
+    } finally {
+      setIsSavingScript(false)
     }
   }
 
@@ -131,6 +195,16 @@ function App() {
           setStatus(data.status)
           if (data.evaluation) {
             setEvaluation(data.evaluation)
+          }
+          if (data.waiting_review) {
+            setWaitingReview(true)
+            setScriptInfo({
+              scriptPath: data.script_path,
+              videoId: data.video_id,
+              channelType: data.channel_type
+            })
+          } else {
+            setWaitingReview(false)
           }
           if (data.status.includes('Completed')) {
             const path = data.status.split(': ')[1]
@@ -523,6 +597,128 @@ function App() {
         <div className="status-container">
           <h3>Status:</h3>
           <p className="status-text">{status}</p>
+        </div>
+      )}
+
+      {waitingReview && (
+        <div className="review-action-card">
+          <div className="review-header">
+            <span className="review-badge">⏸️ SCRIPT READY — MANUAL REVIEW & FIXES REQUIRED</span>
+            <h2 className="review-title">Review Narration Script Before Audio & Video</h2>
+            <p className="review-subtitle">
+              The AI has completed script translation. Please inspect and correct any character names, clues, or dialogue before synthesizing voiceover and rendering video.
+            </p>
+            {scriptInfo?.scriptPath && (
+              <div className="review-path-box">
+                <span className="path-label">Script File:</span>
+                <code>{scriptInfo.scriptPath}</code>
+              </div>
+            )}
+          </div>
+
+          <div className="review-actions-row">
+            <button
+              type="button"
+              className="btn-resume-pipeline"
+              onClick={handleResume}
+              disabled={isResuming}
+            >
+              {isResuming ? '⏳ Resuming...' : '▶️ OK, Resume Pipeline (Generate Audio & Video)'}
+            </button>
+            <button
+              type="button"
+              className="btn-open-editor"
+              onClick={() => {
+                if (!showScriptEditor) handleOpenScriptEditor()
+                else setShowScriptEditor(false)
+              }}
+            >
+              {showScriptEditor ? 'Hide Script Editor' : '📝 Open Script Editor in UI'}
+            </button>
+          </div>
+
+          {showScriptEditor && (
+            <div className="script-editor-container">
+              <div className="editor-toolbar">
+                <input
+                  type="text"
+                  placeholder="🔍 Search words or names (e.g. Paige, Corner, Colin, shed)..."
+                  value={scriptFilter}
+                  onChange={(e) => setScriptFilter(e.target.value)}
+                  className="editor-search-input"
+                />
+                <button
+                  type="button"
+                  className="btn-save-script"
+                  onClick={handleSaveScript}
+                  disabled={isSavingScript}
+                >
+                  {isSavingScript ? 'Saving...' : '💾 Save Changes to Script'}
+                </button>
+              </div>
+
+              {scriptSaveMessage && (
+                <div className={`script-save-msg ${scriptSaveMessage.startsWith('✅') ? 'success' : 'error'}`}>
+                  {scriptSaveMessage}
+                </div>
+              )}
+
+              <div className="segments-scroll-list">
+                {scriptSegments
+                  .filter(s => {
+                    if (!scriptFilter.trim()) return true
+                    const q = scriptFilter.toLowerCase()
+                    const eng = (s.english || s.text || s.hi || '').toLowerCase()
+                    const orig = (s.original_text || '').toLowerCase()
+                    return eng.includes(q) || orig.includes(q) || String(s.id).includes(q)
+                  })
+                  .map((seg) => {
+                    const textField = seg.english !== undefined ? 'english' : seg.hi !== undefined ? 'hi' : 'text'
+                    return (
+                      <div key={seg.id} className="segment-card">
+                        <div className="segment-meta">
+                          <span className="segment-id">#{seg.id}</span>
+                          <span className="segment-time">[{seg.start.toFixed(1)}s - {seg.end.toFixed(1)}s]</span>
+                          {seg.original_text && (
+                            <span className="segment-original" title={seg.original_text}>
+                              Orig: {seg.original_text}
+                            </span>
+                          )}
+                        </div>
+                        <textarea
+                          className="segment-textarea"
+                          rows={2}
+                          value={seg[textField] || ''}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setScriptSegments(prev => prev.map(p => p.id === seg.id ? { ...p, [textField]: val } : p))
+                          }}
+                        />
+                      </div>
+                    )
+                  })}
+              </div>
+
+              <div className="editor-bottom-bar">
+                <button
+                  type="button"
+                  className="btn-save-script"
+                  onClick={handleSaveScript}
+                  disabled={isSavingScript}
+                >
+                  {isSavingScript ? 'Saving...' : '💾 Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-resume-pipeline"
+                  onClick={handleResume}
+                  disabled={isResuming}
+                >
+                  {isResuming ? '⏳ Resuming...' : '▶️ Looks Good! Resume Pipeline'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
