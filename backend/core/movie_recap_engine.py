@@ -270,31 +270,37 @@ class MovieRecapEngine:
         return ""
 
     @staticmethod
-    def _condense_dialogue_block(condensed_log: list, max_lines: int = 160) -> str:
+    def _condense_dialogue_block(condensed_log: list, max_tokens: int = 1800, max_lines: int = 65) -> str:
         """
-        Condenses a dialogue block to at most max_lines entries while preserving
-        narrative-critical information.
+        Token-budgeted dialogue condensation (Context-Budget Architecture).
+        Replaces rigid line-sampling with a conservative token-budget (~1,800 tokens),
+        preventing any request from overflowing Groq's 7,000 ITPM limit.
 
         Strategy:
-        - Always keep short lines (≤ 12 words) — likely single-line revelations, identity
-          statements, decisions, and twists.
-        - Remove consecutive duplicate lines before sampling.
-        - Use a uniform stride for the remaining lines but prefer lines not already included.
-
-        This replaces naive even-sampling which can discard critical one-line events.
+        - Always keep short lines (≤ 12 words) — critical single-line revelations, clues, choices.
+        - De-duplicate adjacent repetitive dialogue lines.
+        - Distribute remaining token slots chronologically across the block.
+        - Hard stop once cumulative tokens hit max_tokens.
         """
-        if len(condensed_log) <= max_lines:
+        if not condensed_log:
+            return ""
+
+        # Rough token estimator: ~3.3 chars per token
+        def line_tokens(l: str) -> int:
+            return int(max(1, len(l) / 3.3))
+
+        total_est = sum(line_tokens(l) for l in condensed_log)
+        if total_est <= max_tokens and len(condensed_log) <= max_lines:
             return "\n".join(condensed_log)
 
-        # Identify high-importance lines: short, likely key dialogue
+        # 1. Identify high-importance lines (short dialogue = usually key twists/revelations)
         important_indices = set()
         for i, line in enumerate(condensed_log):
-            # Strip the [HH:MM:SS] timestamp prefix before counting words
             text_part = re.sub(r'^\[\d{2}:\d{2}:\d{2}\]\s*', '', line)
             if len(text_part.split()) <= 12:
                 important_indices.add(i)
 
-        # De-duplicate adjacent identical lines
+        # 2. De-duplicate adjacent identical or near-identical lines
         deduped = []
         prev_text = None
         for i, line in enumerate(condensed_log):
@@ -303,29 +309,36 @@ class MovieRecapEngine:
                 deduped.append((i, line))
                 prev_text = text_part
 
-        # Always include important short lines (up to max_lines / 2 slots)
-        important_lines = [(i, l) for i, l in deduped if i in important_indices]
-        budget_important = min(len(important_lines), max_lines // 2)
-        selected_important = set(i for i, _ in important_lines[:budget_important])
+        # 3. Reserve up to half the line budget for critical short lines
+        budget_important = min(len(important_indices), max_lines // 2)
+        important_lines = [(i, l) for i, l in deduped if i in important_indices][:budget_important]
+        selected_important = set(i for i, _ in important_lines)
 
-        # Fill remaining slots with evenly-spaced non-important lines
-        remaining_budget = max_lines - len(selected_important)
+        # 4. Fill remaining slots evenly across the block
+        remaining_slots = max_lines - len(selected_important)
         non_important = [(i, l) for i, l in deduped if i not in selected_important]
-        if non_important and remaining_budget > 0:
-            step = max(1, len(non_important) / remaining_budget)
-            sampled_non_important = {non_important[int(j * step)][0] for j in range(remaining_budget) if int(j * step) < len(non_important)}
-        else:
-            sampled_non_important = set()
+        selected_other = set()
+        if non_important and remaining_slots > 0:
+            step = max(1, len(non_important) / remaining_slots)
+            for j in range(remaining_slots):
+                idx = int(j * step)
+                if idx < len(non_important):
+                    selected_other.add(non_important[idx][0])
 
-        # Merge and sort by original position to preserve chronology
-        all_selected = selected_important | sampled_non_important
-        result_lines = [line for i, line in enumerate(condensed_log) if i in all_selected]
-        # Sort by index (enumerate from condensed_log to get original order)
-        ordered = sorted(
-            [(i, condensed_log[i]) for i in all_selected],
-            key=lambda x: x[0]
-        )
-        return "\n".join(line for _, line in ordered)
+        all_selected = sorted(list(selected_important | selected_other))
+
+        # 5. Build final text respecting max_tokens ceiling
+        result_lines = []
+        accumulated_tokens = 0
+        for orig_idx in all_selected:
+            line = condensed_log[orig_idx]
+            lt = line_tokens(line)
+            if accumulated_tokens + lt > max_tokens:
+                break
+            result_lines.append(line)
+            accumulated_tokens += lt
+
+        return "\n".join(result_lines)
 
     @staticmethod
     def _build_initial_story_state(movie_title: str) -> dict:
@@ -375,7 +388,8 @@ Return JSON with these keys (only include non-empty updates):
                 system_prompt="You are a story continuity tracker. Output strict JSON.",
                 user_content=update_prompt,
                 response_format={"type": "json_object"},
-                max_tokens=800
+                max_tokens=600,
+                stage_label="story_state_update"
             )
             updates = json.loads(resp)
 
@@ -404,44 +418,36 @@ Return JSON with these keys (only include non-empty updates):
 
     @staticmethod
     def _format_story_state_for_prompt(story_state: dict) -> str:
-        """Formats the persistent story state into a human-readable prompt section."""
-        lines = ["PERSISTENT STORY STATE (maintain continuity from previous blocks):"]
+        """
+        Formats compact story state for prompt injection (budget: ~200 tokens).
+        Focuses only on recent high-value facts, claims, and characters to avoid token bloat.
+        """
+        lines = ["STORY CONTINUITY:"]
 
         chars = story_state.get("characters", {})
         if chars:
-            lines.append("Known Characters:")
-            for name, role in list(chars.items())[:15]:
-                lines.append(f"  - {name}: {role}")
+            top_chars = [f"{n}: {r}" for n, r in list(chars.items())[:8]]
+            lines.append("Characters: " + "; ".join(top_chars))
 
         facts = story_state.get("confirmed_facts", [])
         if facts:
-            lines.append("Confirmed Facts (objective):")
-            for f in facts[-10:]:
-                lines.append(f"  - {f}")
+            lines.append("Confirmed Facts: " + " | ".join(facts[-5:]))
 
         claims = story_state.get("character_claims", [])
         if claims:
-            lines.append("Character Claims (not yet confirmed as fact):")
-            for c in claims[-8:]:
-                lines.append(f"  - {c}")
+            lines.append("Unproven Claims: " + " | ".join(claims[-4:]))
 
         mysteries = story_state.get("unresolved_mysteries", [])
         if mysteries:
-            lines.append("Unresolved Mysteries (acknowledge but don't spoil):")
-            for m in mysteries[-8:]:
-                lines.append(f"  - {m}")
+            lines.append("Open Mysteries: " + " | ".join(mysteries[-3:]))
 
         evidence = story_state.get("important_evidence", [])
         if evidence:
-            lines.append("Important Evidence Discovered:")
-            for e in evidence[-8:]:
-                lines.append(f"  - {e}")
+            lines.append("Discovered Evidence: " + " | ".join(evidence[-3:]))
 
         narrated = story_state.get("timeline_events_narrated", [])
         if narrated:
-            lines.append("Already Narrated (avoid repetition):")
-            for n in narrated[-5:]:
-                lines.append(f"  - {n}")
+            lines.append("Recent Events: " + " | ".join(narrated[-2:]))
 
         return "\n".join(lines)
 
@@ -518,39 +524,48 @@ Return JSON with these keys (only include non-empty updates):
         # Step 2: Divide plot synopsis into 6 chronological chapter scopes anchored to dialogue snapshots
         print(f"  [MovieEngine] 📋 Structuring plot into {block_count} sequential chapter scopes anchored to dialogue...")
         chapter_scopes = {}
+        movie_memory = {
+            "movie_title": movie_title,
+            "plot_overview": (film_synopsis[:800] + "...") if len(film_synopsis) > 800 else film_synopsis,
+            "ending_truth": ""
+        }
+
+        # Extract ending truth from synopsis to guarantee climax fidelity without repeating full synopsis
+        if film_synopsis and len(film_synopsis) > 500:
+            movie_memory["ending_truth"] = film_synopsis[-1500:].strip()
+
         try:
             block_samples = []
             for b_idx in range(block_count):
                 b_st = b_idx * block_dur
                 b_et = (b_idx + 1) * block_dur if b_idx < block_count - 1 else total_runtime_sec + 10.0
                 d_win = [d for d in dialogues if b_st <= d['start'] < b_et]
-                sample = [f"[{fmt_time(d['start'])}] {d['text'].strip()}" for d in d_win[::max(1, len(d_win) // 25)]][:25]
+                # Sample at most 8 lines per block to keep chapter planning tokens small (~1,500 tokens total)
+                sample = [f"[{fmt_time(d['start'])}] {d['text'].strip()}" for d in d_win[::max(1, len(d_win) // 8)]][:8]
                 block_samples.append(f"Block {b_idx + 1} [{fmt_time(b_st)} - {fmt_time(min(total_runtime_sec, b_et))}]:\n" + "\n".join(sample))
 
             ch_prompt = f"""You are a master story editor.
-Divide the film plot synopsis of '{movie_title}' into exactly {block_count} non-overlapping, chronological chapter scopes matching the true dialogue events and physical story progression across each runtime window.
+Divide the plot synopsis of '{movie_title}' into exactly {block_count} non-overlapping chronological chapter scopes.
 
-True Dialogue Snapshots per window:
+Dialogue Snapshots per window:
 {chr(10).join(block_samples)}
 
-Film Plot Synopsis (reference — subtitle timeline is authoritative for scene-level events):
-{film_synopsis}
+Film Plot Synopsis (reference):
+{film_synopsis[:3000]}
 
-CRITICAL RULES FOR CHAPTER SCOPES:
-1. Match the chapter scope strictly to the true physical setting and dialogue events occurring in that specific runtime window.
-2. DO NOT prematurely pull scenes or actions from future windows into earlier windows.
-   - Ground the scope strictly in the locations, characters, and discoveries present in that chronological window.
-   - Do not import events, discoveries, or physical confrontations that occur in subsequent windows.
-3. NON-LINEAR & PARALLEL TIMELINES: If the film features flashbacks, flash-forwards, or parallel timelines (e.g. an investigation into a crime or fire shown out of order), explicitly identify these temporal shifts so the narrator uses natural time markers and avoids redundant re-narration.
-4. CLIMAX & TWIST FIDELITY: For the final block (Block {block_count}), explicitly document the true climax, final identity reveal, and resolution as proven by the Synopsis and final dialogue beats (e.g. who arrives, what truth is uncovered, and whether the protagonist was validated or proven false/delusional).
+RULES:
+1. Match scope strictly to the physical setting and dialogue events in that runtime window. Do NOT pull future events earlier.
+2. Signpost flashbacks or flash-forwards so narrator can mark time shifts.
+3. For Block {block_count}, explicitly document the true climax, final identity reveal, and resolution.
 
-Return JSON with key 'chapters' containing a list of {block_count} objects with 'block_index' (1 to {block_count}), 'title', and 'scope' (2-4 sentences describing the exact physical locations, character movements, evidence discovered, and action events occurring strictly in this window)."""
+Return JSON with key 'chapters': list of {block_count} objects with 'block_index' (1 to {block_count}), 'title', and 'scope' (2-3 sentences)."""
 
             ch_resp = self.provider.chat_completion(
                 system_prompt="You are a master film story editor. Output strict JSON with key 'chapters'.",
                 user_content=ch_prompt,
                 response_format={"type": "json_object"},
-                max_tokens=1500
+                max_tokens=1200,
+                stage_label="chapter_planning"
             )
             ch_data = json.loads(ch_resp).get("chapters", [])
             for c in ch_data:
@@ -573,12 +588,13 @@ Return JSON with key 'chapters' containing a list of {block_count} objects with 
             guidance = chapter_scopes.get(b_idx + 1) or ""
             if is_final_climax:
                 twist_instructions = (
-                    "MANDATORY CLIMAX & TWIST RESOLUTION: The final segments of this block MUST explicitly deliver the true, verified climax and shocking resolution of THIS specific film as proven by the Film Synopsis and final dialogue beats.\n"
-                    "CRITICAL TWIST FIDELITY: Carefully check the Film Synopsis for the true ending revelation. In psychological thrillers, verify whether the protagonist's conspiracy theory was validated OR disproved by the final discovery. Never assume the protagonist was right if the synopsis shows their claim was shattered or proven false. Accurately narrate the true physical reveal as verified in the synopsis."
+                    "MANDATORY CLIMAX & TWIST RESOLUTION: Faithfully deliver the true ending resolution. "
+                    "In psychological thrillers, verify whether the protagonist was validated OR disproved by the final discovery. "
+                    f"Verified ending facts: {movie_memory['ending_truth'][:600]}"
                 )
                 guidance = f"{guidance}\n{twist_instructions}".strip()
             elif not guidance:
-                guidance = f"Recap the key events, dramatic conflicts, and character actions occurring within the [{fmt_time(b_start)} - {fmt_time(min(total_runtime_sec, b_end))}] window."
+                guidance = f"Recap key events and conflicts occurring within [{fmt_time(b_start)} - {fmt_time(min(total_runtime_sec, b_end))}]."
 
             acts_data.append((block_title, b_dialogues, target_segs_per_block, guidance, is_final_climax, b_start, b_end))
 
@@ -597,112 +613,44 @@ Return JSON with key 'chapters' containing a list of {block_count} objects with 
                 for d in act_dialogues
             ]
 
-            # Importance-aware condensation: preserve short/critical lines, avoid naive sampling
-            sampled_dialogue_text = self._condense_dialogue_block(condensed_log, max_lines=160)
+            # Token-budgeted condensation: capped at ~1,800 tokens to stay well below 7,000 ITPM
+            sampled_dialogue_text = self._condense_dialogue_block(condensed_log, max_tokens=1800, max_lines=65)
 
-            system_prompt = f"""You are an elite YouTube movie recap script doctor and voiceover director for top channels (e.g. Mystery Recapped, Movie Recaps).
-Your mission is to transform the provided raw chronological movie dialogue into a viral, high-retention YouTube Movie Recap narration script in spoken {target_lang.upper()}.
+            # High-density, compact system prompt (~250 tokens instead of 1,200 tokens)
+            system_prompt = f"""You are an elite YouTube movie recap script doctor. Transform raw dialogue into viral, high-retention narration in spoken {target_lang.upper()}.
 
-FILM PLOT SYNOPSIS (broad narrative reference — subtitle dialogue timeline is primary for scene-level events):
-{film_synopsis}
+RECAP PRODUCTION RULES:
+1. PUNCHY 3RD-PERSON: Clear, conversational third person ("The detective investigates", "Alice realizes the trap"). Never first person ("I", "we").
+2. STRICT DIALOGUE GROUNDING: Base every segment strictly on actual dialogue events at that timestamp. Do NOT jump ahead to future scenes.
+3. SEPARATE FACTS VS CLAIMS: Frame unverified allegations as claims ("Alice claims...", "Alvar insists..."), NEVER as confirmed facts.
+4. SIMPLE LANGUAGE: Punchy everyday vocabulary. No purple prose, no jargon ("orthodox freudian", "predatory suitors"), no adverbs ("fearlessly", "maliciously").
+5. NON-LINEAR TIME MARKERS: If a scene is a flashback, signpost it ("In a flashback...", "Flash-forward reveals...").
+6. STRICT 1-SENTENCE CADENCE: Exactly ONE standalone sentence per segment, strictly 10 to 16 words. End with period (.), exclamation (!), or question mark (?). NEVER end on trailing conjunctions ('and', 'so', 'because', 'who').
+7. ANCHOR QUOTE: Provide a short 3-8 word quote from characters in this scene for video editing sync.
 
-CRITICAL PRODUCTION & NARRATIVE CONTINUITY RULES:
-1. PUNCHY, CONVERSATIONAL 3RD-PERSON NARRATOR (YOUTUBE EXPLAINER STYLE):
-   - Narrate in simple, clear, conversational third person ("The detective investigates", "The doctor questions the director", "Alice realizes the trap"). Never use first person ("I", "my").
-   - Tone should sound like an engaging storyteller explaining a suspenseful movie to a friend, NOT a formal police report or purple-prose novel.
-   - Summarize the story cleanly; explain characters' motivations, conflicting clues, and why things happen.
-
-2. SOURCE-TO-DESCRIPTION ACCURACY & DIALOGUE GROUNDING:
-   - For every segment, base the narration strictly on the actual event, dialogue, or physical action occurring at that timestamp in the dialogue timeline.
-   - Do NOT move information from a later scene into an earlier timestamp.
-   - Do NOT combine multiple unrelated events into one description.
-   - Do NOT replace an actual event with an assumption about what probably happened.
-   - Do NOT add actions that cannot be established from the available source dialogue or verified synopsis.
-
-3. SEPARATE FACTS, CLAIMS, AND INFERENCES:
-   - Every important statement must be clearly classified:
-     * Direct Fact: Confirmed on-screen or unquestioned.
-     * Claim / Accusation: Clearly state who claims or alleges it ("Alice claims...", "Alvar insists...", "Staff allege...").
-     * Inference / Suspicion: Clearly frame as thought or suspicion ("She suspects...").
-   - NEVER present an unverified character accusation or theory as an objective factual reality early in the story.
-   - In psychological thrillers, ALWAYS preserve the deliberate uncertainty between competing explanations.
-
-4. LANGUAGE SIMPLICITY & NATURAL CONVERSATIONAL VOCABULARY:
-   - Use everyday English. Prefer common, punchy words over complicated vocabulary.
-   - FORBIDDEN OVERCOMPLICATED JARGON: Do NOT use phrases like "orthodox Freudian concepts", "deep-seated paranoid delusions", "forensic inconsistencies", "clinical discharge", "predatory suitors", "legal incapacitation", or "disciplinary punishment". Use simple alternatives: "traditional psychology ideas", "false beliefs", "differences in the medical reports", "official release", "men after her wealth", or "punishment from the staff".
-   - Avoid dramatic adverb clutter: NEVER spam words like "fearlessly", "fiercely", "brilliantly", "maliciously", "arrogantly", or "contemptuously". Let the real events create suspense naturally.
-
-5. NON-LINEAR & DUAL-TIMELINE CLARITY (CRITICAL FOR FILMS WITH FLASHBACKS/FLASH-FORWARDS):
-   - If an event is a flash-forward, flashback, or secondary parallel timeline shown out of order, you MUST use clear conversational time markers:
-     "In a flash-forward to a stormy night...", "Flash-forward reveals the aftermath of a violent fire...", "Returning to the main timeline...".
-   - When the main timeline later reaches that same event, clearly connect it: "This fire connects back to the chaotic aftermath shown earlier."
-   - Never narrate a flash-forward as if it is happening in the current sequence without identifying the time jump, and never duplicate scenes without explanation.
-
-6. STRICT FILM ISOLATION & ZERO HALLUCINATION:
-   - Ground all characters, locations, clues, and twists STRICTLY in the provided dialogue and Film Plot Synopsis of THIS specific film.
-   - ABSOLUTE PROHIBITION: NEVER import character names, car trunks, bodies in pits, or plot points from other movies.
-
-7. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (NO INVENTED TRANSITIONS):
-   - When characters change locations, escape confinement, or travel, explicitly narrate the physical transition beat.
-   - Connect clues directly to revelations so events feel continuous, never like disjointed incidents.
-   - Do not invent actions or conversations that do not happen in the source.
-
-8. ENTITY & CHARACTER ARRIVAL GROUNDING:
-   - Introduce new characters with their name, role, and reason for being there BEFORE they interact.
-   - Accurately track character identities and relationships (e.g., distinguishing between twin brothers, identifying who survives and who dies).
-
-9. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
-   - FORBIDDEN META-PHRASES: NEVER use "In this scene we see", "Cut to", "The scene shifts to", "We are shown", "The camera pans", "Here we observe".
-
-10. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
-    - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
-    - Word count MUST be strictly between 10 and 16 words per segment.
-    - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
-    - NEVER end on trailing conjunctions ('and', 'because', 'so', 'to', 'who').
-
-11. TWIST & FINAL REVELATION FIDELITY (ANTI-BIAS GROUNDING):
-    - In the final story block, faithfully report the true ending resolution documented in the Film Synopsis.
-    - If the synopsis reveals that the protagonist was mistaken, delusional, or that a trusted visitor turns out to be someone else, narrate that exact revelation with emotional impact. NEVER invert the twist or default to generic tropes where the protagonist is proven completely right if the synopsis states otherwise.
-    - Accurately report official votes, decisions, and acquittals (e.g., clarifying when doctors vote to release a patient while an official abstains).
-
-12. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
-    - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene to lock the video cut with frame-accuracy.
-
-13. OUTPUT FORMAT (COMPACT JSON):
-    - Return valid JSON with a single key 'segments'. Each segment object MUST have:
-      "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, simple conversational English).
-      "anchor_quote": A short 3-8 word quote from character dialogue in this scene.
-      "time": The approximate timestamp string (HH:MM:SS) from the dialogue log where this scene occurs.
-      "loc": Short name of the scene location.
-      "scene_change": Boolean (true if this segment transitions to a new scene, time, or location).
-"""
+Output valid JSON with key 'segments': list of objects {{"text": "10-16 words", "anchor_quote": "3-8 word quote", "time": "HH:MM:SS", "loc": "Scene Location", "scene_change": bool}}"""
 
             story_state_prompt = self._format_story_state_for_prompt(story_state)
 
             user_prompt = f"""Film: {movie_title}
 Act / Window: {act_name}
-Target Segments to produce: approximately {target_segments} segments (each EXACTLY 1 single standalone sentence, 10-16 words).
+Target: approximately {target_segments} segments (each EXACTLY 1 standalone sentence, 10-16 words).
 
-STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
+CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
 {act_guidance}
-(CRITICAL: You MUST narrate ONLY the events occurring within this chapter window. DO NOT jump ahead to future events or reveal future plot developments!).
 
 {story_state_prompt}
 
-Chronological Movie Dialogue Timeline:
+Chronological Dialogue Timeline:
 {sampled_dialogue_text}
-
-SOURCE ACCURACY INSTRUCTIONS:
-- Generate descriptions chronologically following the dialogue events above.
-- Strictly distinguish verified physical facts from character claims/allegations.
-- Ensure each segment is strictly 10 to 16 words and exactly one standalone sentence.
 """
 
             resp = self.provider.chat_completion(
                 system_prompt=system_prompt,
                 user_content=user_prompt,
                 response_format={"type": "json_object"},
-                max_tokens=1500
+                max_tokens=1200,
+                stage_label=f"script_generation_block_{acts_data.index((act_name, act_dialogues, target_segments, act_guidance, is_final_climax, b_start, b_end)) + 1}"
             )
 
             try:
@@ -871,24 +819,26 @@ SOURCE ACCURACY INSTRUCTIONS:
                 s["factual_notes"] = "No LLM provider available for factual verification."
             return segments
 
-        # Process in batches of 15 segments for fast, reliable verification without truncation
-        batch_size = 15
+        # Process in compact adaptive batches of 10 segments (keeps batch prompt ~1,400 tokens)
+        batch_size = 10
         verified_segments = []
 
         # Prepare story context string
         story_context = ""
         if story_state:
             chars = story_state.get("characters", {})
-            facts = story_state.get("confirmed_facts", [])[-6:]
-            claims = story_state.get("character_claims", [])[-6:]
+            facts = story_state.get("confirmed_facts", [])[-4:]
+            claims = story_state.get("character_claims", [])[-3:]
             story_context = (
-                f"Known Characters: {json.dumps(chars, ensure_ascii=False)}\n"
+                f"Known Characters: {json.dumps(dict(list(chars.items())[:6]), ensure_ascii=False)}\n"
                 f"Established Facts: {json.dumps(facts, ensure_ascii=False)}\n"
                 f"Unverified Character Claims: {json.dumps(claims, ensure_ascii=False)}"
             )
 
         for b_idx in range(0, len(segments), batch_size):
             batch = segments[b_idx:b_idx + batch_size]
+            batch_num = (b_idx // batch_size) + 1
+            total_batches = (len(segments) + batch_size - 1) // batch_size
             items_for_prompt = []
             for s in batch:
                 sid = s.get("id")
@@ -898,19 +848,19 @@ SOURCE ACCURACY INSTRUCTIONS:
                 items_for_prompt.append(
                     f"Segment ID {sid} [{ts}]:\n"
                     f"  - Narration: \"{narration}\"\n"
-                    f"  - Source Dialogue Evidence: \"{src}\""
+                    f"  - Source Dialogue Evidence: \"{src[:120]}\""
                 )
 
             prompt_content = "\n".join(items_for_prompt)
 
-            user_prompt = f"""You are a strict, independent movie factual verification auditor.
+            user_prompt = f"""You are a strict movie factual verification auditor.
 Verify each narration segment below against:
 1. The Source Dialogue Evidence matched at that specific timestamp
-2. The Film Synopsis
-3. The Story Context (characters, confirmed facts vs subjective claims)
+2. The Film Synopsis (reference)
+3. The Story Context
 
-Film Synopsis:
-{film_synopsis[:4000]}
+Film Synopsis (reference):
+{film_synopsis[:1500]}
 
 {story_context}
 
@@ -919,24 +869,20 @@ Segments to Verify:
 
 For each segment ID, output:
 - id: integer
-- factual_status: one of:
-    * "verified" (The action/discovery is directly supported by dialogue or synopsis)
-    * "partially_supported" (The event is plausible and mostly confirmed, with minor narrative inference)
-    * "unsupported" (The claim has NO evidence in dialogue or synopsis at this point)
-    * "contradicted" (The narration directly contradicts the dialogue or true movie plot)
-    * "needs_visual_check" (A silent physical action that dialogue cannot confirm)
-- character_accuracy: boolean (true if all character names, roles, and identities are accurate)
-- claim_vs_fact_separated: boolean (true if subjective character allegations are stated as claims, NOT objective facts)
-- factual_notes: 1 concise sentence explaining any discrepancy, missing evidence, or verification note.
+- factual_status: one of "verified" | "partially_supported" | "unsupported" | "contradicted" | "needs_visual_check"
+- character_accuracy: boolean
+- claim_vs_fact_separated: boolean
+- factual_notes: 1 concise sentence explaining any discrepancy.
 
-Return JSON with key 'verifications': a list of objects."""
+Return JSON with key 'verifications': list of objects."""
 
             try:
                 resp = self.provider.chat_completion(
                     system_prompt="You are an uncompromising factual verification auditor. Output strict JSON with key 'verifications'.",
                     user_content=user_prompt,
                     response_format={"type": "json_object"},
-                    max_tokens=2000
+                    max_tokens=1500,
+                    stage_label=f"factual_verification_batch_{batch_num}_of_{total_batches}"
                 )
                 data = json.loads(resp)
                 ver_map = {v["id"]: v for v in data.get("verifications", []) if "id" in v}

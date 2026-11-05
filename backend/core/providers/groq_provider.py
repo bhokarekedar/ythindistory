@@ -45,7 +45,27 @@ class GroqProvider(LLMProvider):
         m_sec = re.search(r'try again in\s+(\d+(?:\.\d+)?)s', err_str, re.IGNORECASE)
         if m_sec:
             return float(m_sec.group(1))
+        # For ITPM / TPM limits, limits reset within rolling 60s window
+        if "itpm" in err_str.lower() or "tokens per minute" in err_str.lower() or "413" in err_str:
+            return 20.0
         return 30.0
+
+    @staticmethod
+    def _is_rate_limit_error(err_str: str) -> bool:
+        s = err_str.lower()
+        return (
+            "429" in s
+            or "413" in s
+            or "rate_limit" in s
+            or "tokens per day" in s
+            or "tokens per minute" in s
+            or "itpm" in s
+            or "tpm" in s
+            or "tpd" in s
+            or "request too large" in s
+            or "limit 1000" in s
+            or "rate_limit_exceeded" in s
+        )
 
     def translate_segments(self, segments, system_prompt: str, context: str = "", target_language: str = "hindi") -> list:
         import time
@@ -119,14 +139,14 @@ class GroqProvider(LLMProvider):
                     print(f"Warning: Groq returned valid JSON but no 'translations' list. Raw: {content}")
                 return translations
             except Exception as e:
-                err_str = str(e).lower()
-                is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per day" in err_str or "tpd" in err_str
+                err_str = str(e)
+                is_rate_limit = self._is_rate_limit_error(err_str)
                 last_exception = e
                 
                 if is_rate_limit:
-                    cd_sec = self._parse_cooldown_seconds(str(e))
+                    cd_sec = self._parse_cooldown_seconds(err_str)
                     self.cooldowns[self.current_idx] = time.time() + cd_sec
-                    print(f"\n  [Groq Pool] ⚠️ Key #{self.current_idx + 1} reached quota/limit (429). Cooldown: {int(cd_sec)}s.")
+                    print(f"\n  [Groq Pool] ⚠️ Key #{self.current_idx + 1} reached quota/limit. Cooldown: {int(cd_sec)}s.")
                     
                     # Search for any other key currently ready
                     now = time.time()
@@ -146,13 +166,18 @@ class GroqProvider(LLMProvider):
             raise last_exception
         return []
 
-    def chat_completion(self, system_prompt: str, user_content: str, response_format: dict = None, temperature: float = 0.4, max_tokens: int = 900) -> str:
+    def chat_completion(self, system_prompt: str, user_content: str, response_format: dict = None, temperature: float = 0.4, max_tokens: int = 900, stage_label: str = "general") -> str:
         """
-        General chat completion with automatic key rotation and rate-limit recovery.
+        General chat completion with automatic token-budget pacing, key rotation, and rate-limit recovery.
         """
         import time
+        from core.token_budget_manager import TokenBudgetManager
+
         if not self.client or not self.api_keys:
             raise RuntimeError("No Groq API keys available to process request.")
+
+        # Paces request before sending to stay strictly within Groq 7,000 ITPM limit
+        TokenBudgetManager.pre_check_and_pace(system_prompt, user_content, stage_label=stage_label)
 
         last_exception = None
         max_total_attempts = len(self.api_keys) * 3
@@ -189,15 +214,24 @@ class GroqProvider(LLMProvider):
                     kwargs["response_format"] = response_format
 
                 response = self.client.chat.completions.create(**kwargs)
+                # Round-robin to the next key for subsequent requests to distribute TPM load evenly
+                if len(self.api_keys) > 1:
+                    now = time.time()
+                    for offset in range(1, len(self.api_keys)):
+                        next_i = (self.current_idx + offset) % len(self.api_keys)
+                        if self.cooldowns.get(next_i, 0) <= now:
+                            self.current_idx = next_i
+                            self.client = Groq(api_key=self.api_keys[self.current_idx])
+                            break
                 return response.choices[0].message.content
             except Exception as e:
-                err_str = str(e).lower()
-                is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per day" in err_str or "tpd" in err_str or "limit 1000" in err_str
+                err_str = str(e)
+                is_rate_limit = self._is_rate_limit_error(err_str)
                 last_exception = e
                 if is_rate_limit:
-                    cd_sec = self._parse_cooldown_seconds(str(e))
+                    cd_sec = self._parse_cooldown_seconds(err_str)
                     self.cooldowns[self.current_idx] = time.time() + cd_sec
-                    print(f"\n  [Groq Pool] ⚠️ Key #{self.current_idx + 1} reached quota/limit (429). Cooldown: {int(cd_sec)}s.")
+                    print(f"\n  [Groq Pool] ⚠️ Key #{self.current_idx + 1} reached quota/limit. Cooldown: {int(cd_sec)}s.")
                     available = [i for i in range(len(self.api_keys)) if i != self.current_idx and self.cooldowns.get(i, 0) <= time.time()]
                     if available:
                         self.current_idx = available[0]
