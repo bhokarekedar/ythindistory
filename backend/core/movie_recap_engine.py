@@ -359,44 +359,44 @@ CRITICAL PRODUCTION & NARRATIVE CONTINUITY RULES:
    - Set scenes, explain motivations, build dramatic suspense, and advance the plot with every line.
    - Summarize the story cleanly; NEVER transcribe minor receptionist chatter or literal word-for-word exchanges.
 
-2. STRICT CAUSALITY & PHYSICAL ACTION PROGRESSION:
-   - NEVER introduce a character without explaining who they are and why they are there (e.g., 'Hospital security calls the police, bringing two detectives to investigate.' or 'A county psychiatrist, Dr. Jacobs, arrives to evaluate Ray.').
-   - YouTube movie recap narration is an ACTION RECAP, NOT JUST TALKING HEADS:
-     * When characters travel or change locations (e.g., detectives driving Ray back to the abandoned gas station to verify his story with the cashier), explicitly narrate the travel and arrival.
-     * When physical discoveries occur (e.g., finding Peri's scarf and a giant pool of blood in the pit, which convinces the police that Ray murdered his family), narrate the discovery and the immediate shift in suspicion.
-     * When confrontations and escapes occur (e.g., Ray disarming the officers at gunpoint, locking them in the station, speeding back to the hospital, stealing a keycard, and penetrating the basement operating room), you MUST explicitly narrate these physical actions!
-   - Do NOT linger on repetitive verbal arguments; advance the physical plot beats from the Chapter Scope across the segments!
+2. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (ABSOLUTELY NO PLOT TELEPORTATION):
+   - When characters change locations, escape confinement, or travel, you MUST explicitly narrate the physical transition beat.
+     * Example: "Overpowering an orderly, Ray slips into the corridor and races toward the lobby."
+     * Example: "Locking the officers inside the gas station restroom, Ray speeds back to the hospital."
+   - NEVER jump across locations or skip transit. If a character was at the gas station and is next in the hospital, narrate the getaway drive and arrival.
 
-3. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
+3. FORENSIC CLUES & CRIME SCENE GROUNDING:
+   - When physical discoveries occur, explicitly name the evidence (e.g., finding Peri's bloody scarf and a massive pool of blood in the pit, which convinces the detectives that Ray committed double murder).
+   - Advance the physical plot beats from the Chapter Scope across the segments; do not get trapped summarizing circular verbal arguments.
+
+4. ENTITY & CHARACTER ARRIVAL GROUNDING:
+   - NEVER introduce a character without explaining who they are and why they are there BEFORE they interact.
+     * Example: "Detectives Chilvers and Jacobs arrive at the hospital to investigate Ray's alarming claims."
+     * Example: "County psychiatrist Dr. Jacobs arrives, suspecting Ray's trauma is masking a violent domestic tragedy."
+
+5. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
    - FORBIDDEN META-PHRASES: NEVER use "In this scene we see", "Cut to", "The scene shifts to", "We are shown", "The camera pans", "Here we observe".
-   - Instead, professional recaps transition between locations and scenes using seamless narrative bridges.
-   - When a segment represents a new scene, location, or time leap (scene_change = true), open the sentence with an evocative narrative bridge phrase such as:
-     * "Arriving at the abandoned rest stop, Ray pulls over to inspect the car."
-     * "Back inside the crowded emergency room, Joanne's patience wears thin."
-     * "Hours later, deep in the hospital's locked sub-basement, the terrifying truth unfolds."
-     * "Stepping out into the biting morning air, Ray rushes toward his car."
-     * "Glancing into the rearview mirror as the sun rises, the chilling reality hits."
+   - Instead, open scene transitions with evocative narrative bridges (e.g., "Arriving at the abandoned rest stop, Ray pulls over to inspect the car.", "Glancing into the rearview mirror as the sun rises, the chilling reality hits.").
 
-4. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
+6. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
    - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
-   - Word count MUST be between 10 and 16 words per segment. (NEVER write more than 1 sentence, and NEVER write paragraphs).
+   - Word count MUST be strictly between 10 and 16 words per segment. (NEVER write more than 1 sentence, and NEVER write paragraphs).
    - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
    - NEVER end on trailing conjunctions or prepositions ('and', 'because', 'so', 'to', 'who').
 
-5. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
-   - For every segment, you MUST provide an "anchor_quote": a short 3-8 word phrase spoken by characters around this scene from the provided dialogue log.
-   - If the scene is a silent action or visual transition, quote the closest dialogue spoken right before or after it.
-   - This anchor quote will be programmatically grounded against the studio subtitle track to lock the video cut with frame-accuracy.
+7. HEIST & SECURITY CLEARANCE INTEGRITY:
+   - Characters cannot enter locked, high-security, or restricted medical facilities without obtaining physical access.
+   - You MUST explicitly narrate the acquisition of keys, badges, or weapons (e.g., 'Ray ambushes a security guard at the service dock, taking his high-clearance keycard before descending into the sub-basement').
 
-6. STRICT DIEGETIC PERSPECTIVE (PREVENT RETROACTIVE CONTRADICTIONS):
-   - Never narrate inside rooms the protagonist never entered if those events are later revealed to be fictitious or unrecorded.
-   - If hospital records or investigators later prove an event never occurred (e.g., no CAT scan was ever administered), narrate only the protagonist's direct observation (e.g., watching the elevator doors close).
+8. SILENT CLIMAX & TWIST FIDELITY (NO INVENTED SPEECH):
+   - In psychological thriller twists where reveals are visual and silent (e.g., flashbacks to corpses in the pit, rearview mirrors, secret compartments), NEVER invent talking monsters, dream lectures, or explanatory monologues.
+   - Narrate the protagonist's direct visual shock and the exposure of physical evidence (e.g., seeing the motionless bandaged stranger in the mirror, and the flashback proving Joanne and Peri died in the pit with their corpses in the trunk).
 
-7. ACCURATE HEIST & TRANSIT ATTRIBUTION:
-   - When characters obtain access items (keycards, weapons, codes, vehicles), ensure the target victim and location match reality (e.g., disarming police officers at the rest stop vs. ambushing a hospital security guard at the service dock for his keycard).
-   - Explicitly narrate the vehicular transit between separated crime scenes (e.g., 'Speeding away from the rest stop, Ray returns to the hospital').
+9. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
+   - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene.
+   - This anchor quote is programmatically grounded against the studio subtitle track to lock the video cut with frame-accuracy.
 
-8. OUTPUT FORMAT (COMPACT JSON):
+10. OUTPUT FORMAT (COMPACT JSON):
    - Return valid JSON with a single key 'segments'. Each segment object MUST have:
      "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, no meta-phrases).
      "anchor_quote": A short 3-8 word quote from the character dialogues in this scene.
