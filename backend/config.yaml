@@ -22,3 +22,7 @@ sync:
 
 storage:
   cleanup_temp: true
+
+publishing:
+  enable_youtube_webhook: false  # Paused: stop auto-uploading to YouTube
+  enable_facebook_upload: false   # Paused: stop auto-uploading to Facebook

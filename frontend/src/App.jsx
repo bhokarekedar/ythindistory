@@ -386,6 +386,7 @@ function App() {
             onClick={() => { 
               setChannelType('full_movie'); 
               setSnapshotImg(null); 
+              setWebhookUrl(''); // Auto-upload stopped for full movie local testing
               fetchLocalMovies();
             }}
             style={{

@@ -300,7 +300,17 @@ def process_pipeline(job_id: str, request: VideoRequest):
                     }, f, indent=2)
                 print(f"  [Metadata] Created fallback metadata: {metadata_output}")
 
-        if request.webhook_url:
+        # Check publishing configuration
+        publishing_cfg = config.get("publishing", {})
+        allow_youtube = publishing_cfg.get("enable_youtube_webhook", False)
+        allow_facebook = publishing_cfg.get("enable_facebook_upload", False)
+
+        if channel_type == "full_movie" or not allow_youtube:
+            print(f"  [Publishing] 🛑 Auto-upload to YouTube & Facebook is PAUSED (full movie raw video testing mode).")
+            print(f"  [Publishing] 📁 Preserving output video permanently at: {final_output}")
+            return
+
+        if request.webhook_url and allow_youtube:
             abs_video_path = os.path.abspath(final_output)
             abs_metadata_path = os.path.abspath(metadata_output)
             
@@ -323,7 +333,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
 
         # Auto-publish directly to Facebook Page (Woivy Recaps)
-        if os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID"):
+        if allow_facebook and os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID"):
             try:
                 from core.facebook_uploader import FacebookUploader
                 fb_uploader = FacebookUploader()
@@ -674,7 +684,15 @@ def execute_resume_pipeline(job_id: str, state: dict):
         job_status[job_id] = f"Completed: {final_output}"
         print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
 
-        if request.webhook_url:
+        # Check publishing configuration
+        publishing_cfg = config.get("publishing", {})
+        allow_youtube = publishing_cfg.get("enable_youtube_webhook", False)
+        allow_facebook = publishing_cfg.get("enable_facebook_upload", False)
+
+        if channel_type == "full_movie" or not allow_youtube:
+            print(f"  [Publishing] 🛑 Auto-upload to YouTube & Facebook is PAUSED (full movie raw video testing mode).")
+            print(f"  [Publishing] 📁 Preserving output video permanently at: {final_output}")
+        elif request.webhook_url and allow_youtube:
             abs_video_path = os.path.abspath(final_output)
             abs_metadata_path = os.path.abspath(metadata_output)
             with open(abs_metadata_path, "r", encoding="utf-8") as f:
@@ -693,8 +711,9 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 "tags": meta.get("keywords", [])
             }
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
+            schedule_delayed_output_cleanup(video_id, delay_seconds=180)
 
-        if os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID"):
+        if allow_facebook and os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID") and channel_type != "full_movie":
             try:
                 from core.facebook_uploader import FacebookUploader
                 fb_uploader = FacebookUploader()
@@ -709,9 +728,6 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 print(f"  [Facebook Auto-Publisher] ⚠️ Warning: {fb_err}")
 
         cleanup_job_temp(video_id)
-
-        if request.webhook_url:
-            schedule_delayed_output_cleanup(video_id, delay_seconds=180)
         
     except ffmpeg.Error as e:
         err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
