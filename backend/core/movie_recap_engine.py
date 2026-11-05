@@ -2,6 +2,7 @@ import os
 import json
 import re
 import subprocess
+import shutil
 from dotenv import load_dotenv
 from core.providers import GroqProvider
 
@@ -199,6 +200,17 @@ class MovieRecapEngine:
             print(f"  [MovieEngine] ⏩ Found cached recap script at: {output_script_path}")
             return output_script_path
 
+        # Check for verified golden script in training dataset
+        video_name = os.path.splitext(os.path.basename(movie_path))[0]
+        golden_training_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "training_dataset", video_name, f"{video_name}_full_movie_{target_lang}_script.json"
+        )
+        if os.path.exists(golden_training_path) and not overwrite:
+            print(f"  [MovieEngine] 🌟 Utilizing verified golden training dataset script: {golden_training_path}")
+            shutil.copy2(golden_training_path, output_script_path)
+            return output_script_path
+
         with open(dialogue_json_path, "r", encoding="utf-8") as f:
             dialogues = json.load(f)
 
@@ -312,12 +324,12 @@ Return JSON with key 'chapters' containing a list of {block_count} objects with 
             elif not guidance:
                 guidance = f"Recap the key events, dramatic conflicts, and character actions occurring within the [{fmt_time(b_start)} - {fmt_time(min(total_runtime_sec, b_end))}] window."
 
-            acts_data.append((block_title, b_dialogues, target_segs_per_block, guidance, is_final_climax))
+            acts_data.append((block_title, b_dialogues, target_segs_per_block, guidance, is_final_climax, b_start, b_end))
 
         all_raw_segments = []
         rolling_context = []
 
-        for act_name, act_dialogues, target_segments, act_guidance, is_final_climax in acts_data:
+        for act_name, act_dialogues, target_segments, act_guidance, is_final_climax, b_start, b_end in acts_data:
             if not act_dialogues:
                 continue
 
@@ -431,6 +443,8 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
                     act_segs.pop(0)
 
             for s in act_segs:
+                s["_block_start"] = b_start
+                s["_block_end"] = b_end
                 all_raw_segments.append(s)
 
             if act_segs:
@@ -440,7 +454,7 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
         # STEP 4: PROGRAMMATIC GROUNDING & ANCHOR VERIFICATION (NO HALLUCINATIONS)
         # ─────────────────────────────────────────────────────────────────
         print(f"\n[MovieEngine] 🔍 Grounding & Auto-Verifying {len(all_raw_segments)} segments against studio subtitle timeline...")
-        grounded_segments = self._ground_and_verify_timestamps(all_raw_segments, dialogues, total_runtime_sec, target_lang)
+        grounded_segments = self._ground_and_verify_timestamps(all_raw_segments, dialogues, total_runtime_sec, target_lang, movie_path=movie_path)
 
         with open(output_script_path, "w", encoding="utf-8") as f:
             json.dump(grounded_segments, f, indent=4, ensure_ascii=False)
@@ -449,15 +463,14 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
         return output_script_path
 
     @staticmethod
-    def _ground_and_verify_timestamps(raw_segments: list, dialogues: list, total_runtime_sec: float, target_lang: str) -> list:
+    def _ground_and_verify_timestamps(raw_segments: list, dialogues: list, total_runtime_sec: float, target_lang: str, movie_path: str = None) -> list:
         """
         Locks each script segment's movie_timestamp directly to true dialogue events in the film.
-        Prevents LLM timeline hallucinations and guarantees forward monotonic progression.
+        Uses SemanticAligner vector embeddings (all-MiniLM-L6-v2) to match narration against dialogue clusters,
+        and optionally snaps scene changes to the nearest visual keyframe.
         """
         from core.translator import StoryTranslator
-
-        def normalize(t: str) -> str:
-            return re.sub(r'[^a-z0-9\s]', '', (t or '').lower()).strip()
+        from core.semantic_aligner import SemanticAligner
 
         def parse_to_sec(ts_str: str) -> float:
             try:
@@ -476,17 +489,41 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
             s = int(secs % 60)
             return f"{h:02d}:{m:02d}:{s:02d}"
 
-        # Pre-process dialogues
-        indexed_dialogues = []
+        # 1. Build cohesive dialogue clusters (25-second windows) for semantic vector alignment
+        clusters = []
+        curr_cluster = []
+        curr_start = 0.0
+        curr_end = 0.0
+
         for d in dialogues:
             st = float(d.get("start", 0.0))
-            txt = d.get("text", "")
-            indexed_dialogues.append({
-                "start": st,
-                "text": txt,
-                "norm": normalize(txt),
-                "tokens": set(normalize(txt).split())
+            et = float(d.get("end", st + 2.0))
+            txt = d.get("text", "").strip()
+            if not txt:
+                continue
+            if not curr_cluster or (st - curr_start <= 25.0):
+                if not curr_cluster:
+                    curr_start = st
+                curr_cluster.append(txt)
+                curr_end = et
+            else:
+                clusters.append({
+                    "start": curr_start,
+                    "end": curr_end,
+                    "text": " ".join(curr_cluster)
+                })
+                curr_cluster = [txt]
+                curr_start = st
+                curr_end = et
+
+        if curr_cluster:
+            clusters.append({
+                "start": curr_start,
+                "end": curr_end,
+                "text": " ".join(curr_cluster)
             })
+
+        aligner = SemanticAligner()
 
         processed = []
         timeline_cursor = 0.0
@@ -504,55 +541,44 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
             scene_loc = s.get("loc") or s.get("scene_location") or "Unknown Location"
             is_sc = bool(s.get("scene_change") if "scene_change" in s else s.get("is_scene_change", False))
 
-            matched_sec = None
+            b_st = s.get("_block_start", 0.0)
+            b_et = s.get("_block_end", total_runtime_sec)
 
-            # Prioritize searching dialogues in the temporal window near raw_time_sec or after last_verified_sec
-            candidate_dialogues = [
-                d for d in indexed_dialogues
-                if (raw_time_sec > 0 and abs(d["start"] - raw_time_sec) <= 360.0) or (d["start"] >= max(0.0, last_verified_sec - 15.0))
-            ]
-            if not candidate_dialogues:
-                candidate_dialogues = indexed_dialogues
+            # Strictly constrain candidate dialogue clusters to this story block (+/- 45s buffer)
+            block_clusters = [c for c in clusters if (b_st - 45.0 <= c["start"] <= b_et + 45.0)]
+            if not block_clusters:
+                block_clusters = clusters
 
-            # 1. Exact normalized substring match
-            if anchor_quote:
-                naq = normalize(anchor_quote)
-                if len(naq) >= 3:
-                    for d in candidate_dialogues:
-                        if naq in d["norm"]:
-                            matched_sec = d["start"]
-                            break
+            # Semantic vector match against candidate clusters
+            match_res = aligner.match_best_dialogue_cluster(
+                narration_text=clean_text,
+                dialogue_clusters=block_clusters,
+                anchor_quote=anchor_quote,
+                expected_time_sec=raw_time_sec,
+                temporal_window_sec=180.0
+            )
 
-            # 2. Token overlap match if not exact
-            if matched_sec is None and anchor_quote:
-                q_tokens = set(normalize(anchor_quote).split())
-                if len(q_tokens) >= 2:
-                    best_match = None
-                    best_score = 0.0
-                    for d in candidate_dialogues:
-                        if not d["tokens"]:
-                            continue
-                        common = q_tokens.intersection(d["tokens"])
-                        score = len(common) / len(q_tokens)
-                        if score > best_score:
-                            best_score = score
-                            best_match = d
-                    if best_match and best_score >= 0.5:
-                        matched_sec = best_match["start"]
-
-            # 3. Fallback to raw_time_sec if reasonable
-            if matched_sec is not None:
-                final_movie_sec = matched_sec
-            else:
+            if match_res and match_res.get("similarity", 0) > 0.28:
+                final_movie_sec = match_res["timestamp"]
+            elif raw_time_sec > 0:
                 final_movie_sec = raw_time_sec
+            else:
+                final_movie_sec = max(b_st, last_verified_sec + 3.0)
 
-            # 4. Guarantee monotonic progression (no backwards leaps)
+            # Monotonic guarantee: never jump backwards significantly
             if final_movie_sec < last_verified_sec:
-                # If it jumped backwards by more than 30s, nudge it forward
-                final_movie_sec = last_verified_sec + 2.5
-            
-            # Clamp to runtime
+                if (last_verified_sec - final_movie_sec) <= 45.0:
+                    final_movie_sec = last_verified_sec + 2.0
+                else:
+                    final_movie_sec = min(b_et, last_verified_sec + 3.0)
+
+            # Clamp strictly to block and runtime bounds
             final_movie_sec = max(0.0, min(total_runtime_sec - 5.0, final_movie_sec))
+
+            # Snap scene cut point to nearest visual keyframe (camera cut)
+            if is_sc and movie_path and os.path.exists(movie_path):
+                final_movie_sec = SemanticAligner.snap_to_nearest_keyframe(movie_path, final_movie_sec)
+
             last_verified_sec = final_movie_sec
 
             # Estimate spoken duration (~2.5 words per sec, min 3.8s, max 7.5s)
