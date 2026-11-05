@@ -197,6 +197,24 @@ class MovieRecapEngine:
         return dialogues
 
     @staticmethod
+    def _clean_movie_title(raw_title: str) -> str:
+        """
+        Generic movie title sanitizer. Strips release groups, codec tags, resolutions,
+        and audio formats so Wikipedia and synopsis search succeed for any movie.
+        """
+        import os
+        t = os.path.splitext(raw_title)[0]
+        t = t.replace('_', ' ').replace('.', ' ')
+        # Strip common release tags, resolutions, codecs, platforms, and year
+        pattern = r'\b(19\d{2}|20\d{2}|720p|1080p|2160p|4k|10bit|8bit|webrip|web-dl|web|bluray|brrip|dvdrip|hdtv|x264|x265|hevc|avc|aac|ac3|ddp\d?\.?\d?|dts|hindi|english|tam|tel|dubbed|subbed|esubs?|c0sm0s|pmz|yify|rarbg|galaxy\w*|nf|amzn|hulu|disney\+?|hbo\w*)\b'
+        t = re.sub(pattern, '', t, flags=re.IGNORECASE)
+        t = re.sub(r'\[.*?\]|\(.*?\)', '', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        # Restore proper apostrophe formatting if separated
+        t = re.sub(r"\b(\w+)\s+'\s*s\b", r"\1's", t, flags=re.IGNORECASE)
+        return t
+
+    @staticmethod
     def _fetch_film_synopsis(movie_title: str) -> str:
         """
         Fetches the verified Wikipedia plot synopsis for the movie to serve as authoritative ground truth.
@@ -205,25 +223,35 @@ class MovieRecapEngine:
         import urllib.request
         import urllib.parse
         
-        clean_title = re.sub(r'[^a-zA-Z0-9\s]', ' ', movie_title).strip()
+        clean_title = MovieRecapEngine._clean_movie_title(movie_title)
+        if not clean_title:
+            clean_title = movie_title.strip()
+
         search_candidates = [
+            clean_title,
             f"{clean_title} film",
             f"{clean_title} movie",
-            clean_title
         ]
         
+        title_keywords = set(re.findall(r'[a-zA-Z]{3,}', clean_title.lower()))
+
         for query in search_candidates:
             try:
                 url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(query)}&format=json"
                 req = urllib.request.Request(url, headers={"User-Agent": "MovieRecapBot/1.0"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=6) as resp:
                     data = json.loads(resp.read().decode())
                 hits = data.get("query", {}).get("search", [])
                 for hit in hits[:3]:
                     page_title = hit["title"]
+                    # Ensure hit title overlaps significantly with query keywords
+                    hit_keywords = set(re.findall(r'[a-zA-Z]{3,}', page_title.lower()))
+                    if not title_keywords.intersection(hit_keywords):
+                        continue
+
                     content_url = f"https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles={urllib.parse.quote(page_title)}&format=json"
                     req2 = urllib.request.Request(content_url, headers={"User-Agent": "MovieRecapBot/1.0"})
-                    with urllib.request.urlopen(req2, timeout=5) as resp2:
+                    with urllib.request.urlopen(req2, timeout=6) as resp2:
                         data2 = json.loads(resp2.read().decode())
                     pages = data2.get("query", {}).get("pages", {})
                     for pid, pdata in pages.items():
@@ -264,7 +292,7 @@ class MovieRecapEngine:
             raise ValueError(f"Dialogue log is empty: {dialogue_json_path}")
 
         total_lines = len(dialogues)
-        movie_title = os.path.splitext(os.path.basename(movie_path))[0].split(".")[0].replace("_", " ").title()
+        movie_title = self._clean_movie_title(os.path.basename(movie_path)).title()
         
         # Calculate actual elapsed runtime in seconds
         max_timestamp = max((float(d.get("end", d.get("start", 0))) for d in dialogues), default=5400.0)
@@ -330,7 +358,8 @@ CRITICAL RULES FOR CHAPTER SCOPES:
 2. DO NOT prematurely pull scenes or actions from future windows into earlier windows.
    - Ground the scope strictly in the locations, characters, and discoveries present in that chronological window.
    - Do not import events, discoveries, or physical confrontations that occur in subsequent windows.
-   - The final window features the climax, revelation, and twist resolution as established in the verified film synopsis.
+3. NON-LINEAR & PARALLEL TIMELINES: If the film features flashbacks, flash-forwards, or parallel timelines (e.g. an investigation into a crime or fire shown out of order), explicitly identify these temporal shifts so the narrator uses natural time markers and avoids redundant re-narration.
+4. CLIMAX & TWIST FIDELITY: For the final block (Block {block_count}), explicitly document the true climax, final identity reveal, and resolution as proven by the Authoritative Synopsis (e.g. who arrives, what truth is uncovered, and whether the protagonist was validated or proven false/delusional).
 
 Return JSON with key 'chapters' containing a list of {block_count} objects with 'block_index' (1 to {block_count}), 'title', and 'scope' (2-4 sentences describing the exact physical locations, character movements, evidence discovered, and action events occurring strictly in this window)."""
 
@@ -338,7 +367,7 @@ Return JSON with key 'chapters' containing a list of {block_count} objects with 
                 system_prompt="You are a master film story editor. Output strict JSON with key 'chapters'.",
                 user_content=ch_prompt,
                 response_format={"type": "json_object"},
-                max_tokens=1000
+                max_tokens=1500
             )
             ch_data = json.loads(ch_resp).get("chapters", [])
             for c in ch_data:
@@ -361,8 +390,8 @@ Return JSON with key 'chapters' containing a list of {block_count} objects with 
             guidance = chapter_scopes.get(b_idx + 1) or ""
             if is_final_climax:
                 twist_instructions = (
-                    "MANDATORY CLIMAX & TWIST RESOLUTION: The final segments of this block MUST explicitly deliver the true, verified climax and shocking resolution of THIS specific film as proven by the plot synopsis and final dialogue beats. "
-                    "Narrate the final confrontation, the unmasking of the true culprit or institutional secret, and the shocking revelation without hallucinating or borrowing plot points from any other movie."
+                    "MANDATORY CLIMAX & TWIST RESOLUTION: The final segments of this block MUST explicitly deliver the true, verified climax and shocking resolution of THIS specific film as proven by the Authoritative Film Synopsis and final dialogue beats.\n"
+                    "CRITICAL TWIST FIDELITY: Carefully check the Authoritative Film Synopsis for the true ending revelation. In psychological thrillers, verify whether the protagonist's conspiracy theory was validated OR disproved by the final discovery. Never assume the protagonist was right if the synopsis shows their claim was shattered or proven false. Accurately narrate the true physical reveal as verified in the synopsis."
                 )
                 guidance = f"{guidance}\n{twist_instructions}".strip()
             elif not guidance:
@@ -414,35 +443,42 @@ CRITICAL PRODUCTION & NARRATIVE CONTINUITY RULES:
      * The Institution's Claim: What the doctors claim happened (e.g. "The hospital claims she is mentally ill and attempted to poison her husband").
    - NEVER present an unverified claim as established objective fact early on. Use clarifying framing: "Alice claims...", "According to Alice...", "Meanwhile, the director insists...".
 
-4. STRICT FILM ISOLATION & ZERO HALLUCINATION:
+4. NON-LINEAR & DUAL-TIMELINE CLARITY (CRITICAL FOR FILMS WITH FLASHBACKS/FLASH-FORWARDS):
+   - If an event is a flash-forward, flashback, or secondary parallel timeline shown out of order, you MUST use clear conversational time markers:
+     "In a flash-forward to a stormy night...", "Flash-forward reveals the aftermath of a violent fire...", "Returning to the main timeline...".
+   - When the main timeline later reaches that same event, clearly connect it: "This fire connects back to the chaotic aftermath shown earlier."
+   - Never narrate a flash-forward as if it is happening in the current sequence without identifying the time jump, and never duplicate scenes without explanation.
+
+5. STRICT FILM ISOLATION & ZERO HALLUCINATION:
    - You MUST ground all characters, locations, clues, and twists STRICTLY in the provided dialogue and Authoritative Film Plot Synopsis of THIS specific film.
    - ABSOLUTE PROHIBITION: NEVER import character names, car trunks, bodies in pits, or plot points from other movies.
 
-5. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (NO PLOT TELEPORTATION):
+6. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (NO PLOT TELEPORTATION):
    - When characters change locations, escape confinement, or travel, you MUST explicitly narrate the physical transition beat.
    - Connect clues directly to revelations so events feel continuous, never like disjointed incidents.
 
-6. ENTITY & CHARACTER ARRIVAL GROUNDING:
+7. ENTITY & CHARACTER ARRIVAL GROUNDING:
    - Introduce new characters with their name, role, and reason for being there BEFORE they interact.
    - Accurately track character identities and relationships (e.g., distinguishing between twin brothers, identifying who survives and who dies).
 
-7. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
+8. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
    - FORBIDDEN META-PHRASES: NEVER use "In this scene we see", "Cut to", "The scene shifts to", "We are shown", "The camera pans", "Here we observe".
 
-8. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
+9. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
    - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
    - Word count MUST be strictly between 10 and 16 words per segment.
    - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
    - NEVER end on trailing conjunctions ('and', 'because', 'so', 'to', 'who').
 
-9. EXPLAIN TWISTS & CLIMAX LOGICALLY (BUILD-UP & REVEAL):
-   - Never simply announce a twist in one line without explaining the physical proof behind it.
-   - Show how the final discovery (e.g., a visitor's real identity, an uncovered document, a surviving witness) fundamentally shatters the earlier story.
+10. TWIST & FINAL REVELATION FIDELITY (ANTI-BIAS GROUNDING):
+   - In the final story block, faithfully report the true ending resolution documented in the Authoritative Film Synopsis.
+   - If the synopsis reveals that the protagonist was mistaken, delusional, or that a trusted visitor turns out to be someone else, narrate that exact revelation with emotional impact. NEVER invert the twist or default to generic tropes where the protagonist is proven completely right if the synopsis states otherwise.
+   - Accurately report official votes, decisions, and acquittals (e.g., clarifying when doctors vote to release a patient while an official abstains).
 
-10. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
+11. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
    - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene to lock the video cut with frame-accuracy.
 
-11. OUTPUT FORMAT (COMPACT JSON):
+12. OUTPUT FORMAT (COMPACT JSON):
    - Return valid JSON with a single key 'segments'. Each segment object MUST have:
      "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, simple conversational English).
      "anchor_quote": A short 3-8 word quote from character dialogue in this scene.
@@ -471,7 +507,7 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
                 system_prompt=system_prompt,
                 user_content=user_prompt,
                 response_format={"type": "json_object"},
-                max_tokens=980
+                max_tokens=1500
             )
 
             try:
@@ -515,6 +551,31 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
         # ─────────────────────────────────────────────────────────────────
         print(f"\n[MovieEngine] 🔍 Grounding & Auto-Verifying {len(all_raw_segments)} segments against studio subtitle timeline...")
         grounded_segments = self._ground_and_verify_timestamps(all_raw_segments, dialogues, total_runtime_sec, target_lang, movie_path=movie_path)
+
+        # ─────────────────────────────────────────────────────────────────
+        # STEP 5: AUTOMATED SCRIPT AUDITOR & GENERIC QUALITY ELEVATION (TARGET >= 9.5)
+        # ─────────────────────────────────────────────────────────────────
+        from core.script_auditor import ScriptAuditor
+        for audit_round in range(1, 5):
+            audit_report = ScriptAuditor.audit_script(grounded_segments, film_synopsis=film_synopsis, provider=self.provider)
+            score = audit_report.get("overall_score", 0.0)
+            print(f"\n  [ScriptAuditor] 📊 Round {audit_round} Quality Audit: {score}/10.0 (Target: 9.5+)")
+            for cat, c_score in audit_report.get("category_scores", {}).items():
+                print(f"    - {cat}: {c_score}/10.0")
+
+            if score >= 9.5:
+                print(f"  [ScriptAuditor] 🏆 SCRIPT QUALITY CERTIFIED (Score {score}/10.0 >= 9.5)!")
+                break
+            else:
+                print(f"  [ScriptAuditor] 🛠️ Applying generic polish and surgical adjustments...")
+                grounded_segments = ScriptAuditor.apply_generic_polish(grounded_segments, provider=self.provider, film_synopsis=film_synopsis, audit_report=audit_report)
+
+        # Final audit pass to record official certified rating
+        final_report = ScriptAuditor.audit_script(grounded_segments, film_synopsis=film_synopsis, provider=self.provider)
+        final_score = final_report.get("overall_score", 0.0)
+        print(f"\n  [ScriptAuditor] 🏁 Final Certified Score: {final_score}/10.0")
+        for cat, c_score in final_report.get("category_scores", {}).items():
+            print(f"    - {cat}: {c_score}/10.0")
 
         with open(output_script_path, "w", encoding="utf-8") as f:
             json.dump(grounded_segments, f, indent=4, ensure_ascii=False)
