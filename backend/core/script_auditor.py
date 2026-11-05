@@ -48,11 +48,35 @@ class ScriptAuditor:
         r'\bthe\s+camera\s+shows\b'
     ]
 
+    # Canonical word-count rule — must match the generation prompt (10–16 words)
+    MIN_WORDS = 10
+    MAX_WORDS = 16
+
+    @classmethod
+    def _get_narration_text(cls, segment: dict) -> str:
+        """
+        Returns the canonical narration text from a segment, regardless of target language.
+        Checks 'narration' first (new canonical field), then 'english', 'hindi', 'text'.
+        This ensures the auditor works correctly for Hindi, English, and any future language.
+        """
+        return (
+            segment.get("narration")
+            or segment.get("english")
+            or segment.get("hindi")
+            or segment.get("text")
+            or ""
+        )
+
     @classmethod
     def audit_script(cls, script: List[dict], film_synopsis: str = "", provider=None) -> Dict:
         """
         Runs comprehensive, generic quality audit on script segments.
         Returns a detailed report with scores, failure diagnoses, and overall rating.
+
+        IMPORTANT: This auditor checks language rules deterministically and uses an LLM to
+        compare narration against the film synopsis. It cannot verify whether individual
+        events are accurately placed in the timeline — that requires per-segment source
+        dialogue evidence passed to apply_generic_polish().
         """
         if not script:
             return {"overall_score": 0.0, "passed": False, "reason": "Script is empty"}
@@ -60,7 +84,7 @@ class ScriptAuditor:
         jargon_hits = []
         adverb_hits = []
         meta_hits = []
-        length_violations = [] # <10 or >16 words ideal (strictly penalize <10 or >18)
+        length_violations = []  # < MIN_WORDS or > MAX_WORDS
         multi_sentence_hits = []
         trailing_conjunctions = []
 
@@ -71,13 +95,13 @@ class ScriptAuditor:
             return len(sents)
 
         for s in script:
-            text = s.get("english") or s.get("text") or ""
+            text = cls._get_narration_text(s)
             words = text.split()
             wc = len(words)
             seg_id = s.get("id", 0)
 
-            # Check length (strictly 10-16 words, small allowance up to 17)
-            if wc < 10 or wc > 17:
+            # Strictly enforce MIN_WORDS–MAX_WORDS
+            if wc < cls.MIN_WORDS or wc > cls.MAX_WORDS:
                 length_violations.append((seg_id, wc, text))
 
             # Check sentence count with abbreviation protection
@@ -85,7 +109,7 @@ class ScriptAuditor:
             if sent_count > 1:
                 multi_sentence_hits.append((seg_id, sent_count, text))
 
-            # Check trailing conjunctions
+            # Check trailing conjunctions — correct regex (no literal asterisk)
             if re.search(r'\b(and|or|so|because|to|who|which)\s*$', text, flags=re.IGNORECASE):
                 trailing_conjunctions.append((seg_id, text))
 
@@ -123,29 +147,45 @@ class ScriptAuditor:
         )
         flow_score = max(3.0, round(10.0 - flow_deductions, 2))
 
-        factual_score = 9.8
-        comprehension_score = 9.7
-        suspense_score = 9.6
+        # LLM-based semantic scores default to FAILURE, not inflated defaults.
+        # They are only updated after a successful, validated LLM response.
+        # This prevents the auditor from certifying a script when the LLM call fails.
+        factual_score = 0.0
+        comprehension_score = 0.0
+        suspense_score = 0.0
+        audit_success = False
         audit_feedback = []
         surgical_fixes = []
 
         if provider and film_synopsis:
-            script_sample = "\n".join([f"[{s.get('movie_timestamp','')}] ID {s.get('id')}: {s.get('english', s.get('text',''))}" for s in script])
+            # Build script sample with source dialogue context if available
+            script_lines = []
+            for s in script:
+                narration = cls._get_narration_text(s)
+                src = s.get("source_dialogue") or ""
+                src_note = f" | source: {src[:80]}" if src else ""
+                script_lines.append(
+                    f"[{s.get('movie_timestamp','')}] ID {s.get('id')}: {narration}{src_note}"
+                )
+            script_sample = "\n".join(script_lines)
+
             eval_prompt = f"""You are a strict, independent senior film editor and YouTube recap auditor.
 Evaluate this movie recap script against the verified Authoritative Film Synopsis and professional YouTube recap standards.
+Where 'source' dialogue is provided beside a segment, use it as primary evidence for factual accuracy.
 
 Authoritative Film Synopsis (COMPLETE):
 {film_synopsis[:6000]}
 
-Recap Script Segments:
+Recap Script Segments (format: [timestamp] ID n: narration | source: dialogue evidence):
 {script_sample}
 
 Audit strictly against these 3 categories (rate each from 1.0 to 10.0):
 1. FACTUAL ACCURACY & SOURCE VALIDATION (Score 1-10):
    - Are character names, roles, and relationships accurate (e.g. distinguishing twins, identifying doctors/investigators)?
-   - SEPARATE FACTS, CLAIMS, AND INFERENCES: Does the script avoid presenting unverified subjective character claims as objective facts early on? (e.g. framing allegations as "She claims..." or "He alleges..." until proven).
+   - SEPARATE FACTS, CLAIMS, AND INFERENCES: Does the script avoid presenting unverified subjective character claims as objective facts early on?
    - Are physical evidence, injuries, survival/death, and legal/council outcomes accurately reported as verified in the synopsis?
    - Does it faithfully deliver the true climax and twist resolution without inverting revelations?
+   - For segments with source dialogue provided: does the narration accurately reflect what the dialogue establishes?
 
 2. STORY COMPREHENSION & CHRONOLOGY (Score 1-10):
    - Are transitions logical and cause-and-effect clear?
@@ -171,13 +211,28 @@ Output strictly valid JSON with keys:
                     max_tokens=2500
                 )
                 eval_data = json.loads(eval_resp)
-                factual_score = float(eval_data.get("factual_score", 9.8))
-                comprehension_score = float(eval_data.get("comprehension_score", 9.7))
-                suspense_score = float(eval_data.get("suspense_score", 9.6))
-                audit_feedback = eval_data.get("identified_issues", [])
-                surgical_fixes = eval_data.get("surgical_fixes", [])
+
+                # Validate that required keys are present before trusting scores
+                required_keys = {"factual_score", "comprehension_score", "suspense_score"}
+                if required_keys.issubset(eval_data.keys()):
+                    factual_score = float(eval_data["factual_score"])
+                    comprehension_score = float(eval_data["comprehension_score"])
+                    suspense_score = float(eval_data["suspense_score"])
+                    audit_feedback = eval_data.get("identified_issues", [])
+                    surgical_fixes = eval_data.get("surgical_fixes", [])
+                    audit_success = True
+                else:
+                    audit_feedback.append("LLM response missing required score keys — audit not certified.")
+            except json.JSONDecodeError as e:
+                audit_feedback.append(f"LLM returned invalid JSON — audit not certified: {e}")
             except Exception as e:
-                audit_feedback.append(f"LLM semantic evaluation notice: {e}")
+                audit_feedback.append(f"LLM semantic evaluation failed — audit not certified: {e}")
+        elif not provider:
+            # No LLM available — only deterministic scores apply; treat semantic scores as neutral
+            factual_score = 7.0
+            comprehension_score = 7.0
+            suspense_score = 7.0
+            audit_success = True  # deterministic checks only
 
         # Weighted Overall Score Formula:
         # Factual: 30%, Comprehension: 25%, Simple Language: 20%, Suspense: 15%, Flow: 10%
@@ -190,11 +245,12 @@ Output strictly valid JSON with keys:
             2
         )
 
-        passed = (overall_score >= 9.5)
+        passed = (overall_score >= 9.5) and audit_success
 
         return {
             "overall_score": overall_score,
             "passed": passed,
+            "audit_success": audit_success,
             "category_scores": {
                 "factual_accuracy": factual_score,
                 "story_comprehension": comprehension_score,
@@ -222,6 +278,7 @@ Output strictly valid JSON with keys:
         2. Ensures all segments strictly adhere to simple conversational English (10-16 words).
         3. Separates subjective claims from objective facts.
         4. Eliminates jargon, adverbs, meta-phrases, and multi-sentence formatting.
+        5. When a segment exceeds MAX_WORDS, requests an LLM rewrite rather than blindly truncating.
         """
         surgical_fixes = audit_report.get("surgical_fixes", []) if audit_report else []
         issues = audit_report.get("issues", {}).get("semantic_issues", []) if audit_report else []
@@ -251,9 +308,9 @@ Output strictly valid JSON with keys:
         # Run LLM repair prompt for any identified semantic issues or length violations
         if provider and film_synopsis and (issues or bad_length_ids):
             flawed_context = "\n".join(f"- {iss}" for iss in issues[:8]) if issues else "Ensure all segments are factually faithful and flow smoothly."
-            length_context = f"\nSegments with word-count violations (must be strictly 10 to 16 words): {bad_length_ids}" if bad_length_ids else ""
-            
-            # If dialogues provided, provide dialogue context near flawed/violated segments
+            length_context = f"\nSegments with word-count violations (must be strictly {cls.MIN_WORDS} to {cls.MAX_WORDS} words): {bad_length_ids}" if bad_length_ids else ""
+
+            # Provide dialogue context near flawed/violated segments for factual grounding
             dialogue_context_lines = []
             target_ids = set([lv[0] for lv in length_violations] + list(fix_map.keys()))
             if dialogues and target_ids:
@@ -269,7 +326,7 @@ Output strictly valid JSON with keys:
             if dialogue_context_lines:
                 diag_snippet = "\n\nActual Dialogue Context at Target Timestamps:\n" + "\n".join(dialogue_context_lines[:15])
 
-            script_sample = "\n".join([f"ID {s.get('id')} [{s.get('movie_timestamp','')}]: {s.get('english', s.get('text',''))}" for s in script])
+            script_sample = "\n".join([f"ID {s.get('id')} [{s.get('movie_timestamp','')}]: {cls._get_narration_text(s)}" for s in script])
             repair_prompt = f"""You are a master movie recap editor.
 The following recap script has several identified factual, story, or pacing errors:
 {flawed_context}{length_context}{diag_snippet}
@@ -284,7 +341,7 @@ Carefully review all segments against the Authoritative Film Synopsis and dialog
 CRITICAL REQUIREMENTS FOR EVERY FIX:
 1. SOURCE ACCURACY: Base the description strictly on the actual event supported by the dialogue and synopsis at that timestamp.
 2. SEPARATE FACTS, CLAIMS, AND INFERENCES: If a character makes an accusation or claim not yet confirmed, state it as a claim ("Alice claims...", "Alvar insists...", "She suspects..."). Do NOT present unproven theories as facts early on.
-3. STRICT LENGTH: EVERY fix MUST contain strictly 10 to 16 words.
+3. STRICT LENGTH: EVERY fix MUST contain strictly {cls.MIN_WORDS} to {cls.MAX_WORDS} words.
 4. STRICT CADENCE: Exactly ONE single standalone sentence ending with a period (.), exclamation (!), or question mark (?).
 5. NO META-PHRASES: Every sentence MUST be genuine spoken story narration. Never output "Remove this" or "Omit".
 6. NO DUPLICATE ADJACENT SEGMENTS: Each segment must uniquely advance the story.
@@ -316,7 +373,7 @@ Output valid JSON with key "corrections": a list of objects {{"id": int, "fixed_
             if seg_id in fix_map:
                 text = fix_map[seg_id]
             else:
-                text = item.get("english") or item.get("text") or ""
+                text = cls._get_narration_text(item)
 
             # 1. Clean meta phrases
             for mp in cls.FORBIDDEN_META:
@@ -348,26 +405,88 @@ Output valid JSON with key "corrections": a list of objects {{"id": int, "fixed_
             if not text.endswith(('.', '!', '?')):
                 text += '.'
 
-            # Generic word-count tuning: Ensure segment is strictly 10 to 16 words
+            # Word-count enforcement: strictly MIN_WORDS to MAX_WORDS
+            # Both over-length and under-length segments are sent to LLM for grammatical rewrite.
+            # CRITICAL (Issue 5): NEVER blindly slice words mid-sentence (e.g. words[:16]),
+            # which destroys grammar, cuts thoughts in half, and causes audio glitches in TTS.
+            # Instead, validate every rewrite and preserve complete grammatical sentences.
             words = text.split()
-            if len(words) > 17:
-                # If too long, tighten trailing relative clauses or filler
-                trimmed = " ".join(words[:16])
-                if not trimmed.endswith(('.', '!', '?')):
-                    trimmed += '.'
-                text = trimmed
+            if len(words) > cls.MAX_WORDS or len(words) < cls.MIN_WORDS:
+                if provider:
+                    rewritten_candidate = None
+                    # Pass 1: Targeted length adjustment
+                    try:
+                        direction = "shorter" if len(words) > cls.MAX_WORDS else "longer"
+                        rewrite_resp = provider.chat_completion(
+                            system_prompt=(
+                                f"You are a master script editor. Rewrite the voiceover sentence into EXACTLY ONE complete, "
+                                f"grammatically sound sentence of strictly {cls.MIN_WORDS} to {cls.MAX_WORDS} words. "
+                                f"Keep the core story meaning intact. Make it {direction}."
+                            ),
+                            user_content=text,
+                            max_tokens=60
+                        )
+                        cand = rewrite_resp.strip()
+                        if not cand.endswith(('.', '!', '?')):
+                            cand += '.'
+                        c_words = cand.split()
+                        if cls.MIN_WORDS <= len(c_words) <= cls.MAX_WORDS:
+                            rewritten_candidate = cand
+                    except Exception as e:
+                        print(f"  [ScriptAuditor] Word-count rewrite pass 1 notice: {e}")
+
+                    # Pass 2: Fallback attempt if pass 1 was still out of range
+                    if not rewritten_candidate:
+                        try:
+                            rewrite_resp_2 = provider.chat_completion(
+                                system_prompt=(
+                                    f"Condense or expand this into a SINGLE complete standalone sentence of strictly 12 to 14 words. "
+                                    f"End with a period. Never leave a dangling clause."
+                                ),
+                                user_content=text,
+                                max_tokens=50
+                            )
+                            cand2 = rewrite_resp_2.strip()
+                            if not cand2.endswith(('.', '!', '?')):
+                                cand2 += '.'
+                            c2_words = cand2.split()
+                            if cls.MIN_WORDS <= len(c2_words) <= cls.MAX_WORDS:
+                                rewritten_candidate = cand2
+                        except Exception:
+                            pass
+
+                    if rewritten_candidate:
+                        text = rewritten_candidate
+                    else:
+                        # LLM rewrite attempts did not reach the exact range.
+                        # Preserve grammatical sentence integrity rather than cutting off mid-phrase!
+                        item["_length_violation"] = len(words)
+                        item["_cadence_warning"] = (
+                            f"Sentence has {len(words)} words (target {cls.MIN_WORDS}-{cls.MAX_WORDS}); "
+                            f"kept grammatically complete sentence to avoid audio truncation."
+                        )
+                else:
+                    item["_length_violation"] = len(words)
+                    item["_cadence_warning"] = f"Sentence has {len(words)} words; provider unavailable for rewrite."
+
+            # Post-polish validation: flag any segment that still violates rules after all fixes
+            final_words = text.split()
+            if len(final_words) < cls.MIN_WORDS or len(final_words) > cls.MAX_WORDS:
+                item["_length_violation"] = len(final_words)
 
             # Deduplicate identical adjacent narration
             if polished:
-                prev_text = polished[-1].get("english") or polished[-1].get("text") or ""
+                prev_text = cls._get_narration_text(polished[-1])
                 if prev_text.strip().lower() == text.strip().lower():
-                    orig = item.get("original_text") or item.get("english") or ""
-                    if orig and orig.strip().lower() != text.strip().lower():
-                        text = orig
+                    # Mark as duplicate rather than silently replacing with broken text
+                    item["_duplicate_flag"] = True
 
-            # Assign back
+            # Assign to canonical 'narration' field and legacy language-specific fields
+            item["narration"] = text
             if "english" in item:
                 item["english"] = text
+            if "hindi" in item:
+                item["hindi"] = text
             if "text" in item:
                 item["text"] = text
             polished.append(item)
