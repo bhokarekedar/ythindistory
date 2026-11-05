@@ -25,7 +25,7 @@ class MovieRecapEngine:
         groq_keys = []
         if self.api_key:
             groq_keys.append(self.api_key)
-        for k in [os.getenv("GROQ_API_KEY"), os.getenv("GROQ_API_KEY_TWO"), os.getenv("GROQ_API_KEY_THREE")]:
+        for k in [os.getenv("GROQ_API_KEY"), os.getenv("GROQ_API_KEY_TWO"), os.getenv("GROQ_API_KEY_THREE"), os.getenv("GROQ_API_KEY_FOUR")]:
             if k and k not in groq_keys:
                 groq_keys.append(k)
         self.provider = GroqProvider(model=self.model, api_keys=groq_keys)
@@ -432,59 +432,69 @@ CRITICAL PRODUCTION & NARRATIVE CONTINUITY RULES:
    - Tone should sound like an engaging storyteller explaining a suspenseful movie to a friend, NOT a formal police report or purple-prose novel.
    - Summarize the story cleanly; explain characters' motivations, conflicting clues, and why things happen.
 
-2. LANGUAGE SIMPLICITY & NATURAL CONVERSATIONAL VOCABULARY:
+2. SOURCE-TO-DESCRIPTION ACCURACY & DIALOGUE GROUNDING:
+   - For every segment, base the narration strictly on the actual event, dialogue, or physical action occurring at that timestamp in the dialogue timeline.
+   - Do NOT move information from a later scene into an earlier timestamp.
+   - Do NOT combine multiple unrelated events into one description.
+   - Do NOT replace an actual event with an assumption about what probably happened.
+   - Do NOT add actions that cannot be established from the available source dialogue or verified synopsis.
+
+3. SEPARATE FACTS, CLAIMS, AND INFERENCES:
+   - Every important statement must be clearly classified:
+     * Direct Fact: Confirmed on-screen or unquestioned.
+     * Claim / Accusation: Clearly state who claims or alleges it ("Alice claims...", "Alvar insists...", "Staff allege...").
+     * Inference / Suspicion: Clearly frame as thought or suspicion ("She suspects...").
+   - NEVER present an unverified character accusation or theory as an objective factual reality early in the story.
+   - In psychological thrillers, ALWAYS preserve the deliberate uncertainty between competing explanations.
+
+4. LANGUAGE SIMPLICITY & NATURAL CONVERSATIONAL VOCABULARY:
    - Use everyday English. Prefer common, punchy words over complicated vocabulary.
    - FORBIDDEN OVERCOMPLICATED JARGON: Do NOT use phrases like "orthodox Freudian concepts", "deep-seated paranoid delusions", "forensic inconsistencies", "clinical discharge", "predatory suitors", "legal incapacitation", or "disciplinary punishment". Use simple alternatives: "traditional psychology ideas", "false beliefs", "differences in the medical reports", "official release", "men after her wealth", or "punishment from the staff".
    - Avoid dramatic adverb clutter: NEVER spam words like "fearlessly", "fiercely", "brilliantly", "maliciously", "arrogantly", or "contemptuously". Let the real events create suspense naturally.
 
-3. PRESERVE COMPETING PERSPECTIVES & SUBJECTIVE MYSTERY (DO NOT SPOIL THE TRUTH AS EARLY FACT):
-   - In psychological thrillers, ALWAYS preserve the film's deliberate uncertainty between competing explanations:
-     * Protagonist's Claim: What she claims happened (e.g. "Alice insists she is an undercover investigator framed by her husband").
-     * The Institution's Claim: What the doctors claim happened (e.g. "The hospital claims she is mentally ill and attempted to poison her husband").
-   - NEVER present an unverified claim as established objective fact early on. Use clarifying framing: "Alice claims...", "According to Alice...", "Meanwhile, the director insists...".
-
-4. NON-LINEAR & DUAL-TIMELINE CLARITY (CRITICAL FOR FILMS WITH FLASHBACKS/FLASH-FORWARDS):
+5. NON-LINEAR & DUAL-TIMELINE CLARITY (CRITICAL FOR FILMS WITH FLASHBACKS/FLASH-FORWARDS):
    - If an event is a flash-forward, flashback, or secondary parallel timeline shown out of order, you MUST use clear conversational time markers:
      "In a flash-forward to a stormy night...", "Flash-forward reveals the aftermath of a violent fire...", "Returning to the main timeline...".
    - When the main timeline later reaches that same event, clearly connect it: "This fire connects back to the chaotic aftermath shown earlier."
    - Never narrate a flash-forward as if it is happening in the current sequence without identifying the time jump, and never duplicate scenes without explanation.
 
-5. STRICT FILM ISOLATION & ZERO HALLUCINATION:
-   - You MUST ground all characters, locations, clues, and twists STRICTLY in the provided dialogue and Authoritative Film Plot Synopsis of THIS specific film.
+6. STRICT FILM ISOLATION & ZERO HALLUCINATION:
+   - Ground all characters, locations, clues, and twists STRICTLY in the provided dialogue and Authoritative Film Plot Synopsis of THIS specific film.
    - ABSOLUTE PROHIBITION: NEVER import character names, car trunks, bodies in pits, or plot points from other movies.
 
-6. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (NO PLOT TELEPORTATION):
-   - When characters change locations, escape confinement, or travel, you MUST explicitly narrate the physical transition beat.
+7. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (NO INVENTED TRANSITIONS):
+   - When characters change locations, escape confinement, or travel, explicitly narrate the physical transition beat.
    - Connect clues directly to revelations so events feel continuous, never like disjointed incidents.
+   - Do not invent actions or conversations that do not happen in the source.
 
-7. ENTITY & CHARACTER ARRIVAL GROUNDING:
+8. ENTITY & CHARACTER ARRIVAL GROUNDING:
    - Introduce new characters with their name, role, and reason for being there BEFORE they interact.
    - Accurately track character identities and relationships (e.g., distinguishing between twin brothers, identifying who survives and who dies).
 
-8. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
+9. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
    - FORBIDDEN META-PHRASES: NEVER use "In this scene we see", "Cut to", "The scene shifts to", "We are shown", "The camera pans", "Here we observe".
 
-9. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
-   - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
-   - Word count MUST be strictly between 10 and 16 words per segment.
-   - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
-   - NEVER end on trailing conjunctions ('and', 'because', 'so', 'to', 'who').
+10. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
+    - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
+    - Word count MUST be strictly between 10 and 16 words per segment.
+    - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
+    - NEVER end on trailing conjunctions ('and', 'because', 'so', 'to', 'who').
 
-10. TWIST & FINAL REVELATION FIDELITY (ANTI-BIAS GROUNDING):
-   - In the final story block, faithfully report the true ending resolution documented in the Authoritative Film Synopsis.
-   - If the synopsis reveals that the protagonist was mistaken, delusional, or that a trusted visitor turns out to be someone else, narrate that exact revelation with emotional impact. NEVER invert the twist or default to generic tropes where the protagonist is proven completely right if the synopsis states otherwise.
-   - Accurately report official votes, decisions, and acquittals (e.g., clarifying when doctors vote to release a patient while an official abstains).
+11. TWIST & FINAL REVELATION FIDELITY (ANTI-BIAS GROUNDING):
+    - In the final story block, faithfully report the true ending resolution documented in the Authoritative Film Synopsis.
+    - If the synopsis reveals that the protagonist was mistaken, delusional, or that a trusted visitor turns out to be someone else, narrate that exact revelation with emotional impact. NEVER invert the twist or default to generic tropes where the protagonist is proven completely right if the synopsis states otherwise.
+    - Accurately report official votes, decisions, and acquittals (e.g., clarifying when doctors vote to release a patient while an official abstains).
 
-11. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
-   - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene to lock the video cut with frame-accuracy.
+12. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
+    - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene to lock the video cut with frame-accuracy.
 
-12. OUTPUT FORMAT (COMPACT JSON):
-   - Return valid JSON with a single key 'segments'. Each segment object MUST have:
-     "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, simple conversational English).
-     "anchor_quote": A short 3-8 word quote from character dialogue in this scene.
-     "time": The approximate timestamp string (HH:MM:SS) from the dialogue log where this scene occurs.
-     "loc": Short name of the scene location.
-     "scene_change": Boolean (true if this segment transitions to a new scene, time, or location).
+13. OUTPUT FORMAT (COMPACT JSON):
+    - Return valid JSON with a single key 'segments'. Each segment object MUST have:
+      "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, simple conversational English).
+      "anchor_quote": A short 3-8 word quote from character dialogue in this scene.
+      "time": The approximate timestamp string (HH:MM:SS) from the dialogue log where this scene occurs.
+      "loc": Short name of the scene location.
+      "scene_change": Boolean (true if this segment transitions to a new scene, time, or location).
 """
 
             rolling_prompt = ""
@@ -501,6 +511,11 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
 
 {rolling_prompt}Chronological Movie Dialogue Timeline:
 {sampled_dialogue_text}
+
+SOURCE ACCURACY INSTRUCTIONS:
+- Generate descriptions chronologically following the dialogue events above.
+- Strictly distinguish verified physical facts from character claims/allegations.
+- Ensure each segment is strictly 10 to 16 words and exactly one standalone sentence.
 """
 
             resp = self.provider.chat_completion(
@@ -568,7 +583,13 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
                 break
             else:
                 print(f"  [ScriptAuditor] 🛠️ Applying generic polish and surgical adjustments...")
-                grounded_segments = ScriptAuditor.apply_generic_polish(grounded_segments, provider=self.provider, film_synopsis=film_synopsis, audit_report=audit_report)
+                grounded_segments = ScriptAuditor.apply_generic_polish(
+                    grounded_segments, 
+                    provider=self.provider, 
+                    film_synopsis=film_synopsis, 
+                    audit_report=audit_report,
+                    dialogues=dialogues
+                )
 
         # Final audit pass to record official certified rating
         final_report = ScriptAuditor.audit_script(grounded_segments, film_synopsis=film_synopsis, provider=self.provider)

@@ -132,7 +132,7 @@ class ScriptAuditor:
         if provider and film_synopsis:
             script_sample = "\n".join([f"[{s.get('movie_timestamp','')}] ID {s.get('id')}: {s.get('english', s.get('text',''))}" for s in script])
             eval_prompt = f"""You are a strict, independent senior film editor and YouTube recap auditor.
-Evaluate this movie recap script against the verified Authoritative Film Synopsis.
+Evaluate this movie recap script against the verified Authoritative Film Synopsis and professional YouTube recap standards.
 
 Authoritative Film Synopsis (COMPLETE):
 {film_synopsis[:6000]}
@@ -140,10 +140,21 @@ Authoritative Film Synopsis (COMPLETE):
 Recap Script Segments:
 {script_sample}
 
-Audit against these 3 categories (rate each from 1.0 to 10.0):
-1. FACTUAL ACCURACY (Score 1-10): Are all character names, relationships, evidence, and twists accurate to the synopsis? Does it avoid falsely presenting subjective claims as objective facts? Does it accurately identify who dies, who survives, and how council/legal hearings conclude?
-2. STORY COMPREHENSION & CLARITY (Score 1-10): Are transitions logical? Are motivations clear? Are non-linear timelines/flashbacks clearly signposted? Does it avoid confusing scene jumps or redundant re-narration?
-3. SUSPENSE & ENGAGEMENT (Score 1-10): Does it preserve the central mystery without prematurely revealing twists? Does it build toward the true climax and faithfully deliver the real ending reveal?
+Audit strictly against these 3 categories (rate each from 1.0 to 10.0):
+1. FACTUAL ACCURACY & SOURCE VALIDATION (Score 1-10):
+   - Are character names, roles, and relationships accurate (e.g. distinguishing twins, identifying doctors/investigators)?
+   - SEPARATE FACTS, CLAIMS, AND INFERENCES: Does the script avoid presenting unverified subjective character claims as objective facts early on? (e.g. framing allegations as "She claims..." or "He alleges..." until proven).
+   - Are physical evidence, injuries, survival/death, and legal/council outcomes accurately reported as verified in the synopsis?
+   - Does it faithfully deliver the true climax and twist resolution without inverting revelations?
+
+2. STORY COMPREHENSION & CHRONOLOGY (Score 1-10):
+   - Are transitions logical and cause-and-effect clear?
+   - Are non-linear timelines, flashbacks, or flash-forwards clearly signposted with conversational time markers?
+   - Does it avoid confusing scene jumps, invented actions, or redundant adjacent repetitions?
+
+3. SUSPENSE & ENGAGEMENT (Score 1-10):
+   - Does it preserve the central mystery without prematurely spoiling key reveals?
+   - Does it build tension through authentic story events and deliver a gripping, accurate resolution?
 
 Output strictly valid JSON with keys:
 "factual_score": float,
@@ -204,12 +215,13 @@ Output strictly valid JSON with keys:
         }
 
     @classmethod
-    def apply_generic_polish(cls, script: List[dict], provider=None, film_synopsis: str = "", audit_report: dict = None) -> List[dict]:
+    def apply_generic_polish(cls, script: List[dict], provider=None, film_synopsis: str = "", audit_report: dict = None, dialogues: List[dict] = None) -> List[dict]:
         """
         Generic, multi-movie automated polish pass.
-        1. Corrects any identified factual, semantic, or twist errors using the film synopsis.
+        1. Corrects any identified factual, semantic, or twist errors using the film synopsis and dialogue timeline.
         2. Ensures all segments strictly adhere to simple conversational English (10-16 words).
-        3. Eliminates jargon, adverbs, and multi-sentence formatting.
+        3. Separates subjective claims from objective facts.
+        4. Eliminates jargon, adverbs, meta-phrases, and multi-sentence formatting.
         """
         surgical_fixes = audit_report.get("surgical_fixes", []) if audit_report else []
         issues = audit_report.get("issues", {}).get("semantic_issues", []) if audit_report else []
@@ -219,6 +231,17 @@ Output strictly valid JSON with keys:
         def is_meta_instruction(t: str) -> bool:
             return bool(re.search(r'\b(remove|delete|omit|replace|redundant|duplicate)\s+this\s+(segment|sentence|scene)\b', t, flags=re.IGNORECASE))
 
+        def parse_to_sec(ts_str: str) -> float:
+            try:
+                parts = str(ts_str).replace(",", ".").split(":")
+                if len(parts) == 3:
+                    return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                elif len(parts) == 2:
+                    return float(parts[0]) * 60 + float(parts[1])
+                return float(ts_str)
+            except Exception:
+                return 0.0
+
         fix_map = {}
         if surgical_fixes:
             for f in surgical_fixes:
@@ -227,12 +250,29 @@ Output strictly valid JSON with keys:
 
         # Run LLM repair prompt for any identified semantic issues or length violations
         if provider and film_synopsis and (issues or bad_length_ids):
-            flawed_context = "\n".join(issues[:8]) if issues else "Ensure all segments are factually faithful and flow smoothly."
-            length_context = f"\nSegments with length violations (under 10 or over 16 words): {bad_length_ids}" if bad_length_ids else ""
-            script_sample = "\n".join([f"ID {s.get('id')}: {s.get('english', s.get('text',''))}" for s in script])
+            flawed_context = "\n".join(f"- {iss}" for iss in issues[:8]) if issues else "Ensure all segments are factually faithful and flow smoothly."
+            length_context = f"\nSegments with word-count violations (must be strictly 10 to 16 words): {bad_length_ids}" if bad_length_ids else ""
+            
+            # If dialogues provided, provide dialogue context near flawed/violated segments
+            dialogue_context_lines = []
+            target_ids = set([lv[0] for lv in length_violations] + list(fix_map.keys()))
+            if dialogues and target_ids:
+                for s in script:
+                    sid = s.get("id")
+                    if sid in target_ids:
+                        ts = parse_to_sec(s.get("movie_timestamp", "00:00:00"))
+                        nearby = [d.get("text", "").strip() for d in dialogues if abs(float(d.get("start", 0)) - ts) <= 45.0]
+                        if nearby:
+                            dialogue_context_lines.append(f"Segment ID {sid} [{s.get('movie_timestamp')}]: Dialogue context: {' | '.join(nearby[:5])}")
+
+            diag_snippet = ""
+            if dialogue_context_lines:
+                diag_snippet = "\n\nActual Dialogue Context at Target Timestamps:\n" + "\n".join(dialogue_context_lines[:15])
+
+            script_sample = "\n".join([f"ID {s.get('id')} [{s.get('movie_timestamp','')}]: {s.get('english', s.get('text',''))}" for s in script])
             repair_prompt = f"""You are a master movie recap editor.
-The following recap script has several identified factual and story errors:
-{flawed_context}{length_context}
+The following recap script has several identified factual, story, or pacing errors:
+{flawed_context}{length_context}{diag_snippet}
 
 Authoritative Film Synopsis (COMPLETE):
 {film_synopsis[:6000]}
@@ -240,12 +280,14 @@ Authoritative Film Synopsis (COMPLETE):
 Full Script:
 {script_sample}
 
-Carefully review all segments against the Authoritative Film Synopsis.
-1. Rewrite every segment that contains factual inaccuracies, inverted twists, council outcome errors, or chronological confusion.
-2. Rewrite all length-violation segments so that EVERY segment is strictly 10 to 16 words.
-3. Every sentence MUST be genuine spoken story narration. NEVER output meta phrases like 'Remove this segment' or 'Omit'.
-4. Do NOT duplicate adjacent segments; each segment must uniquely advance the story.
-5. Strictly 1 standalone sentence per segment in simple, conversational English.
+Carefully review all segments against the Authoritative Film Synopsis and dialogue context.
+CRITICAL REQUIREMENTS FOR EVERY FIX:
+1. SOURCE ACCURACY: Base the description strictly on the actual event supported by the dialogue and synopsis at that timestamp.
+2. SEPARATE FACTS, CLAIMS, AND INFERENCES: If a character makes an accusation or claim not yet confirmed, state it as a claim ("Alice claims...", "Alvar insists...", "She suspects..."). Do NOT present unproven theories as facts early on.
+3. STRICT LENGTH: EVERY fix MUST contain strictly 10 to 16 words.
+4. STRICT CADENCE: Exactly ONE single standalone sentence ending with a period (.), exclamation (!), or question mark (?).
+5. NO META-PHRASES: Every sentence MUST be genuine spoken story narration. Never output "Remove this" or "Omit".
+6. NO DUPLICATE ADJACENT SEGMENTS: Each segment must uniquely advance the story.
 
 Output valid JSON with key "corrections": a list of objects {{"id": int, "fixed_text": str}}.
 """
