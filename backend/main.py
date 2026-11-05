@@ -650,16 +650,11 @@ def execute_resume_pipeline(job_id: str, state: dict):
         print(f"\n[JOB {job_id}] Step 6: Rendering Final Video for {channel_type} (Captions: {getattr(request, 'burn_subtitles', True)})...")
 
         # Clear stale render artifacts
-        for stale in ["video_only.mp4", "mixed_temp.mp4", "narrator_audio_track.wav"]:
+        for stale in ["video_only.mp4", "mixed_temp.mp4"]:
             p = os.path.join(job_dir, stale)
             if os.path.exists(p):
                 os.remove(p)
                 print(f"  [Cache] Removed stale: {stale}")
-        for stale_dir in ["video_chunks", "resampled_wavs"]:
-            p = os.path.join(job_dir, stale_dir)
-            if os.path.exists(p):
-                shutil.rmtree(p)
-                print(f"  [Cache] Removed stale dir: {stale_dir}/")
 
         sync.build_timeline(
             aligned_audio_segments, video_path, final_output,
@@ -827,6 +822,13 @@ def process_video(request: VideoRequest, background_tasks: BackgroundTasks):
 def get_status(job_id: str):
     st = job_status.get(job_id, "Not found")
     p_job = find_pending_job(job_id)
+    if st == "Not found" and p_job:
+        final_out = p_job.get("final_output", "")
+        if final_out and os.path.exists(final_out):
+            st = f"Completed: {final_out}"
+        elif p_job.get("script_path") and os.path.exists(p_job.get("script_path")):
+            st = "waiting_review"
+
     return {
         "job_id": job_id, 
         "status": st,

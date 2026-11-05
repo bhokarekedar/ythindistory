@@ -2,6 +2,9 @@ import ffmpeg
 import os
 import wave
 import contextlib
+import tempfile
+import shutil
+import time
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TARGET AUDIO SPEC
@@ -105,21 +108,42 @@ class AudioSynchronizer:
             
         return v_stream
 
-    def _apply_anti_copyright_shield(self, v_stream, is_flipped: bool = True, zoom_level: float = 1.08):
+    def _apply_anti_copyright_shield(self, v_stream, is_flipped: bool = True, zoom_level: float = 1.08, use_blur_canvas: bool = True):
         """
         Applies a multi-layered visual transform to defeat YouTube Content ID automated fingerprinting:
-        1. Smart Crop & Zoom (1.08x - 1.15x): Destroys boundary/edge hashes & letterbox matching.
+        1. Blurred Dynamic Canvas: Scales canvas to 1280x720 heavily blurred, with foreground at ~82% centered.
         2. Horizontal Flip (hflip): Inverts 2D spatial coordinates (breaks face & object detection matrices).
         3. Color & Luminance Grading: Shifts RGB/YUV histogram curves away from studio reference profiles.
         4. Dynamic Film Grain Noise: Scrambles spatial pixel hashes on every single frame.
         """
-        crop_ratio = round(1.0 / zoom_level, 4)
-        v_stream = v_stream.filter("crop", f"in_w*{crop_ratio}", f"in_h*{crop_ratio}", "(in_w-out_w)/2", "(in_h-out_h)/2")
-        v_stream = v_stream.filter("scale", 1280, 720).filter("setsar", 1)
-        if is_flipped:
-            v_stream = v_stream.filter("hflip")
-        v_stream = v_stream.filter("eq", contrast=1.07, brightness=0.015, saturation=1.12)
-        v_stream = v_stream.filter("noise", c0s=6, allf="t+u")
+        if use_blur_canvas:
+            split = v_stream.split()
+            bg = split[0]
+            fg = split[1]
+
+            # Background: stretched and blurred
+            bg = bg.filter("scale", 1280, 720).filter("setsar", 1)
+            bg = bg.filter("boxblur", 25, 5).filter("eq", brightness=-0.08, contrast=0.95)
+
+            # Foreground: cropped slightly, flipped, color graded, grain added, and scaled to ~82% (1050x590)
+            crop_ratio = round(1.0 / zoom_level, 4)
+            fg = fg.filter("crop", f"in_w*{crop_ratio}", f"in_h*{crop_ratio}", "(in_w-out_w)/2", "(in_h-out_h)/2")
+            if is_flipped:
+                fg = fg.filter("hflip")
+            fg = fg.filter("eq", contrast=1.07, brightness=0.015, saturation=1.12)
+            fg = fg.filter("noise", c0s=6, allf="t+u")
+            fg = fg.filter("scale", 1050, 590).filter("setsar", 1)
+
+            # Center overlay
+            v_stream = ffmpeg.overlay(bg, fg, x="(W-w)/2", y="(H-h)/2")
+        else:
+            crop_ratio = round(1.0 / zoom_level, 4)
+            v_stream = v_stream.filter("crop", f"in_w*{crop_ratio}", f"in_h*{crop_ratio}", "(in_w-out_w)/2", "(in_h-out_h)/2")
+            v_stream = v_stream.filter("scale", 1280, 720).filter("setsar", 1)
+            if is_flipped:
+                v_stream = v_stream.filter("hflip")
+            v_stream = v_stream.filter("eq", contrast=1.07, brightness=0.015, saturation=1.12)
+            v_stream = v_stream.filter("noise", c0s=6, allf="t+u")
         return v_stream
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -337,7 +361,8 @@ class AudioSynchronizer:
                                         vcodec="libx264", acodec="aac", ac=2, ar=48000,
                                         pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
                     ffmpeg.run(out, quiet=True, overwrite_output=True)
-                concat_lines.append(f"file '{os.path.abspath(gap_chunk_path)}'")
+                escaped_fn = os.path.basename(gap_chunk_path).replace("'", "'\\''")
+                concat_lines.append(f"file '{escaped_fn}'")
                 chunk_idx += 1
                 audio_cursor += gap_dur
 
@@ -347,7 +372,7 @@ class AudioSynchronizer:
                 print(f"  [Movie Video] Segment #{seg_id}: [{ts_str}] ({scene_loc}) -> cutting {tts_dur:.2f}s from movie @ {clip_start:.1f}s")
                 seek_pt = max(0.0, clip_start - 2.0)
                 trim_off = clip_start - seek_pt
-                if tts_dur > 3.0:
+                if tts_dur > 2.8:
                     dur1 = round(tts_dur / 2.0, 3)
                     sp1 = max(0.0, clip_start - 2.0)
                     off1 = clip_start - sp1
@@ -360,8 +385,9 @@ class AudioSynchronizer:
                     v1 = v1.filter("fps", fps=30, round="near").filter("format", "yuv420p")
 
                     dur2 = round(tts_dur - dur1, 3)
-                    sp2 = max(0.0, (clip_start + dur1) - 2.0)
-                    off2 = (clip_start + dur1) - sp2
+                    jump_pt = min(total_video_dur - dur2, clip_start + dur1 + 1.8)
+                    sp2 = max(0.0, jump_pt - 2.0)
+                    off2 = jump_pt - sp2
                     v2 = (
                         ffmpeg.input(original_video_path, ss=sp2).video
                         .filter("trim", start=off2, duration=dur2)
@@ -386,7 +412,8 @@ class AudioSynchronizer:
                                     pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
                 ffmpeg.run(out, quiet=True, overwrite_output=True)
 
-            concat_lines.append(f"file '{os.path.abspath(seg_chunk_path)}'")
+            escaped_fn = os.path.basename(seg_chunk_path).replace("'", "'\\''")
+            concat_lines.append(f"file '{escaped_fn}'")
             chunk_idx += 1
             video_cursor = clip_start + tts_dur
             audio_cursor = audio_start + tts_dur
@@ -412,7 +439,8 @@ class AudioSynchronizer:
                                     vcodec="libx264", acodec="aac", ac=2, ar=48000,
                                     pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
                 ffmpeg.run(out, quiet=True, overwrite_output=True)
-            concat_lines.append(f"file '{os.path.abspath(trail_chunk_path)}'")
+            escaped_fn = os.path.basename(trail_chunk_path).replace("'", "'\\''")
+            concat_lines.append(f"file '{escaped_fn}'")
 
         # ── 5. Concatenate chunks ──
         with open(concat_list_path, "w") as f:
@@ -581,7 +609,8 @@ class AudioSynchronizer:
                         print(f"FFmpeg Error (gap chunk {chunk_idx}):",
                               e.stderr.decode("utf8") if e.stderr else str(e))
                         raise
-                concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
+                escaped_fn = os.path.basename(chunk_path).replace("'", "'\\''")
+                concat_lines.append(f"file '{escaped_fn}'")
                 chunk_idx += 1
                 video_cursor = orig_start
                 audio_cursor = audio_start
@@ -608,7 +637,7 @@ class AudioSynchronizer:
                     # Anti-Content ID Micro-Cutting:
                     # If shot duration > 3.0s, split into 2 micro-cuts with alternating punch-in zoom & horizontal flip
                     # so no single continuous visual sequence ever exceeds 3.0s (breaking YouTube Content ID's temporal match buffer).
-                    if tts_dur > 3.0 and seg_extract_dur > 0.6:
+                    if tts_dur > 2.8 and seg_extract_dur > 0.6:
                         dur1 = round(tts_dur / 2.0, 3)
                         ext_dur1 = round(seg_extract_dur / 2.0, 3)
                         pts1 = dur1 / ext_dur1
@@ -628,8 +657,9 @@ class AudioSynchronizer:
                         dur2 = round(tts_dur - dur1, 3)
                         ext_dur2 = round(seg_extract_dur - ext_dur1, 3)
                         pts2 = dur2 / ext_dur2
-                        sp2 = max(0.0, (seg_extract_start + ext_dur1) - 2.0)
-                        off2 = (seg_extract_start + ext_dur1) - sp2
+                        jump_pt = seg_extract_start + ext_dur1 + 1.8
+                        sp2 = max(0.0, jump_pt - 2.0)
+                        off2 = jump_pt - sp2
 
                         v2 = (
                             ffmpeg.input(original_video_path, ss=sp2).video
@@ -677,7 +707,8 @@ class AudioSynchronizer:
                           e.stderr.decode("utf8") if e.stderr else str(e))
                     raise
 
-            concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
+            escaped_fn = os.path.basename(chunk_path).replace("'", "'\\''")
+            concat_lines.append(f"file '{escaped_fn}'")
             chunk_idx += 1
             video_cursor = seg_extract_start + seg_extract_dur
             audio_cursor = audio_end
@@ -720,7 +751,8 @@ class AudioSynchronizer:
                                         color_trc="bt709",
                                         **{"crf": "18", "preset": "fast"})
                     ffmpeg.run(out, quiet=True, overwrite_output=True)
-                concat_lines.append(f"file '{os.path.abspath(chunk_path)}'")
+                escaped_fn = os.path.basename(chunk_path).replace("'", "'\\''")
+                concat_lines.append(f"file '{escaped_fn}'")
 
         # ── Concatenate all video chunks ───────────────────────────────────
         with open(concat_list_path, "w") as f:
@@ -830,6 +862,16 @@ class AudioSynchronizer:
 
         # ── Step D: Prepend Intro & Burn Captions ─────────────────────────
         has_subtitles = sub_paths and os.path.exists(sub_paths["ass_path"])
+        safe_ass_path = None
+        safe_ass_cleanup = None
+        if has_subtitles:
+            raw_ass_path = os.path.abspath(sub_paths["ass_path"])
+            if "'" in raw_ass_path or ":" in raw_ass_path or " " in raw_ass_path:
+                safe_ass_path = os.path.join(tempfile.gettempdir(), f"subtitles_burn_{os.getpid()}_{int(time.time())}.ass")
+                shutil.copy2(raw_ass_path, safe_ass_path)
+                safe_ass_cleanup = safe_ass_path
+            else:
+                safe_ass_path = raw_ass_path
         
         if active_intro and os.path.exists(active_intro):
             sub_msg = "with Burned-in Captions" if has_subtitles else "without Captions"
@@ -870,8 +912,8 @@ class AudioSynchronizer:
             
             # Burn styled subtitles into main story video (perfect sync with narration)
             if has_subtitles:
-                print(f"  [Subtitles] 🔥 Burning styled subtitles into video stream: {sub_paths['ass_path']}")
-                main_v = main_v.filter("ass", os.path.abspath(sub_paths["ass_path"]))
+                print(f"  [Subtitles] 🔥 Burning styled subtitles into video stream: {safe_ass_path}")
+                main_v = main_v.filter("ass", safe_ass_path)
                 
             main_v = main_v.filter("fade", type="in", start_time=0, duration=0.3)
             
@@ -906,7 +948,7 @@ class AudioSynchronizer:
                     .filter("setsar", 1)
                     .filter("fps", fps=30, round="near")
                     .filter("format", "yuv420p")
-                    .filter("ass", os.path.abspath(sub_paths["ass_path"]))
+                    .filter("ass", safe_ass_path)
                 )
                 main_a = main_in.audio
                 out = ffmpeg.output(
@@ -922,5 +964,11 @@ class AudioSynchronizer:
                 ffmpeg.output(ffmpeg.input(mixed_video_path), output_path, c="copy", movflags="+faststart").run(
                     quiet=True, overwrite_output=True
                 )
+
+        if safe_ass_cleanup and os.path.exists(safe_ass_cleanup):
+            try:
+                os.remove(safe_ass_cleanup)
+            except Exception:
+                pass
 
         print(f"\n[Sync] ✅ Final output: {output_path}")

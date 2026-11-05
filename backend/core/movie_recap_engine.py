@@ -43,10 +43,10 @@ class MovieRecapEngine:
             print(f"  [MovieEngine] ⏩ Found cached dialogue JSON at: {json_output_path}")
             return json_output_path
 
-        # 1. Probe for subtitle streams
+        # 1. Probe for subtitle streams with disposition and tags
         probe_cmd = [
             "ffprobe", "-v", "error",
-            "-show_entries", "stream=index,codec_name:stream_tags=language,title",
+            "-show_entries", "stream=index,codec_name,disposition:stream_tags=language,title,NUMBER_OF_FRAMES,NUMBER_OF_BYTES",
             "-select_streams", "s",
             "-of", "json",
             movie_path
@@ -58,56 +58,102 @@ class MovieRecapEngine:
         if not streams:
             raise ValueError(f"No embedded subtitle tracks found in: {movie_path}. (External SRT or Whisper needed).")
 
-        # 2. Select the best matching stream
-        best_stream = None
+        # 2. Filter and rank subtitle streams (strictly exclude forced signs / non-dialogue tracks)
         target_code = "hin" if preferred_lang.lower() in ["hi", "hindi", "hin"] else "eng"
-        
-        # Priority 1: Match requested language and non-SDH
+
+        def is_forced_or_signs_track(s: dict) -> bool:
+            tags = s.get("tags", {}) or {}
+            title = tags.get("title", "").lower()
+            disp = s.get("disposition", {}) or {}
+            if disp.get("forced", 0) == 1:
+                return True
+            for bad_kw in ["forced", "sign", "song", "commentary", "info"]:
+                if bad_kw in title:
+                    return True
+            try:
+                frames = int(tags.get("NUMBER_OF_FRAMES", 0) or 0)
+                if 0 < frames < 80:
+                    return True
+            except Exception:
+                pass
+            return False
+
+        candidates = []
         for s in streams:
-            tags = s.get("tags", {})
+            tags = s.get("tags", {}) or {}
             lang = tags.get("language", "").lower()
             title = tags.get("title", "").lower()
-            if target_code in lang and "sdh" not in title:
-                best_stream = s
-                break
-        
-        # Priority 2: Match requested language even if SDH
-        if not best_stream:
-            for s in streams:
-                lang = s.get("tags", {}).get("language", "").lower()
-                if target_code in lang:
-                    best_stream = s
-                    break
+            forced = is_forced_or_signs_track(s)
+            is_target = target_code in lang
+            is_eng = "eng" in lang
+            is_sdh = "sdh" in title or "hearing" in title
 
-        # Priority 3: Fallback to English
-        if not best_stream:
-            for s in streams:
-                lang = s.get("tags", {}).get("language", "").lower()
-                if "eng" in lang:
-                    best_stream = s
-                    break
+            score = 0
+            if not forced:
+                score += 1000
+            if is_target:
+                score += 500
+            elif is_eng:
+                score += 200
+            if not is_sdh:
+                score += 100
 
-        # Priority 4: Fallback to first stream
-        if not best_stream:
-            best_stream = streams[0]
+            try:
+                score += min(int(tags.get("NUMBER_OF_FRAMES", 0) or 0) // 10, 50)
+            except Exception:
+                pass
 
-        stream_idx = best_stream["index"]
-        stream_lang = best_stream.get("tags", {}).get("language", "unknown")
-        print(f"  [MovieEngine] 🎬 Selected Subtitle Stream #{stream_idx} ({stream_lang.upper()}) from movie container.")
+            candidates.append((score, s))
 
-        # 3. Extract to temp .srt file
+        candidates.sort(key=lambda x: x[0], reverse=True)
+
         temp_srt = os.path.join(job_dir, f"{video_name}_extracted.srt")
-        extract_cmd = [
-            "ffmpeg", "-y", "-v", "error",
-            "-i", movie_path,
-            "-map", f"0:{stream_idx}",
-            "-c:s", "copy",
-            temp_srt
-        ]
-        subprocess.run(extract_cmd, check=True)
+        parsed_dialogues = []
+        selected_stream = None
 
-        # 4. Parse SRT to JSON
-        parsed_dialogues = self._parse_srt_file(temp_srt)
+        for score, cand_stream in candidates:
+            s_idx = cand_stream["index"]
+            s_lang = cand_stream.get("tags", {}).get("language", "unknown")
+            s_title = cand_stream.get("tags", {}).get("title", "")
+            print(f"  [MovieEngine] 🎬 Testing Subtitle Stream #{s_idx} ({s_lang.upper()}, '{s_title}', score={score})...")
+            
+            extract_cmd = [
+                "ffmpeg", "-y", "-v", "error",
+                "-i", movie_path,
+                "-map", f"0:{s_idx}",
+                "-c:s", "copy",
+                temp_srt
+            ]
+            try:
+                subprocess.run(extract_cmd, check=True)
+                test_dialogues = self._parse_srt_file(temp_srt)
+                # Ensure it has substantial dialogue lines (not just 30 signs or song lyrics)
+                if len(test_dialogues) >= 80:
+                    parsed_dialogues = test_dialogues
+                    selected_stream = cand_stream
+                    print(f"  [MovieEngine] ✅ Selected valid dialogue stream #{s_idx} with {len(parsed_dialogues)} dialogue cues.")
+                    break
+                else:
+                    print(f"  [MovieEngine] ⚠️ Stream #{s_idx} yielded only {len(test_dialogues)} cues (signs/forced). Skipping to next stream...")
+            except Exception as e:
+                print(f"  [MovieEngine] ⚠️ Error extracting stream #{s_idx}: {e}")
+
+        # Fallback if no candidate met the 80-line threshold
+        if not parsed_dialogues and candidates:
+            top_stream = candidates[0][1]
+            s_idx = top_stream["index"]
+            extract_cmd = ["ffmpeg", "-y", "-v", "error", "-i", movie_path, "-map", f"0:{s_idx}", "-c:s", "copy", temp_srt]
+            subprocess.run(extract_cmd, check=True)
+            parsed_dialogues = self._parse_srt_file(temp_srt)
+            selected_stream = top_stream
+
+        if len(parsed_dialogues) < 30:
+            raise ValueError(
+                f"Extracted only {len(parsed_dialogues)} dialogue cues from {movie_path}. "
+                f"No full dialogue subtitle track exists in the video file (only signs/forced tracks found). "
+                f"Please provide an external .srt dialogue file or use Whisper speech-to-text to prevent hallucinations."
+            )
+
         with open(json_output_path, "w", encoding="utf-8") as f:
             json.dump(parsed_dialogues, f, indent=4, ensure_ascii=False)
 
@@ -282,9 +328,9 @@ Authoritative Film Synopsis:
 CRITICAL RULES FOR CHAPTER SCOPES:
 1. Match the chapter scope strictly to the true physical setting and dialogue events occurring in that specific runtime window.
 2. DO NOT prematurely pull scenes or actions from future windows into earlier windows.
-   - For example, if a window's dialogues are taking place at the hospital (investigating records and security cameras), the scope must stay at the hospital.
-   - If the next window's dialogues show characters at the gas station pit discovering blood and disarming officers, that scope belongs strictly to that window.
-   - If the final window features the basement operating room rescue, getaway drive, and the shocking twist reveal, that belongs to the final window.
+   - Ground the scope strictly in the locations, characters, and discoveries present in that chronological window.
+   - Do not import events, discoveries, or physical confrontations that occur in subsequent windows.
+   - The final window features the climax, revelation, and twist resolution as established in the verified film synopsis.
 
 Return JSON with key 'chapters' containing a list of {block_count} objects with 'block_index' (1 to {block_count}), 'title', and 'scope' (2-4 sentences describing the exact physical locations, character movements, evidence discovered, and action events occurring strictly in this window)."""
 
@@ -315,10 +361,8 @@ Return JSON with key 'chapters' containing a list of {block_count} objects with 
             guidance = chapter_scopes.get(b_idx + 1) or ""
             if is_final_climax:
                 twist_instructions = (
-                    "MANDATORY CLIMAX & TWIST FINALE: The final 2-3 segments of this block MUST explicitly deliver the film's shocking twist ending: "
-                    "1) Looking into the rearview mirror, Ray sees an unknown kidnapped surgical stranger in the backseat instead of his family. "
-                    "2) The chilling truth is exposed: Joanne and Peri died in the pit and their dead bodies were hidden in the car trunk all along, "
-                    "proving the entire hospital conspiracy was Ray's psychotic hallucination!"
+                    "MANDATORY CLIMAX & TWIST RESOLUTION: The final segments of this block MUST explicitly deliver the true, verified climax and shocking resolution of THIS specific film as proven by the plot synopsis and final dialogue beats. "
+                    "Narrate the final confrontation, the unmasking of the true culprit or institutional secret, and the shocking revelation without hallucinating or borrowing plot points from any other movie."
                 )
                 guidance = f"{guidance}\n{twist_instructions}".strip()
             elif not guidance:
@@ -354,54 +398,56 @@ AUTHORITATIVE FILM PLOT SYNOPSIS (GROUND TRUTH):
 {film_synopsis}
 
 CRITICAL PRODUCTION & NARRATIVE CONTINUITY RULES:
-1. PUNCHY, CINEMATIC 3RD-PERSON RECAP NARRATOR:
-   - Narrate in active, cinematic third person ("Ray realizes", "The detectives question", "Joanne warns"). Never use first person ("I", "my").
-   - Set scenes, explain motivations, build dramatic suspense, and advance the plot with every line.
-   - Summarize the story cleanly; NEVER transcribe minor receptionist chatter or literal word-for-word exchanges.
+1. PUNCHY, CONVERSATIONAL 3RD-PERSON NARRATOR (YOUTUBE EXPLAINER STYLE):
+   - Narrate in simple, clear, conversational third person ("The detective investigates", "The doctor questions the director", "Alice realizes the trap"). Never use first person ("I", "my").
+   - Tone should sound like an engaging storyteller explaining a suspenseful movie to a friend, NOT a formal police report or purple-prose novel.
+   - Summarize the story cleanly; explain characters' motivations, conflicting clues, and why things happen.
 
-2. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (ABSOLUTELY NO PLOT TELEPORTATION):
+2. LANGUAGE SIMPLICITY & NATURAL CONVERSATIONAL VOCABULARY:
+   - Use everyday English. Prefer common, punchy words over complicated vocabulary.
+   - FORBIDDEN OVERCOMPLICATED JARGON: Do NOT use phrases like "orthodox Freudian concepts", "deep-seated paranoid delusions", "forensic inconsistencies", "clinical discharge", "predatory suitors", "legal incapacitation", or "disciplinary punishment". Use simple alternatives: "traditional psychology ideas", "false beliefs", "differences in the medical reports", "official release", "men after her wealth", or "punishment from the staff".
+   - Avoid dramatic adverb clutter: NEVER spam words like "fearlessly", "fiercely", "brilliantly", "maliciously", "arrogantly", or "contemptuously". Let the real events create suspense naturally.
+
+3. PRESERVE COMPETING PERSPECTIVES & SUBJECTIVE MYSTERY (DO NOT SPOIL THE TRUTH AS EARLY FACT):
+   - In psychological thrillers, ALWAYS preserve the film's deliberate uncertainty between competing explanations:
+     * Protagonist's Claim: What she claims happened (e.g. "Alice insists she is an undercover investigator framed by her husband").
+     * The Institution's Claim: What the doctors claim happened (e.g. "The hospital claims she is mentally ill and attempted to poison her husband").
+   - NEVER present an unverified claim as established objective fact early on. Use clarifying framing: "Alice claims...", "According to Alice...", "Meanwhile, the director insists...".
+
+4. STRICT FILM ISOLATION & ZERO HALLUCINATION:
+   - You MUST ground all characters, locations, clues, and twists STRICTLY in the provided dialogue and Authoritative Film Plot Synopsis of THIS specific film.
+   - ABSOLUTE PROHIBITION: NEVER import character names, car trunks, bodies in pits, or plot points from other movies.
+
+5. STRICT CAUSALITY & PHYSICAL ACTION TRANSIT (NO PLOT TELEPORTATION):
    - When characters change locations, escape confinement, or travel, you MUST explicitly narrate the physical transition beat.
-     * Example: "Overpowering an orderly, Ray slips into the corridor and races toward the lobby."
-     * Example: "Locking the officers inside the gas station restroom, Ray speeds back to the hospital."
-   - NEVER jump across locations or skip transit. If a character was at the gas station and is next in the hospital, narrate the getaway drive and arrival.
+   - Connect clues directly to revelations so events feel continuous, never like disjointed incidents.
 
-3. FORENSIC CLUES & CRIME SCENE GROUNDING:
-   - When physical discoveries occur, explicitly name the evidence (e.g., finding Peri's bloody scarf and a massive pool of blood in the pit, which convinces the detectives that Ray committed double murder).
-   - Advance the physical plot beats from the Chapter Scope across the segments; do not get trapped summarizing circular verbal arguments.
+6. ENTITY & CHARACTER ARRIVAL GROUNDING:
+   - Introduce new characters with their name, role, and reason for being there BEFORE they interact.
+   - Accurately track character identities and relationships (e.g., distinguishing between twin brothers, identifying who survives and who dies).
 
-4. ENTITY & CHARACTER ARRIVAL GROUNDING:
-   - NEVER introduce a character without explaining who they are and why they are there BEFORE they interact.
-     * Example: "Detectives Chilvers and Jacobs arrive at the hospital to investigate Ray's alarming claims."
-     * Example: "County psychiatrist Dr. Jacobs arrives, suspecting Ray's trauma is masking a violent domestic tragedy."
-
-5. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
+7. SEAMLESS NARRATIVE BRIDGES (ABSOLUTELY NO META-PHRASES):
    - FORBIDDEN META-PHRASES: NEVER use "In this scene we see", "Cut to", "The scene shifts to", "We are shown", "The camera pans", "Here we observe".
-   - Instead, open scene transitions with evocative narrative bridges (e.g., "Arriving at the abandoned rest stop, Ray pulls over to inspect the car.", "Glancing into the rearview mirror as the sun rises, the chilling reality hits.").
 
-6. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
+8. STRICT 1-SENTENCE CADENCE (10 TO 16 WORDS PER SEGMENT):
    - Every single segment MUST be EXACTLY ONE single concise standalone sentence.
-   - Word count MUST be strictly between 10 and 16 words per segment. (NEVER write more than 1 sentence, and NEVER write paragraphs).
+   - Word count MUST be strictly between 10 and 16 words per segment.
    - Ending strictly with terminal punctuation: period (.), exclamation (!), or question mark (?).
-   - NEVER end on trailing conjunctions or prepositions ('and', 'because', 'so', 'to', 'who').
+   - NEVER end on trailing conjunctions ('and', 'because', 'so', 'to', 'who').
 
-7. HEIST & SECURITY CLEARANCE INTEGRITY:
-   - Characters cannot enter locked, high-security, or restricted medical facilities without obtaining physical access.
-   - You MUST explicitly narrate the acquisition of keys, badges, or weapons (e.g., 'Ray ambushes a security guard at the service dock, taking his high-clearance keycard before descending into the sub-basement').
+9. EXPLAIN TWISTS & CLIMAX LOGICALLY (BUILD-UP & REVEAL):
+   - Never simply announce a twist in one line without explaining the physical proof behind it.
+   - Show how the final discovery (e.g., a visitor's real identity, an uncovered document, a surviving witness) fundamentally shatters the earlier story.
 
-8. SILENT CLIMAX & TWIST FIDELITY (NO INVENTED SPEECH):
-   - In psychological thriller twists where reveals are visual and silent (e.g., flashbacks to corpses in the pit, rearview mirrors, secret compartments), NEVER invent talking monsters, dream lectures, or explanatory monologues.
-   - Narrate the protagonist's direct visual shock and the exposure of physical evidence (e.g., seeing the motionless bandaged stranger in the mirror, and the flashback proving Joanne and Peri died in the pit with their corpses in the trunk).
+10. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
+   - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene to lock the video cut with frame-accuracy.
 
-9. ANCHOR DIALOGUE GROUNDING FOR ACCURATE VIDEO SYNC:
-   - For every segment, provide an "anchor_quote": a short 3-8 word phrase from characters in or adjacent to this scene.
-   - This anchor quote is programmatically grounded against the studio subtitle track to lock the video cut with frame-accuracy.
-
-10. OUTPUT FORMAT (COMPACT JSON):
+11. OUTPUT FORMAT (COMPACT JSON):
    - Return valid JSON with a single key 'segments'. Each segment object MUST have:
-     "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, no meta-phrases).
-     "anchor_quote": A short 3-8 word quote from the character dialogues in this scene.
+     "text": The spoken voiceover narration (strictly 10-16 words, 1 standalone sentence, simple conversational English).
+     "anchor_quote": A short 3-8 word quote from character dialogue in this scene.
      "time": The approximate timestamp string (HH:MM:SS) from the dialogue log where this scene occurs.
-     "loc": Short name of the scene location (e.g. "Rest Stop", "ER Waiting Room", "Sub-Basement OR", "Gas Station Pit").
+     "loc": Short name of the scene location.
      "scene_change": Boolean (true if this segment transitions to a new scene, time, or location).
 """
 
@@ -449,6 +495,20 @@ STRICT CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
 
             if act_segs:
                 rolling_context = [s.get("text", "") for s in act_segs[-3:] if s.get("text")]
+
+            # ── Real-Time Incremental Flush to Disk ──
+            # Continuously update the JSON file on disk after each block so progress is visible in real time
+            try:
+                partial_grounded = self._ground_and_verify_timestamps(
+                    all_raw_segments, dialogues, total_runtime_sec, target_lang, movie_path=movie_path
+                )
+                temp_flush_path = output_script_path + ".tmp"
+                with open(temp_flush_path, "w", encoding="utf-8") as tf:
+                    json.dump(partial_grounded, tf, indent=4, ensure_ascii=False)
+                os.replace(temp_flush_path, output_script_path)
+                print(f"  [MovieEngine] 💾 Real-Time Sync: Flushed {len(partial_grounded)} segments ({act_name}) directly to disk.")
+            except Exception as flush_err:
+                print(f"  [MovieEngine] ⚠️ Real-time flush notice: {flush_err}")
 
         # ─────────────────────────────────────────────────────────────────
         # STEP 4: PROGRAMMATIC GROUNDING & ANCHOR VERIFICATION (NO HALLUCINATIONS)
