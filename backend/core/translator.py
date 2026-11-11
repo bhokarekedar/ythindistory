@@ -848,59 +848,124 @@ Output strictly a JSON object with a single key 'segments':
             if k and k not in groq_keys:
                 groq_keys.append(k)
 
+        # 1. Clean and parse sections (supporting markdown headers and **[0-5 sec | HOOK]** tags)
+        lines = script_text.split("\n")
+        sections = []
+        cur_title = "Scene"
+        cur_lines = []
+
+        for l in lines:
+            s = l.strip()
+            if not s or s.startswith("#"):
+                continue
+            m = re.match(r"^\*?\*?\[(.*?)\]\*?\*?", s)
+            if m:
+                if cur_lines:
+                    sections.append((cur_title, " ".join(cur_lines)))
+                    cur_lines = []
+                cur_title = m.group(1)
+                continue
+            cur_lines.append(s)
+
+        if cur_lines:
+            sections.append((cur_title, " ".join(cur_lines)))
+
+        if not sections:
+            sections = [("Scene", script_text)]
+
         decoded_segments = []
+        total_raw_segs = []
+
+        # Choose model: prefer high-capacity openai/gpt-oss-120b or fallback to qwen
+        pref_model = "openai/gpt-oss-120b"
+
         for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
             try:
                 from groq import Groq
                 client = Groq(api_key=key)
-                completion = client.chat.completions.create(
-                    model=self.model if hasattr(self, 'model') else "qwen/qwen3.8-27b",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Story Script to decode into stick-figure animation scenes:\n\n{script_text}"}
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.3
-                )
-                data = json.loads(completion.choices[0].message.content)
-                raw_segs = data.get("segments", [])
-                
-                # Assign timing and language fields
-                cur_time = 0.0
-                for idx, s in enumerate(raw_segs, 1):
-                    seg_text = s.get("text", "").strip()
-                    # Estimate ~2.0 to 4.0 seconds per segment based on word count for rapid visual pacing
-                    word_count = len(seg_text.split())
-                    dur = max(2.0, min(4.0, round(word_count / 2.4, 2)))
-                    start_t = round(cur_time, 2)
-                    end_t = round(cur_time + dur, 2)
-                    cur_time = end_t
-                    
-                    prompt = s.get("image_prompt", "")
-                    if not prompt or "MS Paint" not in prompt:
-                        prompt = f"A 2D digital illustration in a child-like, low-fidelity MS Paint style. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [stick figure reacting to: {seg_text[:80]}]. The background uses solid, flat block colors with absolutely no shading. Crucially, the environmental details like [crude walls and scribbled background items] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
 
-                    seg_dict = {
-                        "id": idx,
-                        "start": start_t,
-                        "end": end_t,
-                        "text": seg_text,
-                        lang: seg_text,
-                        "image_prompt": prompt,
-                        "use_ai_image": True
-                    }
-                    if lang != "english":
-                        seg_dict["original_text"] = seg_text
-                    decoded_segments.append(seg_dict)
+                # Process each section to avoid rate limit truncation and guarantee 100% complete story coverage
+                all_section_segs = []
+                for s_title, s_text in sections:
+                    if not s_text.strip():
+                        continue
+                    sec_prompt = f"Section Context: {s_title}. Discard any headers or timecodes; output ONLY clean spoken narration in '{lang}' and a low-fi MS Paint stick-figure image prompt for each sentence/action."
+                    completion = client.chat.completions.create(
+                        model=pref_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt + f"\n\n{sec_prompt}"},
+                            {"role": "user", "content": f"Narration text to decode into stick-figure animation scenes:\n\n{s_text}"}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.2,
+                        max_tokens=1500
+                    )
+                    data = json.loads(completion.choices[0].message.content)
+                    all_section_segs.extend(data.get("segments", []))
 
-                print(f"  [Cartoon Director] ✅ Decoded {len(decoded_segments)} stick-figure scene beats (using Key #{k_idx+1})!")
+                total_raw_segs = all_section_segs
                 break
             except Exception as e:
                 err_str = str(e).lower()
-                if "429" in err_str or "rate_limit" in err_str:
-                    print(f"  [Cartoon Director] Key #{k_idx+1} hit rate limit (429). Trying next key...")
+                print(f"  [Cartoon Director] Key #{k_idx+1} ({pref_model}) error: {e}. Trying fallback...")
+                # Try qwen fallback with smaller token limit
+                try:
+                    all_section_segs = []
+                    for s_title, s_text in sections:
+                        if not s_text.strip():
+                            continue
+                        completion = client.chat.completions.create(
+                            model="qwen/qwen3.8-27b",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": f"Narration text:\n\n{s_text}"}
+                            ],
+                            response_format={"type": "json_object"},
+                            temperature=0.2,
+                            max_tokens=750
+                        )
+                        data = json.loads(completion.choices[0].message.content)
+                        all_section_segs.extend(data.get("segments", []))
+                    total_raw_segs = all_section_segs
+                    break
+                except Exception as e2:
+                    print(f"  [Cartoon Director] Fallback error on Key #{k_idx+1}: {e2}")
                     continue
-                print(f"  [Cartoon Director] Key #{k_idx+1} error: {e}")
+
+        # Format and assign timings
+        cur_time = 0.0
+        for idx, s in enumerate(total_raw_segs, 1):
+            seg_text = s.get("text", "").strip()
+            # Clean any stray markdown tags from narration text
+            seg_text = re.sub(r"^\*?\*?\[.*?\]\*?\*?", "", seg_text).strip()
+            seg_text = re.sub(r"^[#*_-]+", "", seg_text).strip()
+            if not seg_text:
+                continue
+
+            word_count = len(seg_text.split())
+            dur = max(2.0, min(4.0, round(word_count / 2.4, 2)))
+            start_t = round(cur_time, 2)
+            end_t = round(cur_time + dur, 2)
+            cur_time = end_t
+            
+            prompt = s.get("image_prompt", "")
+            if not prompt or "MS Paint" not in prompt:
+                prompt = f"A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [a stick figure expressing: {seg_text[:80]}]. The background uses solid, flat, muted desaturated block colors with absolutely no shading. Crucially, the environmental details like [crude walls and scribbled background items] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+
+            seg_dict = {
+                "id": len(decoded_segments) + 1,
+                "start": start_t,
+                "end": end_t,
+                "text": seg_text,
+                lang: seg_text,
+                "image_prompt": prompt,
+                "use_ai_image": True
+            }
+            if lang != "english":
+                seg_dict["original_text"] = seg_text
+            decoded_segments.append(seg_dict)
+
+        print(f"  [Cartoon Director] ✅ Decoded {len(decoded_segments)} stick-figure scene beats across {len(sections)} sections!")
 
         # Fallback if LLM failed
         if not decoded_segments:

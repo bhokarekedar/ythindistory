@@ -453,31 +453,52 @@ function App() {
         </div>
 
         {channelType === 'cartoon_story' ? (
-          <div style={{ marginBottom: '14px' }}>
+          <div style={{ marginBottom: '16px', textAlign: 'left', width: '100%' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#fbbf24', marginBottom: '6px' }}>
+              🏷️ Story Title (Optional):
+            </label>
             <input 
               type="text" 
-              placeholder="Story Title / Subject (Optional, e.g. The Boy Who Befriended a Dragon)" 
+              placeholder="e.g. Do Animals Get Bored?" 
               value={storyTitle}
               onChange={(e) => setStoryTitle(e.target.value)}
-              style={{ marginBottom: '10px' }}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                border: '1px solid #4b5563',
+                background: '#1f2937',
+                color: '#ffffff',
+                fontSize: '14px',
+                marginBottom: '14px',
+                outline: 'none'
+              }}
             />
+
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#fbbf24', marginBottom: '6px' }}>
+              📝 Paste Story Script:
+            </label>
             <textarea 
-              rows={8}
-              placeholder="Paste your story script here in English or Hindi...&#10;&#10;The LLM will decode and split this script into sequential scenes, craft vivid cartoon/comic image prompts, synthesize voiceover, and animate every scene with smooth Ken Burns effects."
+              rows={9}
+              placeholder="Paste your story script here in English or Hindi...&#10;&#10;Section tags like **[0–5 sec | HOOK]** and markdown titles are automatically filtered from voice audio."
               value={scriptText}
               onChange={(e) => setScriptText(e.target.value)}
               required
               style={{
                 width: '100%',
-                padding: '12px',
+                boxSizing: 'border-box',
+                padding: '14px',
                 borderRadius: '8px',
-                border: '1px solid #f59e0b',
-                background: '#fffdf5',
+                border: '1.5px solid #f59e0b',
+                background: '#181e2b',
+                color: '#ffffff',
                 fontSize: '14px',
-                fontFamily: 'inherit',
+                fontFamily: 'Inter, system-ui, sans-serif',
                 resize: 'vertical',
-                minHeight: '160px',
-                lineHeight: '1.5'
+                minHeight: '180px',
+                lineHeight: '1.6',
+                outline: 'none'
               }}
             />
           </div>
