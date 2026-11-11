@@ -148,25 +148,40 @@ class CloudflareImageGenerator:
             crop_h = int(w / target_aspect)
             crop_w = w
 
-            # Detect content boundaries to protect character heads from being cropped
+            # Analyze inner 70% width to ignore frame borders and edge artifacts
+            x_margin = int(0.15 * w)
             gray = np.array(img.convert("L"))
-            bg_val = float(np.mean(gray[:25, :25]))
-            diff = np.abs(gray.astype(float) - bg_val)
-            content_rows = np.where(np.max(diff, axis=1) > 28)[0]
+            inner_gray = gray[:, x_margin:w - x_margin]
+
+            # Sample background reference from corners
+            bg_val = float(np.mean(gray[:30, :30]))
+            diff = np.abs(inner_gray.astype(float) - bg_val)
+            content_rows = np.where(np.max(diff, axis=1) > 25)[0]
 
             if len(content_rows) > 0:
                 top_content_y = content_rows[0]
-                # Keep at least 40px headroom above topmost element
-                desired_top = max(0, top_content_y - 45)
-                if desired_top + crop_h > h:
-                    desired_top = max(0, h - crop_h)
-                center_top = (h - crop_h) // 2
+                bottom_content_y = content_rows[-1]
 
-                # If centering would cut the head/top content, use desired_top
-                if top_content_y < center_top + 25:
-                    top = desired_top
+                # CINEMATIC RULE: Headroom is priority #1!
+                # Always preserve at least 40px of headroom above the character's head/hair.
+                # Never sacrifice the head to show extra floor or table legs.
+                desired_top = max(0, top_content_y - 40)
+
+                # If the character + action fits inside crop_h, center vertically around them
+                subject_height = bottom_content_y - top_content_y
+                if subject_height < crop_h:
+                    # Content fits! Center subject with balanced headroom and floor
+                    center_y = (top_content_y + bottom_content_y) // 2
+                    top = center_y - crop_h // 2
+                    # Maintain headroom
+                    if top > desired_top:
+                        top = desired_top
                 else:
-                    top = center_top
+                    # Content is taller than 16:9 crop: Always keep the head and upper body
+                    top = desired_top
+
+                # Clamp within image bounds
+                top = max(0, min(h - crop_h, top))
             else:
                 top = (h - crop_h) // 2
 
