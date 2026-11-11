@@ -35,7 +35,7 @@ class CloudflareImageGenerator:
         self.active_idx = 0
         print(f"  [Cloudflare Image Pool] 🔑 Initialized with {len(self.accounts)} active Cloudflare account(s).")
 
-    def generate_image(self, prompt: str, output_path: str, max_retries: int = 3, target_width: int = 1920, target_height: int = 1080) -> Optional[str]:
+    def generate_image(self, prompt: str, output_path: str, max_retries: int = 3, target_width: int = 1920, target_height: int = 1080, force: bool = False) -> Optional[str]:
         """
         Generates an image from prompt and writes it directly to output_path
         in true 16:9 widescreen YouTube longform resolution (1920x1080).
@@ -45,8 +45,8 @@ class CloudflareImageGenerator:
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         
-        # If image already generated, check if it's already target resolution
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+        # If not forcing regeneration and image already exists at target resolution, return it
+        if not force and os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
             try:
                 from PIL import Image
                 with Image.open(output_path) as chk:

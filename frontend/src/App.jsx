@@ -1224,6 +1224,7 @@ function App() {
                   }}>
                     {seg.image_url ? (
                       <img
+                        key={seg.image_url}
                         src={seg.image_url}
                         alt={`Scene ${seg.id}`}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}

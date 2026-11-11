@@ -1010,7 +1010,12 @@ def regenerate_scene_image(job_id: str, segment_id: int, req: RegenerateImageReq
 
     img_gen = CloudflareImageGenerator()
     print(f"\n[JOB {job_id}] 🔄 Regenerating Scene #{segment_id} Image with prompt: {req.prompt[:120]}...")
-    out = img_gen.generate_image(req.prompt, img_path, target_width=1920, target_height=1080)
+    if os.path.exists(img_path):
+        try:
+            os.remove(img_path)
+        except Exception:
+            pass
+    out = img_gen.generate_image(req.prompt, img_path, target_width=1920, target_height=1080, force=True)
     if not out or not os.path.exists(out):
         raise HTTPException(status_code=500, detail="Failed to regenerate image with Cloudflare AI")
 
