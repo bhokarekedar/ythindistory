@@ -301,6 +301,137 @@ class AudioSynchronizer:
         except Exception:
             return 0.0
 
+    def _build_cartoon_video_timeline(self, timeline: list, total_audio_dur: float,
+                                      job_dir: str, watermark_settings=None,
+                                      text_watermark_settings=None,
+                                      watermark_path: str = None,
+                                      text_watermark_path: str = None) -> str:
+        """
+        Channel 4: Cartoon Story Video Timeline Builder (100% AI Images).
+        Renders every sequential scene segment from its generated AI image
+        with dynamic zoom / Ken Burns motion synchronized to audio.
+        """
+        chunks_dir = os.path.join(job_dir, "video_chunks")
+        os.makedirs(chunks_dir, exist_ok=True)
+        concat_list_path = os.path.join(chunks_dir, "concat_video.txt")
+        concat_lines = []
+        chunk_idx = 0
+        audio_cursor = 0.0
+        last_valid_img = None
+
+        for entry in timeline:
+            p = entry.get("ai_image_path")
+            if p and os.path.exists(p):
+                last_valid_img = p
+                break
+
+        print(f"  [Video] 🎨 Building 100% Stick-Figure Cartoon Video Timeline ({len(timeline)} scenes)...")
+
+        for i, entry in enumerate(timeline):
+            seg_id = entry.get("id", i + 1)
+            audio_start = entry["audio_start"]
+            audio_end = entry["audio_end"]
+            tts_dur = entry["tts_dur"]
+            ai_img = entry.get("ai_image_path")
+
+            if ai_img and os.path.exists(ai_img):
+                last_valid_img = ai_img
+            else:
+                ai_img = last_valid_img
+
+            # Check for silence gap before this segment
+            gap_dur = audio_start - audio_cursor
+            if gap_dur > 0.05 and last_valid_img:
+                gap_chunk = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_gap.mp4")
+                if not os.path.exists(gap_chunk):
+                    v = (
+                        ffmpeg.input(last_valid_img, loop=1, t=gap_dur)
+                        .filter("scale", 1920, 1080, force_original_aspect_ratio="increase")
+                        .filter("crop", 1920, 1080)
+                        .filter("setsar", 1)
+                        .filter("fps", fps=30, round="near")
+                        .filter("format", "yuv420p")
+                    )
+                    v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                    v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
+                    a = ffmpeg.input("anullsrc=channel_layout=stereo:sample_rate=48000", format="lavfi", t=gap_dur).audio
+                    out = ffmpeg.output(v, a, gap_chunk, t=gap_dur, vcodec="libx264", acodec="aac", ac=2, ar=48000, pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
+                    ffmpeg.run(out, quiet=True, overwrite_output=True)
+                escaped_fn = os.path.basename(gap_chunk).replace("'", "'\\''")
+                concat_lines.append(f"file '{escaped_fn}'")
+                chunk_idx += 1
+                audio_cursor = audio_start
+
+            # Render scene chunk: Pure static 16:9 YouTube Longform illustration with clean hard cuts
+            chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_seg.mp4")
+            if not os.path.exists(chunk_path):
+                if ai_img and os.path.exists(ai_img):
+                    v = (
+                        ffmpeg.input(ai_img, loop=1, t=tts_dur)
+                        .filter("scale", 1920, 1080, force_original_aspect_ratio="increase")
+                        .filter("crop", 1920, 1080)
+                        .filter("setsar", 1)
+                        .filter("fps", fps=30, round="near")
+                        .filter("format", "yuv420p")
+                    )
+                else:
+                    v = (
+                        ffmpeg.input(f"color=c=0x111827:s=1920x1080:d={tts_dur}:r=30", format="lavfi")
+                        .filter("fps", fps=30, round="near")
+                        .filter("format", "yuv420p")
+                    )
+
+                v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
+                a = ffmpeg.input("anullsrc=channel_layout=stereo:sample_rate=48000", format="lavfi", t=tts_dur).audio
+                out = ffmpeg.output(v, a, chunk_path, t=tts_dur, vcodec="libx264", acodec="aac", ac=2, ar=48000, pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
+                try:
+                    ffmpeg.run(out, quiet=True, overwrite_output=True)
+                except ffmpeg.Error as e:
+                    err_msg = e.stderr.decode('utf8') if e.stderr else str(e)
+                    print(f"  [Video] Error rendering cartoon chunk {chunk_idx}: {err_msg}")
+                    raise
+
+            escaped_fn = os.path.basename(chunk_path).replace("'", "'\\''")
+            concat_lines.append(f"file '{escaped_fn}'")
+            chunk_idx += 1
+            audio_cursor = audio_end
+
+        # Trailing silence gap handling
+        trailing_dur = total_audio_dur - audio_cursor
+        if trailing_dur > 0.05 and last_valid_img:
+            chunk_path = os.path.join(chunks_dir, f"chunk_{chunk_idx:04d}_trail.mp4")
+            if not os.path.exists(chunk_path):
+                v = (
+                    ffmpeg.input(last_valid_img, loop=1, t=trailing_dur)
+                    .filter("scale", 1920, 1080, force_original_aspect_ratio="increase")
+                    .filter("crop", 1920, 1080)
+                    .filter("setsar", 1)
+                    .filter("fps", fps=30, round="near")
+                    .filter("format", "yuv420p")
+                )
+                v = self._apply_watermarks(v, watermark_settings, watermark_path)
+                v = self._apply_watermarks(v, text_watermark_settings, text_watermark_path)
+                a = ffmpeg.input("anullsrc=channel_layout=stereo:sample_rate=48000", format="lavfi", t=trailing_dur).audio
+                out = ffmpeg.output(v, a, chunk_path, t=trailing_dur, vcodec="libx264", acodec="aac", ac=2, ar=48000, pix_fmt="yuv420p", **{"crf": "18", "preset": "fast"})
+                ffmpeg.run(out, quiet=True, overwrite_output=True)
+            escaped_fn = os.path.basename(chunk_path).replace("'", "'\\''")
+            concat_lines.append(f"file '{escaped_fn}'")
+
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(concat_lines) + "\n")
+
+        video_only_path = os.path.join(job_dir, "video_only.mp4")
+        if not os.path.exists(video_only_path):
+            out = (
+                ffmpeg.input(concat_list_path, format="concat", safe=0)
+                .output(video_only_path, c="copy")
+            )
+            ffmpeg.run(out, quiet=True, overwrite_output=True)
+
+        print(f"  [Video] ✅ Cartoon Video Rendered: {video_only_path}")
+        return video_only_path
+
     def _build_full_movie_video_timeline(self, timeline: list, original_video_path: str,
                                          total_audio_dur: float, job_dir: str,
                                          watermark_settings=None, text_watermark_settings=None,
@@ -483,6 +614,16 @@ class AudioSynchronizer:
             return self._build_full_movie_video_timeline(
                 timeline=timeline,
                 original_video_path=original_video_path,
+                total_audio_dur=total_audio_dur,
+                job_dir=job_dir,
+                watermark_settings=watermark_settings,
+                text_watermark_settings=text_watermark_settings,
+                watermark_path=watermark_path,
+                text_watermark_path=text_watermark_path
+            )
+        if channel_type == "cartoon_story":
+            return self._build_cartoon_video_timeline(
+                timeline=timeline,
                 total_audio_dur=total_audio_dur,
                 job_dir=job_dir,
                 watermark_settings=watermark_settings,
@@ -795,7 +936,7 @@ class AudioSynchronizer:
             default_intro = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/intro_thriller.mp4"
             default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark thriller.png"
             default_twm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark_thriller.png"
-        elif channel_type == "full_movie":
+        elif channel_type in ["full_movie", "cartoon_story"]:
             default_intro = None
             default_wm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/watermark.png"
             default_twm = "/Users/kedarbhokare/Desktop/code/ytstoryhindiautomation/backend/intro/textWatermark.png"
@@ -941,10 +1082,12 @@ class AudioSynchronizer:
         else:
             if has_subtitles:
                 print(f"\n[Sync] Step D: Burning styled subtitles into final video (no intro)...")
+                target_w = 1920 if channel_type == "cartoon_story" else 1280
+                target_h = 1080 if channel_type == "cartoon_story" else 720
                 main_in = ffmpeg.input(mixed_video_path)
                 main_v = (
                     main_in.video
-                    .filter("scale", 1280, 720, out_color_matrix="bt709", out_range="tv")
+                    .filter("scale", target_w, target_h, out_color_matrix="bt709", out_range="tv")
                     .filter("setsar", 1)
                     .filter("fps", fps=30, round="near")
                     .filter("format", "yuv420p")

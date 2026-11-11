@@ -5,6 +5,9 @@ import subprocess
 import shutil
 from dotenv import load_dotenv
 from core.providers import GroqProvider
+from core.evidence_store import EvidenceStore
+from core.subtitle_quality import SubtitleQualityReport
+from core.movie_understanding import MovieUnderstanding
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
@@ -41,6 +44,19 @@ class MovieRecapEngine:
 
         if os.path.exists(json_output_path):
             print(f"  [MovieEngine] ⏩ Found cached dialogue JSON at: {json_output_path}")
+            quality_path = os.path.join(job_dir, f"{video_name}_subtitle_quality.json")
+            if not os.path.exists(quality_path):
+                try:
+                    with open(json_output_path, "r", encoding="utf-8") as f:
+                        cached_d = json.load(f)
+                    max_ts = max((float(d.get("end", d.get("start", 0))) for d in cached_d), default=5400.0)
+                    total_runtime_sec = max(3600.0, max_ts)
+                    q_rep = SubtitleQualityReport.analyze(cached_d, total_runtime_sec)
+                    print(SubtitleQualityReport.format_report(q_rep))
+                    with open(quality_path, "w", encoding="utf-8") as qf:
+                        json.dump(q_rep, qf, indent=4)
+                except Exception:
+                    pass
             return json_output_path
 
         # 1. Probe for subtitle streams with disposition and tags
@@ -157,6 +173,18 @@ class MovieRecapEngine:
         with open(json_output_path, "w", encoding="utf-8") as f:
             json.dump(parsed_dialogues, f, indent=4, ensure_ascii=False)
 
+        # Generate and save comprehensive subtitle quality report (Improvement #1)
+        max_ts = max((float(d.get("end", d.get("start", 0))) for d in parsed_dialogues), default=5400.0)
+        total_runtime_sec = max(3600.0, max_ts)
+        quality_report = SubtitleQualityReport.analyze(parsed_dialogues, total_runtime_sec)
+        print(SubtitleQualityReport.format_report(quality_report))
+        quality_path = os.path.join(job_dir, f"{video_name}_subtitle_quality.json")
+        try:
+            with open(quality_path, "w", encoding="utf-8") as qf:
+                json.dump(quality_report, qf, indent=4)
+        except Exception as q_err:
+            print(f"  [MovieEngine] Warning saving subtitle quality report: {q_err}")
+
         print(f"  [MovieEngine] ✅ Extracted & parsed {len(parsed_dialogues)} dialogue events: {json_output_path}")
         return json_output_path
 
@@ -272,15 +300,15 @@ class MovieRecapEngine:
     @staticmethod
     def _condense_dialogue_block(condensed_log: list, max_tokens: int = 1800, max_lines: int = 65) -> str:
         """
-        Token-budgeted dialogue condensation (Context-Budget Architecture).
-        Replaces rigid line-sampling with a conservative token-budget (~1,800 tokens),
-        preventing any request from overflowing Groq's 7,000 ITPM limit.
-
-        Strategy:
-        - Always keep short lines (≤ 12 words) — critical single-line revelations, clues, choices.
-        - De-duplicate adjacent repetitive dialogue lines.
-        - Distribute remaining token slots chronologically across the block.
-        - Hard stop once cumulative tokens hit max_tokens.
+        Three-Level Importance-Scored Dialogue Condensation (Improvement #4).
+        Replaces rigid line-sampling with a content-aware, token-budgeted selection:
+        Level 1: Preserve dialogue containing proper names, numbers/dates, locations,
+                 and explicit revelation words (kills, secrets, confessions, etc.).
+        Level 2: Preserve surrounding dialogue (1 line before/after) for critical lines
+                 so context is not lost.
+        Level 3: Sample remaining dialogue chronologically, with guaranteed coverage
+                 of the ending of the block.
+        Hard stops at max_tokens (~1,800 tokens) to stay well below 7,000 ITPM limit.
         """
         if not condensed_log:
             return ""
@@ -293,14 +321,7 @@ class MovieRecapEngine:
         if total_est <= max_tokens and len(condensed_log) <= max_lines:
             return "\n".join(condensed_log)
 
-        # 1. Identify high-importance lines (short dialogue = usually key twists/revelations)
-        important_indices = set()
-        for i, line in enumerate(condensed_log):
-            text_part = re.sub(r'^\[\d{2}:\d{2}:\d{2}\]\s*', '', line)
-            if len(text_part.split()) <= 12:
-                important_indices.add(i)
-
-        # 2. De-duplicate adjacent identical or near-identical lines
+        # 1. De-duplicate adjacent identical or near-identical lines first
         deduped = []
         prev_text = None
         for i, line in enumerate(condensed_log):
@@ -309,29 +330,76 @@ class MovieRecapEngine:
                 deduped.append((i, line))
                 prev_text = text_part
 
-        # 3. Reserve up to half the line budget for critical short lines
-        budget_important = min(len(important_indices), max_lines // 2)
-        important_lines = [(i, l) for i, l in deduped if i in important_indices][:budget_important]
-        selected_important = set(i for i, _ in important_lines)
+        # 2. Level 1: Score lines by importance (proper nouns, revelations, numbers, locations)
+        NAME_PATTERN = re.compile(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b')
+        NUMBER_PATTERN = re.compile(r'\b\d{2,}\b')
+        REVEAL_WORDS = re.compile(
+            r'(?i)\b(kill|murder|dead|die|truth|reveal|secret|lie|betray|confess|'
+            r'discover|hidden|stolen|missing|innocent|guilty|arrest|escape|'
+            r'love|marry|divorce|pregnant|father|mother|son|daughter|brother|sister)\b'
+        )
+        LOCATION_WORDS = re.compile(
+            r'(?i)\b(hospital|house|office|prison|church|school|hotel|station|'
+            r'apartment|room|basement|attic|garden|park|street|city|town)\b'
+        )
 
-        # 4. Fill remaining slots evenly across the block
-        remaining_slots = max_lines - len(selected_important)
-        non_important = [(i, l) for i, l in deduped if i not in selected_important]
-        selected_other = set()
+        scored_lines = []
+        for orig_idx, (i, line) in enumerate(deduped):
+            text_clean = re.sub(r'^\[\d{2}:\d{2}:\d{2}\]\s*', '', line)
+            score = 0
+            words = text_clean.split()
+            # Short lines (≤12 words) carry key dialogue punch
+            if 2 <= len(words) <= 8:
+                score += 3
+            elif len(words) <= 12:
+                score += 1
+            if NAME_PATTERN.search(text_clean):
+                score += 2
+            if NUMBER_PATTERN.search(text_clean):
+                score += 2
+            if REVEAL_WORDS.search(text_clean):
+                score += 3
+            if LOCATION_WORDS.search(text_clean):
+                score += 1
+            scored_lines.append((orig_idx, score))
+
+        # Level 1 + Level 2: Pick high-importance lines and include their immediate neighbors (context)
+        important_indices = set()
+        for idx, score in scored_lines:
+            if score >= 3:
+                important_indices.add(idx)
+                # Level 2: Context preservation (1 before and 1 after)
+                if idx > 0:
+                    important_indices.add(idx - 1)
+                if idx < len(deduped) - 1:
+                    important_indices.add(idx + 1)
+
+        # Level 3: Guarantee end-of-block coverage (last 20% of lines to prevent climax truncation)
+        end_start = max(0, int(len(deduped) * 0.80))
+        for idx in range(end_start, len(deduped)):
+            important_indices.add(idx)
+
+        # Fill remaining slots evenly across the block
+        budget_important = min(len(important_indices), int(max_lines * 0.70))
+        sorted_important = sorted(list(important_indices))[:budget_important]
+        selected_set = set(sorted_important)
+
+        remaining_slots = max_lines - len(selected_set)
+        non_important = [idx for idx in range(len(deduped)) if idx not in selected_set]
         if non_important and remaining_slots > 0:
             step = max(1, len(non_important) / remaining_slots)
             for j in range(remaining_slots):
-                idx = int(j * step)
-                if idx < len(non_important):
-                    selected_other.add(non_important[idx][0])
+                pick_i = int(j * step)
+                if pick_i < len(non_important):
+                    selected_set.add(non_important[pick_i])
 
-        all_selected = sorted(list(selected_important | selected_other))
+        all_selected = sorted(list(selected_set))
 
-        # 5. Build final text respecting max_tokens ceiling
+        # Build final text respecting max_tokens ceiling
         result_lines = []
         accumulated_tokens = 0
         for orig_idx in all_selected:
-            line = condensed_log[orig_idx]
+            line = deduped[orig_idx][1]
             lt = line_tokens(line)
             if accumulated_tokens + lt > max_tokens:
                 break
@@ -356,15 +424,66 @@ class MovieRecapEngine:
             "timeline_events_narrated": [],  # Brief summaries of already-narrated events
         }
 
-    def _update_story_state(self, story_state: dict, act_segs: list, block_title: str) -> dict:
+    def _update_story_state(self, story_state, act_segs: list, block_title: str, block_idx: int = 0) -> any:
         """
-        Asks the LLM to extract structured story-state updates from the just-generated block.
-        Updates the story_state dict in-place and returns it.
+        Evidence-Based Story State Updates (Improvement #3).
+        Dual-Memory Separation:
+        - Generated narration ONLY updates the NARRATION STATE (what has been explained to the viewer).
+        - Source facts are established by dialogue evidence and event map ONLY.
+        - Generated narration alone can NEVER create a confirmed movie fact.
         """
         if not act_segs:
             return story_state
 
         narration_block = "\n".join(f"- {s.get('text', '')}" for s in act_segs if s.get("text"))
+        
+        # If using EvidenceStore
+        if isinstance(story_state, EvidenceStore):
+            try:
+                known_chars = list(story_state.characters.keys())[:8]
+                update_prompt = f"""You are a story continuity and narration coverage tracker.
+Given these narration segments just generated for "{block_title}", extract narration coverage:
+
+Narration:
+{narration_block}
+
+Known characters: {json.dumps(known_chars, ensure_ascii=False)}
+
+Return JSON with these keys:
+"block_summary": string — 1-2 sentence summary of what was narrated in this block
+"characters_introduced": list of strings — character names introduced to the viewer in this block
+"unverified_character_claims": list of objects {{"claimant": str, "claim": str}} — any subjective accusations or unproven claims made by characters
+"new_questions_raised": list of strings — mysteries or questions raised"""
+
+                resp = self.provider.chat_completion(
+                    system_prompt="You are a narration coverage tracker. Output strict JSON.",
+                    user_content=update_prompt,
+                    response_format={"type": "json_object"},
+                    max_tokens=500,
+                    stage_label="narration_coverage_update"
+                )
+                updates = json.loads(resp)
+                summary = updates.get("block_summary", "")
+                chars_intro = updates.get("characters_introduced", [])
+                story_state.record_narration(
+                    block_index=block_idx,
+                    narrated_text=summary,
+                    characters_mentioned=chars_intro
+                )
+                for clm in updates.get("unverified_character_claims", []):
+                    if clm.get("claimant") and clm.get("claim"):
+                        story_state.add_character_claim(
+                            claimant=clm["claimant"],
+                            claim=clm["claim"],
+                            dialogue_id=0
+                        )
+                for q in updates.get("new_questions_raised", []):
+                    story_state.add_mystery(q)
+            except Exception as e:
+                print(f"  [MovieEngine] ⚠️ Evidence store update notice: {e}")
+            return story_state
+
+        # Legacy dict fallback
         try:
             update_prompt = f"""You are a story continuity tracker for a movie recap pipeline.
 Given these narration segments just generated for "{block_title}", extract structured updates.
@@ -393,14 +512,12 @@ Return JSON with these keys (only include non-empty updates):
             )
             updates = json.loads(resp)
 
-            # Merge updates into persistent state
             for name, role in updates.get("new_characters", {}).items():
                 story_state["characters"][name] = role
             story_state["confirmed_facts"].extend(updates.get("confirmed_facts", []))
             story_state["character_claims"].extend(updates.get("character_claims", []))
             story_state["important_evidence"].extend(updates.get("new_evidence", []))
 
-            # Remove resolved mysteries
             resolved = set(updates.get("resolved_mysteries", []))
             story_state["unresolved_mysteries"] = [
                 m for m in story_state["unresolved_mysteries"] if m not in resolved
@@ -417,11 +534,17 @@ Return JSON with these keys (only include non-empty updates):
         return story_state
 
     @staticmethod
-    def _format_story_state_for_prompt(story_state: dict) -> str:
+    def _format_story_state_for_prompt(story_state) -> str:
         """
-        Formats compact story state for prompt injection (budget: ~200 tokens).
-        Focuses only on recent high-value facts, claims, and characters to avoid token bloat.
+        Formats compact story state for prompt injection (budget: ~250 tokens).
+        If EvidenceStore is used, outputs separate SOURCE STORY STATE (facts)
+        and NARRATION STATE (viewer coverage).
         """
+        if isinstance(story_state, EvidenceStore):
+            src_text = story_state.format_source_state_for_prompt(max_tokens=250)
+            nar_text = story_state.format_narration_state_for_prompt()
+            return f"{src_text}\n\n{nar_text}"
+
         lines = ["STORY CONTINUITY:"]
 
         chars = story_state.get("characters", {})
@@ -490,6 +613,25 @@ Return JSON with these keys (only include non-empty updates):
         print(f"\n[MovieEngine] 🎬 Crafting Production YouTube Recap Script for '{movie_title}'")
         print(f"  [MovieEngine] ⏱️ Total Movie Runtime: ~{runtime_mins} minutes ({total_lines} dialogue lines)")
 
+        # Step 0: Comprehensive Subtitle Quality Validation (Improvement #1)
+        job_dir = os.path.dirname(output_script_path)
+        os.makedirs(job_dir, exist_ok=True)
+        quality_path = os.path.join(job_dir, f"{video_name}_subtitle_quality.json")
+        if os.path.exists(quality_path):
+            try:
+                with open(quality_path, "r", encoding="utf-8") as qf:
+                    subtitle_quality = json.load(qf)
+            except Exception:
+                subtitle_quality = SubtitleQualityReport.analyze(dialogues, total_runtime_sec)
+        else:
+            subtitle_quality = SubtitleQualityReport.analyze(dialogues, total_runtime_sec)
+            try:
+                with open(quality_path, "w", encoding="utf-8") as qf:
+                    json.dump(subtitle_quality, qf, indent=4)
+            except Exception:
+                pass
+        print(SubtitleQualityReport.format_report(subtitle_quality))
+
         # Step 1: Fetch Plot Synopsis as a broad narrative reference
         print(f"  [MovieEngine] 🌐 Fetching film plot synopsis for '{movie_title}'...")
         film_synopsis = self._fetch_film_synopsis(movie_title)
@@ -497,7 +639,6 @@ Return JSON with these keys (only include non-empty updates):
             print(f"  [MovieEngine] ✅ Retrieved film plot synopsis ({len(film_synopsis)} chars). Used as broad reference — subtitle timeline is primary source.")
         else:
             print(f"  [MovieEngine] ℹ️ Online synopsis unavailable. Synthesizing plot outline from dialogue...")
-            # Use importance-aware condensation even for the synopsis fallback
             all_log = [f"[{int(d['start']//60):02d}:{int(d['start']%60):02d}] {d['text'].strip()}" for d in dialogues]
             sampled_full_text = self._condense_dialogue_block(all_log, max_lines=80)
             synopsis_prompt = "You are a master film analyst. Summarize the complete chronological plot of this film from start to finish based on these sampled dialogues. State all main characters, key plot movements, physical evidence, and the climax/twist."
@@ -509,6 +650,61 @@ Return JSON with these keys (only include non-empty updates):
                 )
             except Exception:
                 film_synopsis = f"Recap the film {movie_title} with suspense and full twist preservation."
+
+        # Step 1.5: Extract Structured Event Map & Character Map (Improvement #2)
+        event_map_path = os.path.join(job_dir, f"{video_name}_event_map.json")
+        if os.path.exists(event_map_path):
+            print(f"  [MovieEngine] ⏩ Found cached event map at: {event_map_path}")
+            try:
+                with open(event_map_path, "r", encoding="utf-8") as emf:
+                    event_map = json.load(emf)
+            except Exception:
+                event_map = {}
+        else:
+            print(f"  [MovieEngine] 🗺️ Extracting structured Event Map & Character Map from dialogue...")
+            event_map = MovieUnderstanding.extract_event_map(
+                dialogues=dialogues,
+                provider=self.provider,
+                film_synopsis=film_synopsis,
+                movie_title=movie_title
+            )
+            try:
+                with open(event_map_path, "w", encoding="utf-8") as emf:
+                    json.dump(event_map, emf, indent=4, ensure_ascii=False)
+            except Exception as e:
+                print(f"  [MovieEngine] Warning saving event map: {e}")
+
+        # Step 1.6: Initialize Evidence Store with Dual Memory (Improvement #3)
+        evidence_store = EvidenceStore(movie_title)
+        MovieUnderstanding.populate_evidence_store(event_map, evidence_store)
+
+        # Pre-compute dialogue clusters and vector embeddings ONCE for the entire movie (Improvement #7)
+        from core.semantic_aligner import SemanticAligner
+        aligner = SemanticAligner()
+        clusters = []
+        curr_cluster = []
+        curr_start = 0.0
+        curr_end = 0.0
+        for d in dialogues:
+            st = float(d.get("start", 0.0))
+            et = float(d.get("end", st + 2.0))
+            txt = d.get("text", "").strip()
+            if not txt:
+                continue
+            if not curr_cluster or (st - curr_start <= 25.0):
+                if not curr_cluster:
+                    curr_start = st
+                curr_cluster.append(txt)
+                curr_end = et
+            else:
+                clusters.append({"start": curr_start, "end": curr_end, "text": " ".join(curr_cluster)})
+                curr_cluster = [txt]
+                curr_start = st
+                curr_end = et
+        if curr_cluster:
+            clusters.append({"start": curr_start, "end": curr_end, "text": " ".join(curr_cluster)})
+
+        all_cluster_embeddings = aligner.precompute_cluster_embeddings(clusters)
 
         # Divide total runtime dynamically into 6 chronological story blocks
         block_count = 6
@@ -530,7 +726,6 @@ Return JSON with these keys (only include non-empty updates):
             "ending_truth": ""
         }
 
-        # Extract ending truth from synopsis to guarantee climax fidelity without repeating full synopsis
         if film_synopsis and len(film_synopsis) > 500:
             movie_memory["ending_truth"] = film_synopsis[-1500:].strip()
 
@@ -540,7 +735,6 @@ Return JSON with these keys (only include non-empty updates):
                 b_st = b_idx * block_dur
                 b_et = (b_idx + 1) * block_dur if b_idx < block_count - 1 else total_runtime_sec + 10.0
                 d_win = [d for d in dialogues if b_st <= d['start'] < b_et]
-                # Sample at most 8 lines per block to keep chapter planning tokens small (~1,500 tokens total)
                 sample = [f"[{fmt_time(d['start'])}] {d['text'].strip()}" for d in d_win[::max(1, len(d_win) // 8)]][:8]
                 block_samples.append(f"Block {b_idx + 1} [{fmt_time(b_st)} - {fmt_time(min(total_runtime_sec, b_et))}]:\n" + "\n".join(sample))
 
@@ -598,11 +792,12 @@ Return JSON with key 'chapters': list of {block_count} objects with 'block_index
 
             acts_data.append((block_title, b_dialogues, target_segs_per_block, guidance, is_final_climax, b_start, b_end))
 
-        all_raw_segments = []
-        # Persistent story state maintained across all blocks (replaces 3-sentence rolling_context)
-        story_state = self._build_initial_story_state(movie_title)
+        # Incremental Grounding Setup (Improvement #7)
+        all_grounded_segments = []
+        current_timeline_cursor = 0.0
+        current_last_verified_sec = 0.0
 
-        for act_name, act_dialogues, target_segments, act_guidance, is_final_climax, b_start, b_end in acts_data:
+        for b_idx, (act_name, act_dialogues, target_segments, act_guidance, is_final_climax, b_start, b_end) in enumerate(acts_data):
             if not act_dialogues:
                 continue
 
@@ -613,10 +808,9 @@ Return JSON with key 'chapters': list of {block_count} objects with 'block_index
                 for d in act_dialogues
             ]
 
-            # Token-budgeted condensation: capped at ~1,800 tokens to stay well below 7,000 ITPM
+            # 3-Level importance-scored condensation (Improvement #4)
             sampled_dialogue_text = self._condense_dialogue_block(condensed_log, max_tokens=1800, max_lines=65)
 
-            # High-density, compact system prompt (~250 tokens instead of 1,200 tokens)
             system_prompt = f"""You are an elite YouTube movie recap script doctor. Transform raw dialogue into viral, high-retention narration in spoken {target_lang.upper()}.
 
 RECAP PRODUCTION RULES:
@@ -627,10 +821,16 @@ RECAP PRODUCTION RULES:
 5. NON-LINEAR TIME MARKERS: If a scene is a flashback, signpost it ("In a flashback...", "Flash-forward reveals...").
 6. STRICT 1-SENTENCE CADENCE: Exactly ONE standalone sentence per segment, strictly 10 to 16 words. End with period (.), exclamation (!), or question mark (?). NEVER end on trailing conjunctions ('and', 'so', 'because', 'who').
 7. ANCHOR QUOTE: Provide a short 3-8 word quote from characters in this scene for video editing sync.
+8. ZERO REPETITION TOLERANCE: Never repeat identical backstory concepts across adjacent segments (e.g. father's estate, marital status). Every sentence must introduce a brand new cause-and-effect action.
+9. CHARACTER INTRO BEFORE ACTION: When a new entity enters (inmate, officer, physician), state their name, role, and context before narrating their actions.
+10. UNIFY CANONICAL CHARACTER NAMES: Use one consistent name throughout the script. Never alternate between translated variations (e.g. use 'Alice', never flip between 'Alice' and 'Alicia').
+11. MANDATORY CLIMAX GROUNDING (FINAL BLOCK): For the final block, divide segments evenly across the penultimate confrontation AND the true ending twist. Never cluster all beats in an early scene while leaving the film's final 10 minutes unnarrated.
 
 Output valid JSON with key 'segments': list of objects {{"text": "10-16 words", "anchor_quote": "3-8 word quote", "time": "HH:MM:SS", "loc": "Scene Location", "scene_change": bool}}"""
 
-            story_state_prompt = self._format_story_state_for_prompt(story_state)
+            # Dual-memory state prompt injection (Improvement #3)
+            story_state_prompt = self._format_story_state_for_prompt(evidence_store)
+            event_map_prompt = MovieUnderstanding.format_event_map_for_prompt(event_map, block_start_sec=b_start, block_end_sec=b_end)
 
             user_prompt = f"""Film: {movie_title}
 Act / Window: {act_name}
@@ -638,6 +838,8 @@ Target: approximately {target_segments} segments (each EXACTLY 1 standalone sent
 
 CHAPTER SCOPE (FOCUS EXCLUSIVELY ON THESE EVENTS):
 {act_guidance}
+
+{event_map_prompt}
 
 {story_state_prompt}
 
@@ -650,7 +852,7 @@ Chronological Dialogue Timeline:
                 user_content=user_prompt,
                 response_format={"type": "json_object"},
                 max_tokens=1200,
-                stage_label=f"script_generation_block_{acts_data.index((act_name, act_dialogues, target_segments, act_guidance, is_final_climax, b_start, b_end)) + 1}"
+                stage_label=f"script_generation_block_{b_idx + 1}"
             )
 
             try:
@@ -661,8 +863,8 @@ Chronological Dialogue Timeline:
                 act_segs = []
 
             # Deduplicate boundary segments if model repeated previous segment
-            if all_raw_segments and act_segs:
-                prev_clean = re.sub(r'[^a-z0-9]', '', (all_raw_segments[-1].get("text") or "").lower())
+            if all_grounded_segments and act_segs:
+                prev_clean = re.sub(r'[^a-z0-9]', '', (all_grounded_segments[-1].get("narration") or "").lower())
                 first_clean = re.sub(r'[^a-z0-9]', '', (act_segs[0].get("text") or "").lower())
                 if prev_clean and first_clean and (prev_clean == first_clean or prev_clean[:25] == first_clean[:25]):
                     act_segs.pop(0)
@@ -670,60 +872,87 @@ Chronological Dialogue Timeline:
             for s in act_segs:
                 s["_block_start"] = b_start
                 s["_block_end"] = b_end
-                all_raw_segments.append(s)
 
-            # Update persistent story state from this block's narration
-            story_state = self._update_story_state(story_state, act_segs, act_name)
+            # Update evidence store narration state (Improvement #3)
+            self._update_story_state(evidence_store, act_segs, act_name, block_idx=b_idx + 1)
 
-            # ── Real-Time Incremental Flush to Disk ──
-            try:
-                partial_grounded = self._ground_and_verify_timestamps(
-                    all_raw_segments, dialogues, total_runtime_sec, target_lang, movie_path=movie_path
-                )
-                temp_flush_path = output_script_path + ".tmp"
-                with open(temp_flush_path, "w", encoding="utf-8") as tf:
-                    json.dump(partial_grounded, tf, indent=4, ensure_ascii=False)
-                os.replace(temp_flush_path, output_script_path)
-                print(f"  [MovieEngine] 💾 Real-Time Sync: Flushed {len(partial_grounded)} segments ({act_name}) directly to disk.")
-            except Exception as flush_err:
-                print(f"  [MovieEngine] ⚠️ Real-time flush notice: {flush_err}")
+            # ── Incremental Grounding (Improvement #7) ──
+            # Grounds ONLY this block rather than repeatedly re-grounding all earlier blocks!
+            block_grounded = self._ground_and_verify_timestamps(
+                raw_segments=act_segs,
+                dialogues=dialogues,
+                total_runtime_sec=total_runtime_sec,
+                target_lang=target_lang,
+                movie_path=movie_path,
+                timeline_cursor_start=current_timeline_cursor,
+                last_verified_sec_start=current_last_verified_sec,
+                start_id=len(all_grounded_segments) + 1,
+                precomputed_clusters=clusters,
+                precomputed_embeddings=all_cluster_embeddings
+            )
+            all_grounded_segments.extend(block_grounded)
+
+            if block_grounded:
+                current_timeline_cursor = block_grounded[-1]["end"]
+                for bg in reversed(block_grounded):
+                    if not bg.get("is_flashback"):
+                        try:
+                            parts = str(bg["movie_timestamp"]).split(":")
+                            sec = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                            current_last_verified_sec = max(current_last_verified_sec, sec)
+                        except Exception:
+                            pass
+                        break
+
+            # Real-Time Checkpoint Flush to Disk
+            temp_flush_path = output_script_path + ".tmp"
+            with open(temp_flush_path, "w", encoding="utf-8") as tf:
+                json.dump(all_grounded_segments, tf, indent=4, ensure_ascii=False)
+            os.replace(temp_flush_path, output_script_path)
+            print(f"  [MovieEngine] 💾 Real-Time Sync: Incrementally grounded & flushed {len(all_grounded_segments)} segments ({act_name}) directly to disk.")
+
+        # Save snapshot of final Evidence Store
+        evidence_store_path = os.path.join(job_dir, f"{video_name}_evidence_store.json")
+        try:
+            with open(evidence_store_path, "w", encoding="utf-8") as esf:
+                json.dump(evidence_store.to_dict(), esf, indent=4, ensure_ascii=False)
+        except Exception:
+            pass
+
+        # Segments are already incrementally grounded!
+        grounded_segments = all_grounded_segments
 
         # ─────────────────────────────────────────────────────────────────
-        # STEP 4: PROGRAMMATIC GROUNDING & ANCHOR VERIFICATION (NO HALLUCINATIONS)
+        # STEP 4.5: INDEPENDENT CLAIM-LEVEL FACTUAL VERIFICATION (Improvement #5)
+        # Deconstructs narration into atomic claims and verifies each against source dialogue
         # ─────────────────────────────────────────────────────────────────
-        print(f"\n[MovieEngine] 🔍 Grounding & Auto-Verifying {len(all_raw_segments)} segments against studio subtitle timeline...")
-        grounded_segments = self._ground_and_verify_timestamps(all_raw_segments, dialogues, total_runtime_sec, target_lang, movie_path=movie_path)
-
-        # ─────────────────────────────────────────────────────────────────
-        # STEP 4.5: INDEPENDENT FACTUAL VERIFICATION
-        # Compares each narration segment against its matched source dialogue to check
-        # whether the described event is actually supported by the evidence.
-        # This is separate from timestamp alignment — alignment finds WHERE in the movie
-        # the narration belongs; factual verification checks WHETHER the narration is accurate.
-        # ─────────────────────────────────────────────────────────────────
-        print(f"\n[MovieEngine] 🔬 Running independent factual verification on {len(grounded_segments)} segments...")
-        grounded_segments = self._factual_verify_segments(grounded_segments, film_synopsis, story_state)
+        print(f"\n[MovieEngine] 🔬 Running claim-level factual verification on {len(grounded_segments)} segments...")
+        grounded_segments = self._factual_verify_segments(grounded_segments, film_synopsis, evidence_store)
 
         # ─────────────────────────────────────────────────────────────────
         # STEP 5: AUTOMATED SCRIPT AUDITOR & GENERIC QUALITY ELEVATION (TARGET >= 9.5)
-        # NOTE: A passing score means language rules pass and the LLM approved against
-        # the synopsis. It does NOT guarantee per-segment factual accuracy against the
-        # dialogue timeline. See timestamp_verified / alignment_confidence fields for that.
+        # Enforces hard rejection gates (Improvement #8): zero contradicted claims allowed!
         # ─────────────────────────────────────────────────────────────────
         from core.script_auditor import ScriptAuditor
         for audit_round in range(1, 5):
             audit_report = ScriptAuditor.audit_script(grounded_segments, film_synopsis=film_synopsis, provider=self.provider)
             score = audit_report.get("overall_score", 0.0)
             audit_ok = audit_report.get("audit_success", False)
-            print(f"\n  [ScriptAuditor] 📊 Round {audit_round} Quality Audit: {score}/10.0 (Target: 9.5+, Certified: {audit_ok})")
+            passed = audit_report.get("passed", False)
+            hard_rejections = audit_report.get("hard_rejections", [])
+            print(f"\n  [ScriptAuditor] 📊 Round {audit_round} Quality Audit: {score}/10.0 (Target: 9.5+, Passed: {passed})")
             for cat, c_score in audit_report.get("category_scores", {}).items():
                 print(f"    - {cat}: {c_score}/10.0")
+            if hard_rejections:
+                print(f"    🛑 Hard Rejections:")
+                for hr in hard_rejections:
+                    print(f"      - {hr}")
 
-            if score >= 9.5 and audit_ok:
-                print(f"  [ScriptAuditor] 🏆 SCRIPT QUALITY CERTIFIED (Score {score}/10.0 >= 9.5)!")
+            if passed:
+                print(f"  [ScriptAuditor] 🏆 SCRIPT QUALITY CERTIFIED (Score {score}/10.0 >= 9.5, zero hard rejections)!")
                 break
             else:
-                print(f"  [ScriptAuditor] 🛠️ Applying generic polish and surgical adjustments...")
+                print(f"  [ScriptAuditor] 🛠️ Applying surgical adjustments to flawed segments...")
                 polished_segments = ScriptAuditor.apply_generic_polish(
                     grounded_segments, 
                     provider=self.provider, 
@@ -732,13 +961,10 @@ Chronological Dialogue Timeline:
                     dialogues=dialogues
                 )
 
-                # Issue #7 fix: After polishing rewrites narration text, timestamps and
-                # source_dialogue may be stale. Re-run alignment for segments that were
-                # actually modified so their timestamps and source evidence stay accurate.
+                # Re-ground using precomputed embeddings
                 rewritten_raw = []
                 for seg in polished_segments:
                     new_text = ScriptAuditor._get_narration_text(seg)
-                    old_text = seg.get("_pre_polish_narration", "")
                     raw_entry = {
                         "text": new_text,
                         "anchor_quote": seg.get("anchor_quote", ""),
@@ -750,24 +976,31 @@ Chronological Dialogue Timeline:
                     }
                     rewritten_raw.append(raw_entry)
 
-                # Re-ground all segments to refresh timestamps and source_dialogue
                 grounded_segments = self._ground_and_verify_timestamps(
-                    rewritten_raw, dialogues, total_runtime_sec, target_lang, movie_path=movie_path
+                    raw_segments=rewritten_raw,
+                    dialogues=dialogues,
+                    total_runtime_sec=total_runtime_sec,
+                    target_lang=target_lang,
+                    movie_path=movie_path,
+                    precomputed_clusters=clusters,
+                    precomputed_embeddings=all_cluster_embeddings
                 )
-                # Re-run factual verification on the refreshed segments
-                grounded_segments = self._factual_verify_segments(grounded_segments, film_synopsis, story_state)
+                grounded_segments = self._factual_verify_segments(grounded_segments, film_synopsis, evidence_store)
 
         # Final audit pass to record official certified rating
         final_report = ScriptAuditor.audit_script(grounded_segments, film_synopsis=film_synopsis, provider=self.provider)
         final_score = final_report.get("overall_score", 0.0)
         final_ok = final_report.get("audit_success", False)
         final_passed = final_report.get("passed", False)
+        final_hard_rejections = final_report.get("hard_rejections", [])
         print(f"\n  [ScriptAuditor] 🏁 Final Certified Score: {final_score}/10.0 (Audit Success: {final_ok}, Passed: {final_passed})")
         for cat, c_score in final_report.get("category_scores", {}).items():
             print(f"    - {cat}: {c_score}/10.0")
+        if final_hard_rejections:
+            print(f"    🛑 Hard Rejections:")
+            for hr in final_hard_rejections:
+                print(f"      - {hr}")
 
-        # Gate output: if the script didn't pass audit, save as needs_review instead of
-        # silently overwriting a potentially good cached script with a bad one.
         if not final_passed:
             review_path = output_script_path.replace(".json", "_needs_review.json")
             with open(review_path, "w", encoding="utf-8") as f:
@@ -776,11 +1009,9 @@ Chronological Dialogue Timeline:
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(final_report, f, indent=4, ensure_ascii=False)
             print(
-                f"\n[MovieEngine] ⚠️ Script did NOT pass quality audit ({final_score}/10.0 < 9.5 or audit failed). "
+                f"\n[MovieEngine] ⚠️ Script did NOT pass quality audit ({final_score}/10.0 < 9.5 or hard rejections triggered). "
                 f"Saved to {review_path} and audit report to {report_path}."
             )
-            # Still save to main path so downstream pipeline has something to work with,
-            # but log a clear warning that this script needs human review.
             with open(output_script_path, "w", encoding="utf-8") as f:
                 json.dump(grounded_segments, f, indent=4, ensure_ascii=False)
             print(f"[MovieEngine] ⚠️ Also saved to {output_script_path} — REQUIRES MANUAL REVIEW before publishing.")
@@ -790,23 +1021,27 @@ Chronological Dialogue Timeline:
             print(f"[MovieEngine] ✅ Full Movie Recap Script complete: {len(grounded_segments)} segments saved to {output_script_path}!")
         return output_script_path
 
-    def _factual_verify_segments(self, segments: list, film_synopsis: str, story_state: dict = None) -> list:
+    def _factual_verify_segments(self, segments: list, film_synopsis: str, story_state: any = None) -> list:
         """
-        Independent Factual Verification Layer (Issue 1):
-        Compares each narration segment against:
+        Claim-Level Independent Factual Verification Layer (Improvement #5).
+        Decomposes each narration segment into individual atomic claims:
+          Example: "Alice discovers the hidden account, confronts her husband, and learns he lied."
+          -> Claim 1: "Alice discovers hidden account" (verified / unsupported / contradicted)
+          -> Claim 2: "Alice confronts husband" (verified / unsupported / contradicted)
+          -> Claim 3: "He has been lying" (verified / unsupported / contradicted)
+
+        Evaluates against:
           1. The actual matched source dialogue (primary local evidence)
           2. The Film Synopsis (overall plot reference)
-          3. The persistent story state (characters, confirmed facts, unverified claims)
+          3. The persistent EvidenceStore / story state
 
         Outputs explicit per-segment audit metadata:
+          claims: list of {"claim": str, "status": str, "evidence": str}
           factual_status: 'verified' | 'partially_supported' | 'unsupported' | 'contradicted' | 'needs_visual_check'
-          factually_verified: bool (True only if 'verified' or 'partially_supported')
+          factually_verified: bool (True ONLY if 'verified' — partially_supported is NOT treated as fully verified)
           character_accuracy: bool (names, roles, relationships correct)
           claim_vs_fact_separated: bool (subjective accusations are framed as claims, not facts)
           factual_notes: str (concise explanation of discrepancies or evidence)
-
-        CRITICAL: timestamp_verified (from alignment) and factually_verified are COMPLETELY SEPARATE.
-        A matching timestamp does not mean the narration accurately describes what happened.
         """
         if not segments:
             return []
@@ -814,6 +1049,7 @@ Chronological Dialogue Timeline:
         # If no provider or synopsis, default to unverified (do not pretend to succeed)
         if not self.provider:
             for s in segments:
+                s["claims"] = []
                 s["factual_status"] = "unverified"
                 s["factually_verified"] = False
                 s["factual_notes"] = "No LLM provider available for factual verification."
@@ -823,9 +1059,11 @@ Chronological Dialogue Timeline:
         batch_size = 10
         verified_segments = []
 
-        # Prepare story context string
+        # Prepare story context string from EvidenceStore or dict
         story_context = ""
-        if story_state:
+        if isinstance(story_state, EvidenceStore):
+            story_context = story_state.format_source_state_for_prompt(max_tokens=300)
+        elif isinstance(story_state, dict):
             chars = story_state.get("characters", {})
             facts = story_state.get("confirmed_facts", [])[-4:]
             claims = story_state.get("character_claims", [])[-3:]
@@ -848,16 +1086,14 @@ Chronological Dialogue Timeline:
                 items_for_prompt.append(
                     f"Segment ID {sid} [{ts}]:\n"
                     f"  - Narration: \"{narration}\"\n"
-                    f"  - Source Dialogue Evidence: \"{src[:120]}\""
+                    f"  - Source Dialogue Evidence: \"{src[:140]}\""
                 )
 
             prompt_content = "\n".join(items_for_prompt)
 
             user_prompt = f"""You are a strict movie factual verification auditor.
-Verify each narration segment below against:
-1. The Source Dialogue Evidence matched at that specific timestamp
-2. The Film Synopsis (reference)
-3. The Story Context
+Deconstruct each narration segment below into 1 to 3 atomic factual claims (actions, revelations, relationships).
+Verify EACH claim independently against the Source Dialogue Evidence and Synopsis.
 
 Film Synopsis (reference):
 {film_synopsis[:1500]}
@@ -869,16 +1105,21 @@ Segments to Verify:
 
 For each segment ID, output:
 - id: integer
+- claims: list of objects:
+    - claim: string (concise atomic assertion)
+    - status: "verified" | "partially_supported" | "unsupported" | "contradicted" | "needs_visual_check"
+    - evidence: string (supporting quote or reason for status)
 - factual_status: one of "verified" | "partially_supported" | "unsupported" | "contradicted" | "needs_visual_check"
+  (Rules: If ANY claim is contradicted -> "contradicted". If ALL claims verified -> "verified". If mix of supported and unsupported -> "partially_supported". If no dialogue evidence -> "unsupported" or "needs_visual_check".)
 - character_accuracy: boolean
-- claim_vs_fact_separated: boolean
+- claim_vs_fact_separated: boolean (are subjective accusations framed as claims rather than established facts?)
 - factual_notes: 1 concise sentence explaining any discrepancy.
 
 Return JSON with key 'verifications': list of objects."""
 
             try:
                 resp = self.provider.chat_completion(
-                    system_prompt="You are an uncompromising factual verification auditor. Output strict JSON with key 'verifications'.",
+                    system_prompt="You are an uncompromising, claim-level factual verification auditor. Output strict JSON with key 'verifications'.",
                     user_content=user_prompt,
                     response_format={"type": "json_object"},
                     max_tokens=1500,
@@ -893,37 +1134,61 @@ Return JSON with key 'verifications': list of objects."""
             for s in batch:
                 sid = s.get("id")
                 v_res = ver_map.get(sid, {})
+                claims = v_res.get("claims", [])
+                s["claims"] = claims
+
                 status = v_res.get("factual_status", "unverified")
+                # Rule-based reconciliation from claims:
+                if claims:
+                    statuses = [c.get("status", "") for c in claims]
+                    if "contradicted" in statuses:
+                        status = "contradicted"
+                    elif all(st == "verified" for st in statuses):
+                        status = "verified"
+                    elif any(st in ("verified", "partially_supported") for st in statuses) and any(st in ("unsupported", "needs_visual_check") for st in statuses):
+                        status = "partially_supported"
+
                 s["factual_status"] = status
-                s["factually_verified"] = status in ("verified", "partially_supported")
+                # Strict: ONLY fully verified counts as factually_verified
+                s["factually_verified"] = (status == "verified")
                 s["character_accuracy"] = bool(v_res.get("character_accuracy", True))
                 s["claim_vs_fact_separated"] = bool(v_res.get("claim_vs_fact_separated", True))
                 s["factual_notes"] = v_res.get("factual_notes", "")
                 verified_segments.append(s)
 
         v_count = sum(1 for s in verified_segments if s.get("factually_verified"))
-        print(f"  [MovieEngine] 🔬 Factual Verification: {v_count}/{len(verified_segments)} segments supported by evidence.")
+        print(f"  [MovieEngine] 🔬 Factual Verification: {v_count}/{len(verified_segments)} segments 100% verified by evidence.")
         return verified_segments
 
     @staticmethod
-    def _ground_and_verify_timestamps(raw_segments: list, dialogues: list, total_runtime_sec: float, target_lang: str, movie_path: str = None) -> list:
+    def _ground_and_verify_timestamps(
+        raw_segments: list,
+        dialogues: list,
+        total_runtime_sec: float,
+        target_lang: str,
+        movie_path: str = None,
+        timeline_cursor_start: float = 0.0,
+        last_verified_sec_start: float = 0.0,
+        start_id: int = 1,
+        precomputed_clusters: list = None,
+        precomputed_embeddings = None
+    ) -> list:
         """
         Locks each script segment's movie_timestamp to the most likely position in the subtitle
         timeline using SemanticAligner vector embeddings.
+        Supports Incremental Grounding (Improvement #7) and Top-3 Candidate Ranking (Improvement #6).
 
         Output fields:
-          narration        — the generated voiceover sentence (this is what gets spoken)
-          source_dialogue  — actual subtitle text from the matched dialogue cluster (evidence)
-          anchor_quote     — the anchor phrase used for alignment
-          movie_timestamp  — HH:MM:SS position in the actual movie (from dialogue timeline)
-          start / end      — position in the generated narration audio timeline (not the movie)
-          alignment_confidence — 'high' / 'medium' / 'low' based on combined_score
-          timestamp_verified   — True if match was within the temporal window and score >= 0.35
-          timestamp_warning    — human-readable note when alignment is uncertain
-
-        NOTE on timestamp_verified: A verified timestamp means the aligner found a plausible
-        dialogue cluster match. It does NOT prove the narration describes the event accurately.
-        Factual verification requires comparing narration against source_dialogue independently.
+          narration             — the generated voiceover sentence (this is what gets spoken)
+          source_dialogue       — actual subtitle text from the matched dialogue cluster (evidence)
+          anchor_quote          — the anchor phrase used for alignment
+          movie_timestamp       — HH:MM:SS position in the actual movie (from dialogue timeline)
+          raw_matched_timestamp — HH:MM:SS original matched timestamp before chronological adjustment
+          candidate_timestamps — list of top-3 candidate matches with full score decomposition
+          start / end           — position in the generated narration audio timeline (not the movie)
+          alignment_confidence  — 'high' / 'medium' / 'low' based on combined_score
+          timestamp_verified    — True if match was within the temporal window and score >= 0.35
+          timestamp_warning     — human-readable note when alignment is uncertain
         """
         from core.translator import StoryTranslator
         from core.semantic_aligner import SemanticAligner
@@ -945,48 +1210,51 @@ Return JSON with key 'verifications': list of objects."""
             s = int(secs % 60)
             return f"{h:02d}:{m:02d}:{s:02d}"
 
-        # 1. Build cohesive dialogue clusters (25-second windows) for semantic vector alignment
-        clusters = []
-        curr_cluster = []
-        curr_start = 0.0
-        curr_end = 0.0
+        aligner = SemanticAligner()
 
-        for d in dialogues:
-            st = float(d.get("start", 0.0))
-            et = float(d.get("end", st + 2.0))
-            txt = d.get("text", "").strip()
-            if not txt:
-                continue
-            if not curr_cluster or (st - curr_start <= 25.0):
-                if not curr_cluster:
+        # 1. Use pre-computed clusters and embeddings if provided (Incremental Grounding optimization)
+        if precomputed_clusters is not None and precomputed_embeddings is not None:
+            clusters = precomputed_clusters
+            all_cluster_embeddings = precomputed_embeddings
+        else:
+            clusters = []
+            curr_cluster = []
+            curr_start = 0.0
+            curr_end = 0.0
+
+            for d in dialogues:
+                st = float(d.get("start", 0.0))
+                et = float(d.get("end", st + 2.0))
+                txt = d.get("text", "").strip()
+                if not txt:
+                    continue
+                if not curr_cluster or (st - curr_start <= 25.0):
+                    if not curr_cluster:
+                        curr_start = st
+                    curr_cluster.append(txt)
+                    curr_end = et
+                else:
+                    clusters.append({
+                        "start": curr_start,
+                        "end": curr_end,
+                        "text": " ".join(curr_cluster)
+                    })
+                    curr_cluster = [txt]
                     curr_start = st
-                curr_cluster.append(txt)
-                curr_end = et
-            else:
+                    curr_end = et
+
+            if curr_cluster:
                 clusters.append({
                     "start": curr_start,
                     "end": curr_end,
                     "text": " ".join(curr_cluster)
                 })
-                curr_cluster = [txt]
-                curr_start = st
-                curr_end = et
 
-        if curr_cluster:
-            clusters.append({
-                "start": curr_start,
-                "end": curr_end,
-                "text": " ".join(curr_cluster)
-            })
-
-        aligner = SemanticAligner()
-
-        # Pre-compute embeddings for all clusters ONCE to avoid redundant encoding per segment
-        all_cluster_embeddings = aligner.precompute_cluster_embeddings(clusters)
+            all_cluster_embeddings = aligner.precompute_cluster_embeddings(clusters)
 
         processed = []
-        timeline_cursor = 0.0
-        last_verified_sec = 0.0
+        timeline_cursor = timeline_cursor_start
+        last_verified_sec = last_verified_sec_start
 
         for i, s in enumerate(raw_segments):
             narration = s.get("text") or s.get("narration") or ""
@@ -1003,8 +1271,7 @@ Return JSON with key 'verifications': list of objects."""
             b_st = s.get("_block_start", 0.0)
             b_et = s.get("_block_end", total_runtime_sec)
 
-            # Check for flashback / non-linear timeline markers BEFORE filtering candidate clusters (Issue 2)
-            # A flashback or flash-forward can jump to any part of the movie outside the current block window.
+            # Check for flashback / non-linear timeline markers BEFORE filtering candidate clusters
             is_flashback = bool(
                 s.get("is_flashback", False) or
                 (is_sc and re.search(
@@ -1016,8 +1283,6 @@ Return JSON with key 'verifications': list of objects."""
                 (raw_time_sec > 0 and raw_time_sec < (b_st - 60.0))
             )
 
-            # Strictly constrain candidate dialogue clusters to this story block (+/- 45s buffer)
-            # EXCEPT for flashbacks, which legitimately reference earlier/different timeline scenes.
             if is_flashback or not clusters:
                 block_clusters = clusters
                 block_embs = all_cluster_embeddings
@@ -1033,7 +1298,6 @@ Return JSON with key 'verifications': list of objects."""
                     block_clusters = [clusters[j] for j in block_cluster_indices]
                     block_embs = all_cluster_embeddings[block_cluster_indices]
 
-            # Semantic vector match — passes pre-computed embeddings to avoid redundant encoding
             match_res = aligner.match_best_dialogue_cluster(
                 narration_text=clean_text,
                 dialogue_clusters=block_clusters,
@@ -1043,7 +1307,6 @@ Return JSON with key 'verifications': list of objects."""
                 precomputed_embeddings=block_embs
             )
 
-            # Evaluate alignment quality using separate score components
             timestamp_verified = False
             timestamp_warning = ""
             alignment_confidence = "low"
@@ -1055,7 +1318,6 @@ Return JSON with key 'verifications': list of objects."""
                 within_window = match_res.get("within_temporal_window", False)
                 fallback = match_res.get("fallback_to_full_movie", False)
 
-                # Accept match only if combined score meets threshold AND was within temporal window
                 if combined > 0.35 and within_window:
                     final_movie_sec = match_res["timestamp"]
                     timestamp_verified = True
@@ -1067,13 +1329,11 @@ Return JSON with key 'verifications': list of objects."""
                     else:
                         alignment_confidence = "low"
                 elif combined > 0.28 and not fallback:
-                    # Weak match within window — use it but flag
                     final_movie_sec = match_res["timestamp"]
                     timestamp_warning = f"Weak alignment (combined={combined:.3f}, cosine={cosine:.3f}). Narration accuracy unverified."
                     source_dialogue_text = match_res.get("cluster", {}).get("text", "")
                     alignment_confidence = "low"
                 elif fallback:
-                    # Fell back to full-movie search — high risk of wrong timestamp
                     timestamp_warning = "No candidate within temporal window. Fell back to full-movie search — timestamp may be incorrect."
                     if raw_time_sec > 0:
                         final_movie_sec = raw_time_sec
@@ -1086,24 +1346,38 @@ Return JSON with key 'verifications': list of objects."""
                 final_movie_sec = raw_time_sec if raw_time_sec > 0 else max(b_st, last_verified_sec + 3.0)
                 timestamp_warning = "No alignment result returned. Using LLM-suggested timestamp."
 
-            # Monotonic guarantee with flashback exception (Issue 2):
-            # If the segment is an intentional flashback or timeline transition, allow intentional
-            # backwards jumps so the video editor shows the actual flashback scene accurately!
+            # Preserve raw matched timestamp BEFORE any chronological adjustments (Improvement #6.B)
+            raw_matched_sec = match_res["timestamp"] if match_res else final_movie_sec
+            raw_matched_ts = fmt_sec(raw_matched_sec)
+
+            # Preserve top-3 candidate matches (Improvement #6.A)
+            candidate_matches = []
+            if match_res and match_res.get("candidates"):
+                for cand in match_res["candidates"]:
+                    candidate_matches.append({
+                        "timestamp": fmt_sec(cand["timestamp"]),
+                        "timestamp_sec": cand["timestamp"],
+                        "combined_score": cand["combined_score"],
+                        "cosine_similarity": cand["cosine_similarity"],
+                        "anchor_score": cand["anchor_score"],
+                        "temporal_penalty": cand["temporal_penalty"],
+                        "text": cand.get("text", "")[:90]
+                    })
+
+            # Monotonic guarantee with flashback exception
             backwards_jump = False
 
             if final_movie_sec < last_verified_sec and not is_flashback:
                 diff = last_verified_sec - final_movie_sec
                 if diff <= 45.0:
-                    # Small backwards drift in standard chronological flow — adjust gently forward
                     final_movie_sec = last_verified_sec + 2.0
                     backwards_jump = True
                     if not timestamp_warning:
-                        timestamp_warning = f"Matched timestamp was {diff:.1f}s before previous segment — adjusted forward."
+                        timestamp_warning = f"Matched timestamp ({raw_matched_ts}) was {diff:.1f}s before previous scene — chronologically adjusted to {fmt_sec(final_movie_sec)}."
                     else:
                         timestamp_warning += f" Additionally, matched timestamp was {diff:.1f}s before previous segment."
                     timestamp_verified = False
                 else:
-                    # Large backwards jump without flashback indicator — flag as alignment error
                     old_sec = final_movie_sec
                     final_movie_sec = min(b_et, last_verified_sec + 3.0)
                     backwards_jump = True
@@ -1113,49 +1387,38 @@ Return JSON with key 'verifications': list of objects."""
                     )
                     timestamp_verified = False
             elif final_movie_sec < last_verified_sec and is_flashback:
-                # Legitimate intentional flashback / non-linear timeline transition!
-                # Preserve the earlier movie timestamp without destroying video sync!
                 timestamp_warning = f"Intentional flashback: timestamp {fmt_sec(final_movie_sec)} is before previous scene {fmt_sec(last_verified_sec)}."
                 if match_res and match_res.get("combined_score", 0.0) > 0.35:
                     timestamp_verified = True
 
-            # Clamp strictly to block and runtime bounds
             final_movie_sec = max(0.0, min(total_runtime_sec - 5.0, final_movie_sec))
 
-            # Snap scene cut point to nearest video I-frame (editing optimization only)
             if is_sc and movie_path and os.path.exists(movie_path):
                 final_movie_sec = SemanticAligner.snap_to_nearest_keyframe(movie_path, final_movie_sec)
 
-            # Only advance the timeline cursor for non-flashback segments.
-            # For flashbacks, the main storyline has not advanced backwards.
             if not is_flashback:
                 last_verified_sec = max(last_verified_sec, final_movie_sec)
 
-            # Estimate spoken duration (~2.3 words per sec, min 3.8s, max 7.5s)
             word_count = max(1, len(clean_text.split()))
             est_dur = round(max(3.8, min(7.5, word_count / 2.3)), 2)
 
+            curr_id = start_id + i
+
             entry = {
-                "id": i + 1,
-                # Narration audio timeline (NOT movie timeline)
+                "id": curr_id,
                 "start": round(timeline_cursor, 2),
                 "end": round(timeline_cursor + est_dur, 2),
                 "duration_sec": est_dur,
-                # Movie position
                 "movie_timestamp": fmt_sec(final_movie_sec),
-                # Narration content
+                "raw_matched_timestamp": raw_matched_ts,
+                "candidate_timestamps": candidate_matches,
                 "narration": clean_text,
-                # Source evidence — actual subtitle dialogue matched at this timestamp
                 "source_dialogue": source_dialogue_text,
-                # Anchor phrase used for alignment
                 "anchor_quote": anchor_quote,
-                # Location and scene metadata
                 "scene_location": scene_loc,
                 "is_scene_change": is_sc,
-                # Alignment quality metadata
                 "alignment_confidence": alignment_confidence,
                 "timestamp_verified": timestamp_verified,
-                # Block boundaries (preserved for re-grounding after polish)
                 "_block_start": b_st,
                 "_block_end": b_et,
             }
@@ -1166,7 +1429,6 @@ Return JSON with key 'verifications': list of objects."""
             if is_flashback:
                 entry["is_flashback"] = True
 
-            # Keep target_lang field for downstream TTS compatibility
             entry[target_lang.lower()] = clean_text
 
             processed.append(entry)

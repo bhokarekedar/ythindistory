@@ -62,9 +62,11 @@ class TimeRange(BaseModel):
     end: float
 
 class VideoRequest(BaseModel):
-    url: str
+    url: Optional[str] = ""
+    script_text: Optional[str] = None
+    story_title: Optional[str] = None
     target_language: str = "hindi"
-    channel_type: str = "movie_recap"  # "movie_recap" or "thriller_story"
+    channel_type: str = "movie_recap"  # "movie_recap", "thriller_story", "full_movie", or "cartoon_story"
     watermark: Optional[WatermarkSettings] = None
     textWatermark: Optional[WatermarkSettings] = None
     skip_intervals: Optional[List[TimeRange]] = None
@@ -258,7 +260,10 @@ def process_pipeline(job_id: str, request: VideoRequest):
     is_local_file = os.path.exists(url) and os.path.isfile(url)
     
     # Try to extract video ID for caching
-    if is_local_file:
+    if channel_type == "cartoon_story":
+        title_slug = re.sub(r'[^a-zA-Z0-9_-]', '_', getattr(request, 'story_title', '') or '')[:20].strip('_')
+        video_id = f"cartoon_{title_slug}_{job_id[:8]}" if title_slug else f"cartoon_{job_id[:8]}"
+    elif is_local_file:
         video_id = os.path.splitext(os.path.basename(url))[0]
     else:
         video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
@@ -269,7 +274,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
     
     output_folder = f"output/{video_id}"
     os.makedirs(output_folder, exist_ok=True)
-    output_suffix = f"_{channel_type}" if channel_type == "thriller_story" else ""
+    output_suffix = f"_{channel_type}" if channel_type in ["thriller_story", "cartoon_story"] else ""
     final_output = os.path.join(output_folder, f"{video_id}{output_suffix}_final.mp4")
     metadata_output = os.path.join(output_folder, f"{video_id}{output_suffix}_metadata.json")
     
@@ -305,8 +310,8 @@ def process_pipeline(job_id: str, request: VideoRequest):
         allow_youtube = publishing_cfg.get("enable_youtube_webhook", False)
         allow_facebook = publishing_cfg.get("enable_facebook_upload", False)
 
-        if channel_type == "full_movie" or not allow_youtube:
-            print(f"  [Publishing] 🛑 Auto-upload to YouTube & Facebook is PAUSED (full movie raw video testing mode).")
+        if channel_type in ["full_movie", "cartoon_story"] or not allow_youtube:
+            print(f"  [Publishing] 🛑 Auto-upload to YouTube & Facebook is PAUSED ({channel_type} mode).")
             print(f"  [Publishing] 📁 Preserving output video permanently at: {final_output}")
             return
 
@@ -399,6 +404,38 @@ def process_pipeline(job_id: str, request: VideoRequest):
                     video_path, transcript_path, script_path, target_lang=target_lang, overwrite=True
                 )
                 print(f"[JOB {job_id}] Full movie recap script ready: {script_path}")
+        elif channel_type == "cartoon_story":
+            # ─────────────────────────────────────────────────────────────
+            # CHANNEL 4: CARTOON STORY (100% AI IMAGES + SCRIPT TEXT)
+            # ─────────────────────────────────────────────────────────────
+            script_text = getattr(request, 'script_text', '') or ''
+            if not script_text.strip():
+                raise HTTPException(status_code=400, detail="script_text is required for cartoon_story mode")
+
+            video_path = ""
+            target_lang = request.target_language.lower()
+            script_path = os.path.join(job_dir, f"{video_id}_audio_{target_lang}{output_suffix}_transcript.json")
+            transcript_path = script_path
+
+            if os.path.exists(script_path) and not request.force_regenerate_script:
+                job_status[job_id] = f"Script generation skipped (using cache)"
+                print(f"\n[JOB {job_id}] Step 3: {target_lang.capitalize()} cartoon script found in cache. Skipping.")
+            else:
+                job_status[job_id] = f"Decoding script into stick-figure cartoon scenes ({target_lang})..."
+                print(f"\n[JOB {job_id}] Step 3: Decoding script into stick-figure cartoon scenes for {target_lang}...")
+                translator = StoryTranslator(
+                    primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
+                    fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
+                    translation_model=config.get("groq", {}).get("translation_model", "qwen/qwen3.8-27b"),
+                    batch_size=config.get("translation", {}).get("batch_size", 20),
+                    api_key=groq_api_key
+                )
+                translator.decode_script_to_stick_figure_cartoon(
+                    script_text=script_text,
+                    target_language=target_lang,
+                    output_path=script_path
+                )
+                print(f"[JOB {job_id}] Stick-figure cartoon script ready: {script_path}")
         else:
             # ─────────────────────────────────────────────────────────────
             # CHANNELS 1 & 2: YOUTUBE MOVIE RECAP & THRILLER STORY
@@ -506,7 +543,7 @@ def process_pipeline(job_id: str, request: VideoRequest):
             "target_lang": target_lang,
             "script_path": os.path.abspath(script_path),
             "job_dir": os.path.abspath(job_dir),
-            "video_path": os.path.abspath(video_path),
+            "video_path": os.path.abspath(video_path) if video_path else "",
             "final_output": os.path.abspath(final_output),
             "metadata_output": os.path.abspath(metadata_output),
             "output_folder": os.path.abspath(output_folder),
@@ -596,21 +633,22 @@ def execute_resume_pipeline(job_id: str, state: dict):
         with open(script_path, "r", encoding="utf-8") as f:
             segments = json.load(f)
 
-        # Step 5B: Generate AI Visual Images via Cloudflare FLUX.1 if thriller story
-        if channel_type == "thriller_story":
-            print(f"\n[JOB {job_id}] Step 5B: Generating Cloudflare FLUX.1 AI Images for Tagged Segments...")
+        # Step 5B: Generate AI Visual Images via Cloudflare FLUX.1 if thriller story or cartoon story
+        if channel_type in ["thriller_story", "cartoon_story"]:
+            print(f"\n[JOB {job_id}] Step 5B: Generating Cloudflare FLUX.1 AI Images for {channel_type}...")
             img_gen = CloudflareImageGenerator()
             ai_dir = os.path.join(job_dir, "ai_images")
             os.makedirs(ai_dir, exist_ok=True)
             for seg in segments:
                 img_path = os.path.join(ai_dir, f"seg_{seg['id']:04d}.jpg")
-                if os.path.exists(img_path):
+                if os.path.exists(img_path) and os.path.getsize(img_path) > 1000:
                     seg["use_ai_image"] = True
                     seg["ai_image_path"] = img_path
-                elif seg.get("use_ai_image") and seg.get("image_prompt"):
-                    if not os.path.exists(img_path):
-                        print(f"  [Cloudflare FLUX.1] Generating visual for segment {seg['id']}...")
+                elif (seg.get("use_ai_image") or channel_type == "cartoon_story") and seg.get("image_prompt"):
+                    if not os.path.exists(img_path) or os.path.getsize(img_path) < 1000:
+                        print(f"  [Cloudflare FLUX.1] Generating stick-figure visual for segment {seg['id']}...")
                         img_gen.generate_image(seg["image_prompt"], img_path)
+                    seg["use_ai_image"] = True
                     seg["ai_image_path"] = img_path
 
             with open(script_path, "w", encoding="utf-8") as f:
@@ -684,8 +722,8 @@ def execute_resume_pipeline(job_id: str, state: dict):
         allow_youtube = publishing_cfg.get("enable_youtube_webhook", False)
         allow_facebook = publishing_cfg.get("enable_facebook_upload", False)
 
-        if channel_type == "full_movie" or not allow_youtube:
-            print(f"  [Publishing] 🛑 Auto-upload to YouTube & Facebook is PAUSED (full movie raw video testing mode).")
+        if channel_type in ["full_movie", "cartoon_story"] or not allow_youtube:
+            print(f"  [Publishing] 🛑 Auto-upload to YouTube & Facebook is PAUSED ({channel_type} mode).")
             print(f"  [Publishing] 📁 Preserving output video permanently at: {final_output}")
         elif request.webhook_url and allow_youtube:
             abs_video_path = os.path.abspath(final_output)
@@ -708,7 +746,7 @@ def execute_resume_pipeline(job_id: str, state: dict):
             send_webhook_with_n8n_autostart(request.webhook_url, payload)
             schedule_delayed_output_cleanup(video_id, delay_seconds=180)
 
-        if allow_facebook and os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID") and channel_type != "full_movie":
+        if allow_facebook and os.getenv("FB_PAGE_ACCESS_TOKEN") and os.getenv("FB_PAGE_ID") and channel_type not in ["full_movie", "cartoon_story"]:
             try:
                 from core.facebook_uploader import FacebookUploader
                 fb_uploader = FacebookUploader()

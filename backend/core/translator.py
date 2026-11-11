@@ -770,6 +770,166 @@ RULES:
             seg["use_ai_image"] = False
         return segments
 
+    def decode_script_to_stick_figure_cartoon(self, script_text: str, target_language: str = "hindi", output_path: str = None) -> list:
+        """
+        Decodes a raw story script into rapid, high-retention narrative scene segments
+        with child-like MS Paint stick-figure image prompts for Cloudflare FLUX.1.
+        """
+        lang = target_language.lower()
+        print(f"\n  [Cartoon Director] 🎨 Decoding story script into stick-figure MS Paint scenes ({lang.capitalize()})...")
+
+        system_prompt = f"""You are an elite YouTube webcomic director and animator specializing in viral, high-retention stick-figure storytelling (inspired by Basically Primitive, Sam O'Nella Academy, and Casually Explained).
+
+Your mission is to convert the user's story script into sequential, rapid-paced animation scene segments.
+
+CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
+
+1. FREQUENT VISUAL CUTS (CHANGE PER SENTENCE OR ACTION BEAT):
+   - Audience retention drops if an image stays on screen for too long.
+   - CUT FREQUENTLY: Visuals MUST change on every sentence or distinct character action beat (approx 2.0 to 4.0 seconds per visual).
+   - NEVER combine multiple sentences into a single image.
+   - If a sentence contains two consecutive actions or an emotional shift (e.g., 'The professor explained his theory, and the student looked utterly confused'), split it into two distinct visual cuts:
+     * Cut A: The professor passionately explaining.
+     * Cut B: The student staring with spiral dizzy eyes.
+
+2. COLOR PALETTE (STRICTLY MUTED & SOFT - NO BRIGHT/NEON COLOURS):
+   - NEVER use bright, saturated, or neon colors. The palette MUST be muted, matte, and understated (like Basically Primitive):
+     * Sky: Pale desaturated powder blue.
+     * Grass / Foliage: Soft sage green, pale olive, or muted mint green.
+     * Buildings / Dirt: Muted warm beige, sandy limestone, or soft earth tan.
+     * Sun: Pale pastel yellow.
+     * Backgrounds use solid, flat block colors with zero gradients and zero shading.
+
+3. SCRIPT-DRIVEN CHARACTER IDENTITY & MINIMALIST DETAILING:
+   - Characters are stick figures with oversized round white heads and thin black stick limbs, BUT when the script mentions a specific role or persona, give them minimal, iconic visual detailing:
+     * Professor / Scholar: Balding with sparse gray tufts of hair on the sides, small round wireframe glasses on the round white head, brown/tan trench coat or tweed jacket with a tie, holding a manila folder or book.
+     * Student / Young Adult: Messy hair tuft, backpack over stick shoulders, casual hoodie.
+     * Doctor / Scientist: Simple white lab coat, stethoscope around stick neck.
+     * Detective / Police: Beige trench coat or peaked cap, holding a small notepad or magnifying glass.
+     * Office Worker: Simple black necktie, briefcase.
+     * Caveman / Ancestor: Wild messy brown hair, crude animal skin tunic, stone spear.
+
+4. DISTINCT IDENTITIES DURING CONVERSATIONS & INTERACTIONS:
+   - When two or more characters appear in the same scene or dialogue, NEVER make them identical generic clones!
+   - Give each character a distinct identity matching the script:
+     * Distinct hair or headwear (e.g., one has glasses and gray hair, the other has messy black hair or a cap).
+     * Distinct clothing item or prop (e.g., one in a jacket holding a folder, the other in a t-shirt with a backpack).
+     * Contrasting expressions and poses (e.g., one speaking actively with stick arm gesturing, the other listening with arms crossed or an eyebrow raised).
+
+5. NARRATION TEXT:
+   - Provide the narration text for each segment in '{lang}'.
+   - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
+   - If 'english': Write witty, punchy, conversational spoken English narration.
+
+6. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
+   Every single segment MUST include an 'image_prompt' following this EXACT template:
+   "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [SPECIFIC ACTION, POSE, EXPRESSION, AND MINIMAL ROLE DETAILS LIKE COAT, HAIR, GLASSES, OR PROPS]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [SPECIFIC ENVIRONMENTAL DETAILS] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+
+   INSTRUCTIONS FOR THE BRACKETS:
+   - Composition: Wide 16:9 landscape canvas, centered horizontal framing.
+   - Replace [SPECIFIC ACTION...] with character actions, their specific role details (e.g. 'professor with gray side hair, round glasses, and tan coat holding a folder', 'student with messy black hair and blue backpack looking confused'), and clear facial expressions.
+   - Replace [SPECIFIC ENVIRONMENTAL DETAILS] with muted background elements (e.g., 'the muted sandstone university archways, scribbled olive palm trees, and fluffy clouds with black ink borders', 'a muted beige room wall, gray couch, and lamp').
+   - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
+
+Output strictly a JSON object with a single key 'segments':
+{{
+  "segments": [
+    {{
+      "id": 1,
+      "text": "spoken narration line in target language",
+      "image_prompt": "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [action with character details]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [details] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+    }}
+  ]
+}}"""
+
+        groq_keys = []
+        if self.api_key: groq_keys.append(self.api_key)
+        for k in [os.environ.get("GROQ_API_KEY"), os.environ.get("GROQ_API_KEY_TWO"), os.environ.get("GROQ_API_KEY_THREE"), os.environ.get("GROQ_API_KEY_FOUR")]:
+            if k and k not in groq_keys:
+                groq_keys.append(k)
+
+        decoded_segments = []
+        for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
+            try:
+                from groq import Groq
+                client = Groq(api_key=key)
+                completion = client.chat.completions.create(
+                    model=self.model if hasattr(self, 'model') else "qwen/qwen3.8-27b",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Story Script to decode into stick-figure animation scenes:\n\n{script_text}"}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.3
+                )
+                data = json.loads(completion.choices[0].message.content)
+                raw_segs = data.get("segments", [])
+                
+                # Assign timing and language fields
+                cur_time = 0.0
+                for idx, s in enumerate(raw_segs, 1):
+                    seg_text = s.get("text", "").strip()
+                    # Estimate ~2.0 to 4.0 seconds per segment based on word count for rapid visual pacing
+                    word_count = len(seg_text.split())
+                    dur = max(2.0, min(4.0, round(word_count / 2.4, 2)))
+                    start_t = round(cur_time, 2)
+                    end_t = round(cur_time + dur, 2)
+                    cur_time = end_t
+                    
+                    prompt = s.get("image_prompt", "")
+                    if not prompt or "MS Paint" not in prompt:
+                        prompt = f"A 2D digital illustration in a child-like, low-fidelity MS Paint style. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [stick figure reacting to: {seg_text[:80]}]. The background uses solid, flat block colors with absolutely no shading. Crucially, the environmental details like [crude walls and scribbled background items] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+
+                    seg_dict = {
+                        "id": idx,
+                        "start": start_t,
+                        "end": end_t,
+                        "text": seg_text,
+                        lang: seg_text,
+                        "image_prompt": prompt,
+                        "use_ai_image": True
+                    }
+                    if lang != "english":
+                        seg_dict["original_text"] = seg_text
+                    decoded_segments.append(seg_dict)
+
+                print(f"  [Cartoon Director] ✅ Decoded {len(decoded_segments)} stick-figure scene beats (using Key #{k_idx+1})!")
+                break
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "rate_limit" in err_str:
+                    print(f"  [Cartoon Director] Key #{k_idx+1} hit rate limit (429). Trying next key...")
+                    continue
+                print(f"  [Cartoon Director] Key #{k_idx+1} error: {e}")
+
+        # Fallback if LLM failed
+        if not decoded_segments:
+            print("  [Cartoon Director] ⚠️ Fallback: splitting script by sentences...")
+            lines = [l.strip() for l in re.split(r'[.!?।\n]+', script_text) if l.strip()]
+            cur_time = 0.0
+            for idx, line in enumerate(lines, 1):
+                dur = max(3.0, round(len(line.split()) / 2.2, 2))
+                start_t = round(cur_time, 2)
+                end_t = round(cur_time + dur, 2)
+                cur_time = end_t
+                decoded_segments.append({
+                    "id": idx,
+                    "start": start_t,
+                    "end": end_t,
+                    "text": line,
+                    lang: line,
+                    "image_prompt": f"A 2D digital illustration in a child-like, low-fidelity MS Paint style. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [a stick figure expressing: {line[:80]}]. The background uses solid, flat block colors with absolutely no shading. Crucially, the environmental details like [the green tree leaves and bushes] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing.",
+                    "use_ai_image": True
+                })
+
+        if output_path:
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(decoded_segments, f, indent=4, ensure_ascii=False)
+            print(f"  [Cartoon Director] Saved {len(decoded_segments)} scene segments to: {output_path}")
+
+        return decoded_segments
+
     def translate_transcript(self, transcript_path: str, target_language: str = "hindi", output_dir: str = "temp", channel_type: str = "movie_recap") -> str:
         with open(transcript_path, "r", encoding="utf-8") as f:
             segments = json.load(f)

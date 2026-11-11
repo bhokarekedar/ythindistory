@@ -145,6 +145,8 @@ class SemanticAligner:
         best_anchor = 0.0
         best_penalty = 0.0
 
+        scored_candidates = []
+
         for rank, orig_i in enumerate(candidates_idx):
             c = dialogue_clusters[orig_i]
             sim = cosine_sims[rank]
@@ -168,12 +170,26 @@ class SemanticAligner:
 
             combined = sim + anchor_bonus - dist_penalty
 
+            scored_candidates.append({
+                "cluster": c,
+                "timestamp": c["start"],
+                "cosine_similarity": round(sim, 4),
+                "anchor_score": round(anchor_bonus, 4),
+                "temporal_penalty": round(dist_penalty, 4),
+                "combined_score": round(combined, 4),
+                "text": c.get("text", "")
+            })
+
             if combined > best_combined:
                 best_combined = combined
                 best_cluster = c
                 best_cosine = sim
                 best_anchor = anchor_bonus
                 best_penalty = dist_penalty
+
+        # Sort all scored candidates descending by combined_score
+        scored_candidates.sort(key=lambda x: x["combined_score"], reverse=True)
+        top_candidates = scored_candidates[:3]
 
         return {
             "cluster": best_cluster,
@@ -186,6 +202,7 @@ class SemanticAligner:
             "similarity": round(best_combined, 4),
             "within_temporal_window": within_window,
             "fallback_to_full_movie": fallback_to_full,
+            "candidates": top_candidates,
         }
 
     @staticmethod

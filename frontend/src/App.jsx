@@ -28,7 +28,9 @@ function App() {
   })
   const [snapshotImg, setSnapshotImg] = useState(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
-  const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap', 'thriller_story', or 'full_movie'
+  const [channelType, setChannelType] = useState('movie_recap') // 'movie_recap', 'thriller_story', 'full_movie', or 'cartoon_story'
+  const [scriptText, setScriptText] = useState('')
+  const [storyTitle, setStoryTitle] = useState('')
   const [storageStats, setStorageStats] = useState({ temp_size: '...', output_size: '...' })
   const [datasetCount, setDatasetCount] = useState(0)
   const [cleaning, setCleaning] = useState(false)
@@ -109,8 +111,25 @@ function App() {
 
   const handleSubmit = async (e, language, channelType = 'movie_recap') => {
     e.preventDefault()
-    if (!url) return
-    setStatus(`Starting ${channelType === 'full_movie' ? 'Full Movie Recap' : channelType === 'thriller_story' ? 'Thriller Story' : 'Movie Recap'}...`)
+    if (channelType === 'cartoon_story') {
+      if (!scriptText.trim()) {
+        alert("Please paste your story script in the script box.")
+        return
+      }
+    } else {
+      if (!url) {
+        alert("Please enter a YouTube URL or file path.")
+        return
+      }
+    }
+
+    const modeLabels = {
+      full_movie: 'Full Movie Recap',
+      thriller_story: 'Thriller Story',
+      cartoon_story: 'Cartoon AI Story',
+      movie_recap: 'Movie Recap'
+    }
+    setStatus(`Starting ${modeLabels[channelType] || 'Video Process'}...`)
     
     const formattedSkipIntervals = skipIntervals
       .filter(s => s.start !== '' && s.end !== '')
@@ -124,7 +143,9 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          url, 
+          url: url || '', 
+          script_text: channelType === 'cartoon_story' ? scriptText : undefined,
+          story_title: channelType === 'cartoon_story' ? storyTitle : undefined,
           watermark, 
           textWatermark, 
           target_language: language, 
@@ -328,7 +349,7 @@ function App() {
       
       <form className="input-form">
         {/* Channel Mode Switcher at Top */}
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '18px' }}>
           <button
             type="button"
             onClick={() => { 
@@ -337,7 +358,6 @@ function App() {
               setWebhookUrl(RECAP_WEBHOOK_URL);
             }}
             style={{
-              flex: 1,
               padding: '12px 14px',
               borderRadius: '8px',
               border: channelType === 'movie_recap' ? '2px solid #28a745' : '1px solid #ccc',
@@ -363,7 +383,6 @@ function App() {
               setWebhookUrl(THRILLER_WEBHOOK_URL);
             }}
             style={{
-              flex: 1,
               padding: '12px 14px',
               borderRadius: '8px',
               border: channelType === 'thriller_story' ? '2px solid #dc3545' : '1px solid #ccc',
@@ -375,9 +394,9 @@ function App() {
               transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ fontSize: '15px' }}>🔥 Channel 2: Real Stories Mode (Japan / Korea)</div>
+            <div style={{ fontSize: '15px' }}>🔥 Channel 2: Real Stories Mode</div>
             <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
-              True Incidents (No movie terms) • 70/30 AI • <strong>watermark thriller.png</strong>
+              True Incidents • 70/30 AI • <strong>watermark thriller.png</strong>
             </div>
           </button>
 
@@ -390,7 +409,6 @@ function App() {
               fetchLocalMovies();
             }}
             style={{
-              flex: 1,
               padding: '12px 14px',
               borderRadius: '8px',
               border: channelType === 'full_movie' ? '2px solid #0284c7' : '1px solid #ccc',
@@ -402,20 +420,76 @@ function App() {
               transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ fontSize: '15px' }}>🎥 Channel 3: Full Movie to Recap</div>
+            <div style={{ fontSize: '15px' }}>🎥 Channel 3: Full Movie Recap</div>
             <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
-              Local Movie Container (.mkv/.mp4) • Studio Subtitles • LLM Script
+              Local Movie (.mkv/.mp4) • Subtitles • LLM Script
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { 
+              setChannelType('cartoon_story'); 
+              setSnapshotImg(null); 
+              setWebhookUrl(''); // Preserved in output folder until fine-tuned
+            }}
+            style={{
+              padding: '12px 14px',
+              borderRadius: '8px',
+              border: channelType === 'cartoon_story' ? '2px solid #f59e0b' : '1px solid #ccc',
+              background: channelType === 'cartoon_story' ? '#fffbeb' : '#f9f9f9',
+              color: channelType === 'cartoon_story' ? '#b45309' : '#666',
+              fontWeight: channelType === 'cartoon_story' ? 'bold' : 'normal',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ fontSize: '15px' }}>🎨 Channel 4: Cartoon Story Mode</div>
+            <div style={{ fontSize: '11px', marginTop: '3px', opacity: 0.85 }}>
+              Pasted Script • 100% Cartoon AI Images • FLUX.1 Anim
             </div>
           </button>
         </div>
 
-        <input 
-          type={channelType === 'full_movie' ? 'text' : 'url'} 
-          placeholder={channelType === 'full_movie' ? "Enter local movie file path (e.g. /path/to/movie.mkv) or YouTube URL" : "Enter YouTube URL"} 
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          required
-        />
+        {channelType === 'cartoon_story' ? (
+          <div style={{ marginBottom: '14px' }}>
+            <input 
+              type="text" 
+              placeholder="Story Title / Subject (Optional, e.g. The Boy Who Befriended a Dragon)" 
+              value={storyTitle}
+              onChange={(e) => setStoryTitle(e.target.value)}
+              style={{ marginBottom: '10px' }}
+            />
+            <textarea 
+              rows={8}
+              placeholder="Paste your story script here in English or Hindi...&#10;&#10;The LLM will decode and split this script into sequential scenes, craft vivid cartoon/comic image prompts, synthesize voiceover, and animate every scene with smooth Ken Burns effects."
+              value={scriptText}
+              onChange={(e) => setScriptText(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid #f59e0b',
+                background: '#fffdf5',
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                minHeight: '160px',
+                lineHeight: '1.5'
+              }}
+            />
+          </div>
+        ) : (
+          <input 
+            type={channelType === 'full_movie' ? 'text' : 'url'} 
+            placeholder={channelType === 'full_movie' ? "Enter local movie file path (e.g. /path/to/movie.mkv) or YouTube URL" : "Enter YouTube URL"} 
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            required
+          />
+        )}
 
         {channelType === 'full_movie' && localMovies.length > 0 && (
           <div style={{ marginTop: '8px', marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -690,6 +764,39 @@ function App() {
               </div>
             </div>
           )}
+
+          {/* Channel 4: Cartoon Stories (100% AI Images) */}
+          {channelType === 'cartoon_story' && (
+            <div style={{ padding: '16px', border: '1px solid #f59e0b', borderRadius: '8px', background: '#fffbeb' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🎨 Channel 4: Cartoon Story (100% AI Images & Narration)</span>
+              </h4>
+              <p style={{ fontSize: '12px', color: '#78350f', margin: '0 0 12px 0' }}>
+                Transforms your pasted script into a fully illustrated cartoon video. The LLM decodes the script into sequential narrative scenes, crafts vivid cartoon prompts for Cloudflare FLUX.1, synthesizes voiceover, and animates every moment with smooth Ken Burns motion.
+                <br /><strong>⏸️ Auto-pauses at review</strong> so you can review both the text and image prompts before generating visuals.
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'english', 'cartoon_story')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#d97706', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
+                >
+                  Generate English Cartoon Story (100% AI)
+                </button>
+                <button 
+                  type="button" 
+                  onClick={(e) => handleSubmit(e, 'hindi', 'cartoon_story')} 
+                  disabled={!!jobId && !status.includes('Completed') && !status.includes('Error') && !status.includes('Rejected')} 
+                  className="main-btn" 
+                  style={{ backgroundColor: '#7c3aed', flex: 1, fontWeight: 'bold', fontSize: '15px' }}
+                >
+                  Generate Hindi Cartoon Story (100% AI)
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </form>
 
@@ -794,6 +901,24 @@ function App() {
                             setScriptSegments(prev => prev.map(p => p.id === seg.id ? { ...p, [textField]: val } : p))
                           }}
                         />
+                        {(seg.image_prompt !== undefined || seg.use_ai_image) && (
+                          <div style={{ marginTop: '8px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#b45309', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span>🎨 AI Image Prompt (Cloudflare FLUX.1):</span>
+                            </div>
+                            <textarea
+                              className="segment-textarea"
+                              rows={2}
+                              style={{ border: '1px solid #fcd34d', background: '#fffbeb', fontSize: '12px' }}
+                              placeholder="Visual scene prompt for FLUX.1..."
+                              value={seg.image_prompt || ''}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setScriptSegments(prev => prev.map(p => p.id === seg.id ? { ...p, image_prompt: val, use_ai_image: true } : p))
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     )
                   })}
