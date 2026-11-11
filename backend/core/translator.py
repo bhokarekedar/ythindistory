@@ -833,7 +833,7 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
 
 7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
    Every single segment MUST include an 'image_prompt' following this EXACT template:
-   "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide shot, 16:9 framing. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only one subject: an old wise stick figure with an oversized circular white head, sparse gray hair on the sides, small round wireframe glasses, tiny dot eyes, and thin black stick limbs']. The background depicts [SCRIPT-MATCHING SCENERY, e.g. 'solid powder blue sky and flat sage green grass with scribbled bushes', 'flat earth-tan mountains under a muted blue sky', 'a muted beige room wall'] drawn with flat, muted MS Paint bucket-fill colors. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
+   "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Extreme wide long shot, centered 16:9 composition with generous empty headroom above and wide ground below. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only one subject: an old wise stick figure with an oversized circular white head, sparse gray hair on the sides, small round wireframe glasses, tiny dot eyes, and thin black stick limbs']. The background depicts [SCRIPT-MATCHING SCENERY, e.g. 'solid powder blue sky and flat sage green grass with scribbled bushes', 'flat earth-tan mountains under a muted blue sky', 'a muted beige room wall'] drawn with flat, muted MS Paint bucket-fill colors. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
 
    CRITICAL RULES FOR THE BRACKETS:
    - SCRIPT-MATCHING BACKGROUNDS: Use flat block colors matching the script topic (e.g. mountains, forest, ancient ruins, castle, library, bedroom, desert) rendered in flat muted MS Paint bucket-fill colors (sage green, powder blue, sandy beige, soft slate gray). NO shadows, NO gradients.
@@ -854,7 +854,7 @@ Output strictly a JSON object with a single key 'segments':
     {{
       "id": 1,
       "text": "spoken narration line in target language",
-      "image_prompt": "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide shot, 16:9 framing. There are [exact subjects with stick-figure details]. The background depicts [contextual scenery in flat muted MS Paint bucket-fill colors]. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
+      "image_prompt": "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Extreme wide long shot, centered 16:9 composition with generous empty headroom above and wide ground below. There are [exact subjects with stick-figure details]. The background depicts [contextual scenery in flat muted MS Paint bucket-fill colors]. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
     }}
   ]
 }}"""

@@ -78,7 +78,7 @@ class CloudflareImageGenerator:
 
             # 3. Enforce wide camera framing
             if "headroom" not in p_lower and "wide shot" not in p_lower:
-                refined_prompt += " Wide camera framing with ample empty headroom, entire bodies visible."
+                refined_prompt += " Extreme wide long shot, centered 16:9 composition with ample empty headroom above and wide ground below, entire bodies visible in middle vertical third."
 
             # 4. Enforce flat animal style
             animal_keywords = ["animal", "elephant", "dog", "cat", "monkey", "horse", "bear", "lion", "tiger", "bird", "rabbit", "creature", "pet"]
@@ -133,6 +133,7 @@ class CloudflareImageGenerator:
 
     def _save_as_16_9(self, img, output_path: str, target_width: int = 1920, target_height: int = 1080):
         from PIL import Image
+        import numpy as np
 
         if img.mode != "RGB":
             img = img.convert("RGB")
@@ -142,23 +143,40 @@ class CloudflareImageGenerator:
         current_aspect = w / h
 
         if current_aspect < target_aspect:
-            # Image is too tall/squarish. Resize to match height, then pad sides with a solid color.
-            scale = target_height / h
-            new_w = int(w * scale)
-            scaled = img.resize((new_w, target_height), Image.Resampling.LANCZOS)
+            # Image is taller than 16:9 (e.g. 1024x1024 square from FLUX).
+            # Crop to 16:9 intelligently preserving head and subject
+            crop_h = int(w / target_aspect)
+            crop_w = w
 
-            # Sample the top-left pixel to use as a seamless background padding color
-            bg_color = scaled.getpixel((5, 5))
+            # Detect content boundaries to protect character heads from being cropped
+            gray = np.array(img.convert("L"))
+            bg_val = float(np.mean(gray[:25, :25]))
+            diff = np.abs(gray.astype(float) - bg_val)
+            content_rows = np.where(np.max(diff, axis=1) > 28)[0]
 
-            canvas = Image.new("RGB", (target_width, target_height), bg_color)
-            x_offset = (target_width - new_w) // 2
-            canvas.paste(scaled, (x_offset, 0))
-            final_img = canvas
+            if len(content_rows) > 0:
+                top_content_y = content_rows[0]
+                # Keep at least 40px headroom above topmost element
+                desired_top = max(0, top_content_y - 45)
+                if desired_top + crop_h > h:
+                    desired_top = max(0, h - crop_h)
+                center_top = (h - crop_h) // 2
+
+                # If centering would cut the head/top content, use desired_top
+                if top_content_y < center_top + 25:
+                    top = desired_top
+                else:
+                    top = center_top
+            else:
+                top = (h - crop_h) // 2
+
+            cropped = img.crop((0, top, crop_w, top + crop_h))
+            final_img = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
         else:
-            # Image is too wide. Crop the center to fit 16:9 perfectly.
-            new_w = int(h * target_aspect)
-            left = (w - new_w) // 2
-            cropped = img.crop((left, 0, left + new_w, h))
+            # Image is wider than 16:9. Crop sides to center fit.
+            crop_w = int(h * target_aspect)
+            left = (w - crop_w) // 2
+            cropped = img.crop((left, 0, left + crop_w, h))
             final_img = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
         final_img.save(output_path, "JPEG", quality=95)
