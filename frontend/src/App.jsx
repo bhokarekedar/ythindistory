@@ -47,6 +47,14 @@ function App() {
   const [isSavingScript, setIsSavingScript] = useState(false)
   const [scriptSaveMessage, setScriptSaveMessage] = useState('')
 
+  // Visual Storyboard Review & Scene Regeneration State
+  const [waitingVisualReview, setWaitingVisualReview] = useState(false)
+  const [showVisualReview, setShowVisualReview] = useState(false)
+  const [visualData, setVisualData] = useState(null)
+  const [visualPrompts, setVisualPrompts] = useState({})
+  const [regeneratingSegId, setRegeneratingSegId] = useState(null)
+  const [isRenderingFinal, setIsRenderingFinal] = useState(false)
+
   const fetchStorage = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/storage-stats')
@@ -198,8 +206,76 @@ function App() {
     setJobId(null)
     setStatus('')
     setWaitingReview(false)
+    setWaitingVisualReview(false)
+    setShowVisualReview(false)
+    setVisualData(null)
     setScriptInfo(null)
     setShowScriptEditor(false)
+  }
+
+  const fetchVisualData = async (jid) => {
+    try {
+      const targetId = jid || jobId
+      if (!targetId) return
+      const res = await fetch(`http://localhost:8000/api/visual-review/${targetId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setVisualData(data)
+        const initPrompts = {}
+        data.segments.forEach(s => {
+          initPrompts[s.id] = s.image_prompt || ''
+        })
+        setVisualPrompts(initPrompts)
+      }
+    } catch (e) {
+      console.error("Error loading visual review data:", e)
+    }
+  }
+
+  const handleRegenerateScene = async (segId) => {
+    if (!jobId) return
+    const p = visualPrompts[segId]
+    setRegeneratingSegId(segId)
+    try {
+      const res = await fetch(`http://localhost:8000/api/regenerate-scene-image/${jobId}/${segId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: p })
+      })
+      const data = await res.json()
+      if (data.status === 'success' && data.image_url) {
+        setVisualData(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            segments: prev.segments.map(s => s.id === segId ? { ...s, image_url: data.image_url, image_prompt: p } : s)
+          }
+        })
+      } else {
+        alert("Failed to regenerate image: " + (data.detail || "Unknown error"))
+      }
+    } catch (e) {
+      alert("Error regenerating image: " + e.message)
+    } finally {
+      setRegeneratingSegId(null)
+    }
+  }
+
+  const handleRenderFinalVideo = async () => {
+    if (!jobId) return
+    setIsRenderingFinal(true)
+    try {
+      const res = await fetch(`http://localhost:8000/api/render-final-video/${jobId}`, {
+        method: 'POST'
+      })
+      const data = await res.json()
+      setStatus('Rendering final 1080p video with subtitles...')
+      setShowVisualReview(false)
+    } catch (e) {
+      alert("Error starting final video render: " + e.message)
+    } finally {
+      setIsRenderingFinal(false)
+    }
   }
 
   const handleOpenScriptEditor = async () => {
@@ -254,6 +330,14 @@ function App() {
             })
           } else {
             setWaitingReview(false)
+          }
+          if (data.waiting_visual_review) {
+            setWaitingVisualReview(true)
+            if (!visualData) {
+              fetchVisualData(jobId)
+            }
+          } else {
+            setWaitingVisualReview(false)
           }
           if (data.status.includes('Completed')) {
             const path = data.status.split(': ')[1]
@@ -841,6 +925,32 @@ function App() {
         <div className="status-container">
           <h3>Status:</h3>
           <p className="status-text">{status}</p>
+          {jobId && (channelType === 'cartoon_story' || status.includes('cartoon') || waitingVisualReview) && (
+            <div style={{ marginTop: '12px', display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVisualReview(true)
+                  fetchVisualData(jobId)
+                }}
+                style={{
+                  background: '#f59e0b',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '9px 18px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                🖼️ Open Visual Storyboard Studio (Review & Regenerate Scenes)
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1003,6 +1113,276 @@ function App() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {waitingVisualReview && (
+        <div className="review-action-card" style={{ border: '2px solid #f59e0b', background: '#1c1917', margin: '20px 0' }}>
+          <div className="review-header">
+            <span className="review-badge" style={{ background: '#f59e0b', color: '#000', fontWeight: 'bold' }}>
+              🎨 VISUAL SCENES READY — MANUAL REVIEW & REGENERATE
+            </span>
+            <h2 className="review-title" style={{ color: '#fbbf24' }}>
+              Review & Fine-Tune Cartoon Scenes Before Final Render
+            </h2>
+            <p className="review-subtitle">
+              All 16:9 images have been generated! Inspect each scene beat, edit any prompts to fix limbs or characters, and regenerate scenes with 1-click.
+            </p>
+          </div>
+          <div className="review-actions-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-resume-pipeline"
+              onClick={() => {
+                setShowVisualReview(true)
+                fetchVisualData(jobId)
+              }}
+              style={{ background: '#f59e0b', color: '#000', fontWeight: 'bold', fontSize: '15px', flex: 2, minWidth: '260px' }}
+            >
+              🖼️ Open Visual Storyboard & Prompt Studio ({visualData?.segments?.length || 'Scenes'})
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelJob}
+              style={{
+                backgroundColor: '#dc2626',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 18px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              🗑️ Discard & Start Fresh Script
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showVisualReview && visualData && (
+        <div className="visual-review-modal" style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(11, 15, 25, 0.98)',
+          zIndex: 10000,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {/* Top Header Bar */}
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 100,
+            background: '#1e293b', padding: '16px 32px',
+            borderBottom: '1px solid #334155',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <div>
+              <h2 style={{ margin: 0, color: '#f59e0b', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🎨 Scene Visual Storyboard & Prompt Studio
+              </h2>
+              <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: '14px' }}>
+                Story: <strong style={{ color: '#fff' }}>{visualData.story_title || visualData.video_id}</strong> • {visualData.segments?.length || 0} Scene Beats
+              </p>
+            </div>
+            <button onClick={() => setShowVisualReview(false)} style={{ background: '#334155', border: 'none', color: '#fff', borderRadius: '6px', padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer' }}>
+              ✕ Close
+            </button>
+          </div>
+
+          {/* Scrollable Content Container */}
+          <div style={{ maxWidth: '1240px', width: '100%', margin: '0 auto', padding: '24px 20px 120px 20px', flex: 1, boxSizing: 'border-box' }}>
+            <div style={{ background: '#1e293b', borderRadius: '8px', padding: '14px 20px', marginBottom: '24px', borderLeft: '4px solid #3b82f6' }}>
+              <p style={{ margin: 0, color: '#cbd5e1', fontSize: '14px', lineHeight: 1.5 }}>
+                💡 <strong>Art Director Review:</strong> Inspect each generated scene below. If any image has strange limbs, unwanted animals, or awkward poses, simply edit its <strong>Image Prompt</strong> in the box and click <strong>"🔄 Regenerate This Image"</strong>. Once satisfied with all scenes, click the green button at the bottom to render the final video.
+              </p>
+            </div>
+
+            {visualData.segments.map((seg) => (
+              <div key={seg.id} style={{
+                background: '#181e2b',
+                border: '1px solid #334155',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                overflow: 'hidden',
+                display: 'grid',
+                gridTemplateColumns: 'minmax(340px, 480px) 1fr',
+                gap: '24px',
+                padding: '20px'
+              }}>
+                {/* Left: 16:9 Image Preview */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{
+                    width: '100%',
+                    aspectRatio: '16 / 9',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    background: '#0f172a',
+                    border: '1px solid #334155',
+                    position: 'relative'
+                  }}>
+                    {seg.image_url ? (
+                      <img
+                        src={seg.image_url}
+                        alt={`Scene ${seg.id}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                        No image generated yet
+                      </div>
+                    )}
+                    <span style={{
+                      position: 'absolute', bottom: '8px', right: '8px',
+                      background: 'rgba(0,0,0,0.75)', color: '#fff', fontSize: '11px',
+                      padding: '2px 8px', borderRadius: '4px', fontWeight: 600
+                    }}>
+                      1920 × 1080 (16:9)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right: Scene Details & Editable Prompt */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{
+                      background: '#3b82f6', color: '#fff', fontSize: '13px',
+                      fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px'
+                    }}>
+                      Scene #{seg.id} • [{Number(seg.start).toFixed(1)}s - {Number(seg.end).toFixed(1)}s]
+                    </span>
+                  </div>
+
+                  {/* Spoken Text */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Spoken Narration Text:
+                    </label>
+                    <p style={{
+                      margin: '6px 0 0',
+                      background: '#0f172a',
+                      padding: '12px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid #1e293b',
+                      color: '#ffffff',
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      lineHeight: 1.4
+                    }}>
+                      "{seg.text}"
+                    </p>
+                  </div>
+
+                  {/* Editable Image Prompt */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                      Image Prompt (Editable):
+                    </label>
+                    <textarea
+                      value={visualPrompts[seg.id] !== undefined ? visualPrompts[seg.id] : (seg.image_prompt || '')}
+                      onChange={(e) => setVisualPrompts({ ...visualPrompts, [seg.id]: e.target.value })}
+                      rows={5}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: '#0b1320',
+                        border: '1px solid #475569',
+                        borderRadius: '6px',
+                        color: '#e2e8f0',
+                        fontSize: '13px',
+                        padding: '10px 12px',
+                        fontFamily: 'monospace',
+                        lineHeight: 1.45,
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  {/* Action Button */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      disabled={regeneratingSegId === seg.id}
+                      onClick={() => handleRegenerateScene(seg.id)}
+                      style={{
+                        background: regeneratingSegId === seg.id ? '#475569' : '#0284c7',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '10px 20px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: regeneratingSegId === seg.id ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                      }}
+                    >
+                      {regeneratingSegId === seg.id ? '⏳ Generating 1080p Image...' : '🔄 Regenerate This Image'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Sticky Bottom Action Bar */}
+          <div style={{
+            position: 'fixed',
+            bottom: 0, left: 0, right: 0,
+            background: '#0f172a',
+            borderTop: '2px solid #334155',
+            padding: '16px 32px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            zIndex: 10001,
+            boxShadow: '0 -10px 25px -5px rgba(0, 0, 0, 0.6)'
+          }}>
+            <div style={{ color: '#94a3b8', fontSize: '15px' }}>
+              Reviewed Scenes: <strong style={{ color: '#fff' }}>{visualData.segments?.length || 0}</strong> • Ready to render?
+            </div>
+            <div style={{ display: 'flex', gap: '14px' }}>
+              <button
+                type="button"
+                onClick={() => setShowVisualReview(false)}
+                style={{
+                  background: '#334155',
+                  color: '#e2e8f0',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '12px 20px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Close Studio
+              </button>
+              <button
+                type="button"
+                disabled={isRenderingFinal}
+                onClick={handleRenderFinalVideo}
+                style={{
+                  background: isRenderingFinal ? '#166534' : '#16a34a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '14px 32px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  cursor: isRenderingFinal ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 14px rgba(22, 163, 74, 0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {isRenderingFinal ? '⏳ Rendering 1080p Video...' : '🎬 OK, I Am Good! Create Video'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

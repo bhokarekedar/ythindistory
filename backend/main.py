@@ -43,6 +43,9 @@ import os
 os.makedirs("output", exist_ok=True)
 app.mount("/output", StaticFiles(directory="output"), name="output")
 
+os.makedirs("temp", exist_ok=True)
+app.mount("/temp", StaticFiles(directory="temp"), name="temp")
+
 from typing import Optional, List
 
 class WatermarkCorner(BaseModel):
@@ -676,6 +679,16 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 "ai_image_path": seg.get("ai_image_path", None)
             })
 
+        # For cartoon_story: Pause after generating voiceover and images for Visual Storyboard Review!
+        if channel_type == "cartoon_story":
+            job_status[job_id] = "waiting_visual_review"
+            state["waiting_visual_review"] = True
+            with open(os.path.join(job_dir, "job_state.json"), "w", encoding="utf-8") as sf:
+                json.dump(state, sf, indent=2)
+            print(f"\n[JOB {job_id}] 🎨 SCENE IMAGES & AUDIO READY! Pausing for visual storyboard review.")
+            print(f"  [Visual Review] Open UI to inspect images, edit prompts, and regenerate scenes before final render.\n")
+            return
+
         output_folder = os.path.join("output", video_id)
         os.makedirs(output_folder, exist_ok=True)
 
@@ -764,6 +777,88 @@ def execute_resume_pipeline(job_id: str, state: dict):
     except Exception as e:
         job_status[job_id] = f"Error: {str(e)}"
         print(f"\n[JOB {job_id}] Exception: {str(e)}")
+
+def execute_final_video_render(job_id: str, state: dict):
+    """
+    Renders Step 6 (video timeline with 1920x1080 static cuts + subtitles)
+    after visual review has been approved by the user.
+    """
+    try:
+        video_id = state["video_id"]
+        channel_type = state["channel_type"]
+        target_lang = state["target_lang"]
+        script_path = state["script_path"]
+        job_dir = state["job_dir"]
+        video_path = state.get("video_path", "")
+        final_output = state["final_output"]
+        metadata_output = state["metadata_output"]
+        output_folder = state["output_folder"]
+        url = state.get("url", "")
+        groq_api_key = state.get("groq_api_key") or os.getenv("GROQ_API_KEY", "")
+
+        req_data = state.get("request", {})
+        request = VideoRequest(**req_data) if isinstance(req_data, dict) else req_data
+
+        with open(script_path, "r", encoding="utf-8") as f:
+            segments = json.load(f)
+
+        aligned_audio_segments = []
+        for i, seg in enumerate(segments):
+            text = seg.get(target_lang, "").strip() or seg.get("text", "").strip()
+            text = StoryTranslator.sanitize_segment_text(text, target_language=target_lang)
+            audio_path = os.path.join(f"{job_dir}/segments", f"{seg['id']:04d}.wav")
+            img_path = os.path.join(f"{job_dir}/ai_images", f"seg_{seg['id']:04d}.jpg")
+
+            aligned_audio_segments.append({
+                "id": seg["id"],
+                "start": seg["start"],
+                "end": seg["end"],
+                "text": text,
+                "audio_path": audio_path,
+                "use_ai_image": True,
+                "ai_image_path": img_path if os.path.exists(img_path) else None
+            })
+
+        output_folder = os.path.join("output", video_id)
+        os.makedirs(output_folder, exist_ok=True)
+
+        job_status[job_id] = f"Rendering final 1080p video with subtitles..."
+        print(f"\n[JOB {job_id}] Step 6: Rendering Final Video for {channel_type} (Captions: {getattr(request, 'burn_subtitles', True)})...")
+
+        for stale in ["video_only.mp4", "mixed_temp.mp4"]:
+            p = os.path.join(job_dir, stale)
+            if os.path.exists(p):
+                os.remove(p)
+
+        sync = AudioSynchronizer(
+            max_speed_change=0.15,
+            rewrite_threshold=1.15
+        )
+
+        sync.build_timeline(
+            aligned_audio_segments, video_path, final_output,
+            job_dir=job_dir,
+            watermark_settings=request.watermark,
+            text_watermark_settings=request.textWatermark,
+            skip_intervals=request.skip_intervals,
+            channel_type=channel_type,
+            burn_subtitles=getattr(request, 'burn_subtitles', True)
+        )
+
+        for sub_ext in ["srt", "ass"]:
+            sub_f = os.path.join(job_dir, f"subtitles.{sub_ext}")
+            if os.path.exists(sub_f):
+                shutil.copy2(sub_f, os.path.join(output_folder, f"{video_id}.{sub_ext}"))
+
+        job_status[job_id] = "Generating SEO Metadata..."
+        metadata_generator = MetadataGenerator(api_key=groq_api_key)
+        metadata_generator.generate(script_path, metadata_output, target_lang=target_lang)
+
+        job_status[job_id] = f"Completed: {final_output}"
+        print(f"\n[JOB {job_id}] ✅ DONE! Final video and metadata saved to {output_folder}")
+    except Exception as e:
+        job_status[job_id] = f"Error: {str(e)}"
+        print(f"\n[JOB {job_id}] Final Render Exception: {str(e)}")
 
 @app.get("/api/storage-stats")
 def get_storage_stats():
@@ -859,14 +954,21 @@ def get_status(job_id: str):
         final_out = p_job.get("final_output", "")
         if final_out and os.path.exists(final_out):
             st = f"Completed: {final_out}"
+        elif p_job.get("waiting_visual_review"):
+            st = "waiting_visual_review"
         elif p_job.get("script_path") and os.path.exists(p_job.get("script_path")):
-            st = "waiting_review"
+            ai_dir = os.path.join(p_job.get("job_dir", ""), "ai_images")
+            if os.path.exists(ai_dir) and len(glob.glob(f"{ai_dir}/seg_*.jpg")) > 0:
+                st = "waiting_visual_review"
+            else:
+                st = "waiting_review"
 
     return {
         "job_id": job_id, 
         "status": st,
         "evaluation": job_evaluations.get(job_id, None),
         "waiting_review": st == "waiting_review",
+        "waiting_visual_review": st == "waiting_visual_review",
         "script_path": p_job.get("script_path") if p_job else None,
         "video_id": p_job.get("video_id") if p_job else None,
         "channel_type": p_job.get("channel_type") if p_job else None
@@ -889,6 +991,91 @@ def cancel_job_endpoint(job_id: str):
     if job_id in pending_jobs:
         del pending_jobs[job_id]
     return {"status": "cancelled", "job_id": job_id}
+
+class RegenerateImageRequest(BaseModel):
+    prompt: str
+
+@app.post("/api/regenerate-scene-image/{job_id}/{segment_id}")
+def regenerate_scene_image(job_id: str, segment_id: int, req: RegenerateImageRequest):
+    p_job = find_pending_job(job_id)
+    if not p_job:
+        raise HTTPException(status_code=404, detail=f"No pending job found with id {job_id}")
+
+    script_path = p_job["script_path"]
+    video_id = p_job.get("video_id", job_id)
+    job_dir = p_job["job_dir"]
+    ai_dir = os.path.join(job_dir, "ai_images")
+    os.makedirs(ai_dir, exist_ok=True)
+    img_path = os.path.join(ai_dir, f"seg_{segment_id:04d}.jpg")
+
+    img_gen = CloudflareImageGenerator()
+    print(f"\n[JOB {job_id}] 🔄 Regenerating Scene #{segment_id} Image with prompt: {req.prompt[:120]}...")
+    out = img_gen.generate_image(req.prompt, img_path, target_width=1920, target_height=1080)
+    if not out or not os.path.exists(out):
+        raise HTTPException(status_code=500, detail="Failed to regenerate image with Cloudflare AI")
+
+    # Update prompt in transcript json
+    with open(script_path, "r", encoding="utf-8") as f:
+        segments = json.load(f)
+    for s in segments:
+        if s.get("id") == segment_id:
+            s["image_prompt"] = req.prompt
+            s["use_ai_image"] = True
+            s["ai_image_path"] = os.path.abspath(img_path)
+            break
+    with open(script_path, "w", encoding="utf-8") as f:
+        json.dump(segments, f, indent=4, ensure_ascii=False)
+
+    t_stamp = int(time.time())
+    return {
+        "status": "success",
+        "segment_id": segment_id,
+        "image_url": f"http://localhost:8000/temp/{video_id}/ai_images/seg_{segment_id:04d}.jpg?t={t_stamp}"
+    }
+
+@app.get("/api/visual-review/{job_id}")
+def get_visual_review(job_id: str):
+    p_job = find_pending_job(job_id)
+    if not p_job or not os.path.exists(p_job.get("script_path", "")):
+        raise HTTPException(status_code=404, detail="Job or script not found")
+    
+    script_path = p_job["script_path"]
+    video_id = p_job.get("video_id", job_id)
+    with open(script_path, "r", encoding="utf-8") as f:
+        segments = json.load(f)
+    
+    enhanced_segments = []
+    t_stamp = int(time.time())
+    for seg in segments:
+        seg_id = seg["id"]
+        img_rel_path = f"temp/{video_id}/ai_images/seg_{seg_id:04d}.jpg"
+        img_url = f"http://localhost:8000/{img_rel_path}?t={t_stamp}" if os.path.exists(img_rel_path) else None
+        enhanced_segments.append({
+            "id": seg_id,
+            "start": seg.get("start", 0),
+            "end": seg.get("end", 0),
+            "text": seg.get("text", "") or seg.get(p_job.get("target_lang", "english"), ""),
+            "image_prompt": seg.get("image_prompt", ""),
+            "image_url": img_url
+        })
+    
+    return {
+        "job_id": job_id,
+        "video_id": video_id,
+        "story_title": p_job.get("request", {}).get("story_title", ""),
+        "channel_type": p_job.get("channel_type", ""),
+        "segments": enhanced_segments
+    }
+
+@app.post("/api/render-final-video/{job_id}")
+def render_final_video_endpoint(job_id: str, background_tasks: BackgroundTasks):
+    p_job = find_pending_job(job_id)
+    if not p_job:
+        raise HTTPException(status_code=404, detail=f"No pending job found with id {job_id}")
+
+    job_status[job_id] = "Rendering final 1080p video with subtitles..."
+    background_tasks.add_task(execute_final_video_render, job_id, p_job)
+    return {"status": "rendering", "job_id": job_id}
 
 @app.get("/api/script/{job_id}")
 def get_script_endpoint(job_id: str):

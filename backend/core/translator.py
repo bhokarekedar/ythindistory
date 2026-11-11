@@ -801,30 +801,35 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
      * Backgrounds use solid, flat block colors with zero gradients and zero shading.
 
 3. SCRIPT-DRIVEN CHARACTER IDENTITY & MINIMALIST DETAILING:
-   - Characters are stick figures with oversized round white heads and thin black stick limbs, BUT when the script mentions a specific role or persona, give them minimal, iconic visual detailing:
-     * Professor / Scholar: Balding with sparse gray tufts of hair on the sides, small round wireframe glasses on the round white head, brown/tan trench coat or tweed jacket with a tie, holding a manila folder or book.
-     * Student / Young Adult: Messy hair tuft, backpack over stick shoulders, casual hoodie.
-     * Doctor / Scientist: Simple white lab coat, stethoscope around stick neck.
-     * Detective / Police: Beige trench coat or peaked cap, holding a small notepad or magnifying glass.
-     * Office Worker: Simple black necktie, briefcase.
+   - Characters are stick figures with oversized perfectly round white heads (NO skin tone, NO flesh/peach colors) and thin black stick limbs:
+     * Professor / Scholar: Round white head, balding with sparse gray tufts of hair on the sides, small round wireframe glasses, brown/tan trench coat, holding a book.
+     * Student / Young Adult: Round white head, messy hair tuft, backpack over stick shoulders, casual hoodie.
+     * Doctor / Scientist: Round white head, simple white lab coat, wireframe glasses.
+     * Office Worker: Round white head, simple black necktie, slouched at a desk.
      * Caveman / Ancestor: Wild messy brown hair, crude animal skin tunic, stone spear.
 
-4. DISTINCT IDENTITIES DURING CONVERSATIONS & INTERACTIONS:
-   - When two or more characters appear in the same scene or dialogue, NEVER make them identical generic clones!
-   - Give each character a distinct identity matching the script:
-     * Distinct hair or headwear (e.g., one has glasses and gray hair, the other has messy black hair or a cap).
-     * Distinct clothing item or prop (e.g., one in a jacket holding a folder, the other in a t-shirt with a backpack).
-     * Contrasting expressions and poses (e.g., one speaking actively with stick arm gesturing, the other listening with arms crossed or an eyebrow raised).
+4. SENIOR ANIMATION DIRECTOR COMPOSITION & ANATOMY RULES (AVOID GLITCHES):
+   - RULE A (MAX 1-2 HERO SUBJECTS PER FRAME — NO OVERCROWDING):
+     * NEVER cram 3 or more distinct characters/animals doing 3 different micro-actions into one shot (it causes floating limbs and severed heads).
+     * If showing multiple subjects, focus on ONE clear interaction (e.g. monkey with shape-puzzle box, dog and cat with a ball).
+   - RULE B (STICK ANATOMY ONLY — NO COMPLEX JOINTS):
+     * Stick figures have straight line limbs with NO elbows or wrists!
+     * NEVER ask for "hand on chin", "scratching head", or complex joint bends.
+     * Use simple, iconic stick poses: straight arms at sides, one arm pointing, arms raised in excitement, or sitting flat.
+   - RULE C (NO FLOATING ORGANS OR METAPHORICAL BODY PARTS):
+     * NEVER prompt for "brain hovering above head" (diffusion models will glitch and attach tails or limbs to necks).
+     * To represent an active mind or idea, use a simple glowing yellow cartoon lightbulb or a clean question mark.
+   - RULE D (ZERO PHANTOM ANIMALS):
+     * In human scenes (e.g. office worker at a desk, narrator speaking), describe ONLY the human and office/room. NEVER mention animals where they do not belong.
 
 5. ANIMAL & CREATURE VISUAL CONSISTENCY (STRICTLY PURE WHITE STICK-COMIC STYLE - NO REALISTIC OR SHADED ANIMALS):
-   - All animals, pets, and creatures (elephants, dogs, monkeys, cats, birds, etc.) MUST be drawn in the EXACT same simplistic stick-comic aesthetic as the human stick figures:
+   - All animals, pets, and creatures (elephants, dogs, monkeys, cats, etc.) MUST be drawn in the EXACT same simplistic stick-comic aesthetic as the human stick figures:
      * Body Fill: Pure flat solid WHITE fill (like paper). NEVER gray, brown, textured, or realistically colored.
      * Outlines: Bold black marker ink contour outlines.
-     * Limbs & Tails: Thin black stick legs, thin black stick arms, and thin curved stick tails.
+     * Limbs & Tails: Thin black stick legs, thin black stick arms, and thin curved stick tails on their rear (NEVER on neck).
      * Faces: Minimalist cartoon dot eyes, simple black marker mouth/snout, zero 3D shading, zero fur/skin textures, and zero muscle contours.
-     * Example Elephant: "a minimalist stick-figure elephant with a pure solid flat white body, thin black stick legs, a simple curved white trunk with black outlines, and simple dot eyes (zero gray shading, zero 3D textures, flat white fill)".
-     * Example Dog: "a minimalist stick-figure dog with a pure solid flat white body, thin black stick legs, floppy ears, and black dot eyes (pure white fill, zero shading)".
-     * Example Monkey: "a minimalist stick-figure monkey with a pure solid flat white body, thin black stick limbs and long stick tail, and cute dot eyes (pure white fill, zero shading)".
+     * Example Monkey: "a minimalist stick-figure monkey with a pure solid flat white body, thin black stick limbs and long stick tail, cute dot eyes, sitting with a simple toy shape puzzle box (pure white fill, zero brown fur, zero shading)".
+     * Example Dog: "a minimalist stick-figure dog with a pure solid flat white body, thin black stick legs, floppy ears, and wagging tail on rear (pure white fill, zero shading)".
      * NEVER draw standard clip-art, Disney-style, or 3D shaded animals. They must look like a hand-drawn MS Paint webcomic stick creature!
 
 6. NARRATION TEXT:
