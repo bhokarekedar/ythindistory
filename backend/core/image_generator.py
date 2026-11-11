@@ -121,19 +121,44 @@ class CloudflareImageGenerator:
 
     def _save_as_16_9(self, img, output_path: str, target_width: int = 1920, target_height: int = 1080):
         from PIL import Image
+        import numpy as np
+
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
         w, h = img.size
         target_aspect = target_width / target_height
         current_aspect = w / h
-        if current_aspect > target_aspect:
+
+        # If image is squarish or taller than 16:9 (common for 1024x1024 AI outputs)
+        # fit vertically so NO heads or feet get cropped off, and extend background horizontally
+        if current_aspect < target_aspect:
+            scale = target_height / h
+            new_w = int(w * scale)
+            scaled = img.resize((new_w, target_height), Image.Resampling.LANCZOS)
+            scaled_arr = np.array(scaled)
+
+            canvas = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+            x_offset = (target_width - new_w) // 2
+
+            # Place image in horizontal center
+            canvas[:, x_offset:x_offset + new_w] = scaled_arr
+
+            # Seamlessly extend left and right background edges
+            left_edge = scaled_arr[:, 0:1, :]
+            canvas[:, :x_offset] = np.repeat(left_edge, x_offset, axis=1)
+
+            right_edge = scaled_arr[:, -1:, :]
+            r_width = target_width - (x_offset + new_w)
+            if r_width > 0:
+                canvas[:, x_offset + new_w:] = np.repeat(right_edge, r_width, axis=1)
+
+            final_img = Image.fromarray(canvas)
+        else:
+            # If image is wider than 16:9, crop sides
             new_w = int(h * target_aspect)
             left = (w - new_w) // 2
-            img = img.crop((left, 0, left + new_w, h))
-        else:
-            new_h = int(w / target_aspect)
-            top = (h - new_h) // 2
-            img = img.crop((0, top, w, top + new_h))
-        
-        resized = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
-        if resized.mode in ("RGBA", "P"):
-            resized = resized.convert("RGB")
-        resized.save(output_path, "JPEG", quality=95)
+            cropped = img.crop((left, 0, left + new_w, h))
+            final_img = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+        final_img.save(output_path, "JPEG", quality=95)
