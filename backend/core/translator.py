@@ -831,20 +831,21 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
    - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
    - If 'english': Write witty, punchy, conversational spoken English narration.
 
-7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT (SCRIPT-DRIVEN SCENERY & STRICT SUBJECT COUNT):
+7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
    Every single segment MUST include an 'image_prompt' following this EXACT template:
-   "A 2D minimalist kid's pencil doodle in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Wide shot with ample empty headroom. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only one subject: an old wise stick figure with an oversized circular flat white head, sparse gray hair on the sides, small round wireframe glasses, two tiny black dot eyes, a simple line mouth, and thin black pencil stick limbs...']. The background depicts [SCRIPT-MATCHING 2D ENVIRONMENT, e.g. 'soft earth-tan rolling mountains under a pale powder blue sky', 'a muted beige ancient stone temple', 'a soft sage green field with scribbled trees'] drawn with flat, muted matte colors and simple pencil linework (zero 3D shading, zero gradients, zero realistic textures, no bright neon). Zero other people, zero extra animals, zero extra characters, zero realistic human faces."
+   "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide shot, 16:9 framing. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only one subject: an old wise stick figure with an oversized circular white head, sparse gray hair on the sides, small round wireframe glasses, tiny dot eyes, and thin black stick limbs']. The background depicts [SCRIPT-MATCHING SCENERY, e.g. 'solid powder blue sky and flat sage green grass with scribbled bushes', 'flat earth-tan mountains under a muted blue sky', 'a muted beige room wall'] drawn with flat, muted MS Paint bucket-fill colors. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
 
    CRITICAL RULES FOR THE BRACKETS:
-   - SCRIPT-MATCHING BACKGROUNDS (NOT JUST PLAIN WHITE): Give every scene contextual scenery matching its topic (e.g. mountains, forest, ancient ruins, castle, library, bedroom, desert) rendered in soft muted pastel block colors (sage green, powder blue, sandy beige, soft slate gray). NEVER use bright neon.
+   - SCRIPT-MATCHING BACKGROUNDS: Use flat block colors matching the script topic (e.g. mountains, forest, ancient ruins, castle, library, bedroom, desert) rendered in flat muted MS Paint bucket-fill colors (sage green, powder blue, sandy beige, soft slate gray). NO shadows, NO gradients.
+   - ZERO PENCIL/SKETCH: NEVER use the word "pencil", "doodle", or "sketch" in any image_prompt, as the AI model will add unwanted graphite shading. Always use "MS Paint", "bucket-fill", and "mouse-drawn" instead.
    - SCRIPT-DRIVEN CHARACTER AGE & IDENTITY:
-     * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, two tiny black dot eyes, simple line mouth, thin black stick limbs.
-     * Young Narrator: Circular white head, spiky orange or black hair, two tiny black dot eyes, simple line mouth, thin black stick limbs.
+     * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, tiny dot eyes, simple line mouth, thin black stick limbs.
+     * Young Narrator: Circular white head, spiky orange or black hair, tiny dot eyes, simple line mouth, thin black stick limbs.
      * Scientist / Doctor: Circular white head with glasses, simple flat white lab coat shape over thin stick limbs.
      * Historical King / Emperor: Circular white head, simple flat cartoon crown on stick head.
-     * ALL characters MUST strictly remain 2D stick figures with circular flat white paper heads (NO flesh tones, NO realistic faces).
+     * ALL characters MUST strictly remain 2D stick figures with circular flat white heads (NO flesh tones, NO realistic faces).
    - STRICT COUNT: Always state the EXACT number of subjects (e.g. 'only one stick figure', 'only two subjects: one stick figure and one dog'). NEVER use plural words like 'all characters' or 'all animals'.
-   - ZERO EXTRA SUBJECTS: Always end the prompt with: 'Zero other people, zero extra animals, zero extra characters, zero realistic human faces, completely flat 2D pencil doodle.'
+   - ZERO EXTRA SUBJECTS: Always end the prompt with: 'Zero extra people, zero extra animals, zero realistic human faces.'
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
 
 Output strictly a JSON object with a single key 'segments':
@@ -853,7 +854,7 @@ Output strictly a JSON object with a single key 'segments':
     {{
       "id": 1,
       "text": "spoken narration line in target language",
-      "image_prompt": "A 2D minimalist kid's pencil doodle in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Wide shot with ample empty headroom. There are [exact subjects with script-driven stick details]. The background depicts [contextual scenery matching narration in muted flat 2D colors]. Zero other people, zero extra animals, zero extra characters, zero realistic human faces."
+      "image_prompt": "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide shot, 16:9 framing. There are [exact subjects with stick-figure details]. The background depicts [contextual scenery in flat muted MS Paint bucket-fill colors]. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
     }}
   ]
 }}"""

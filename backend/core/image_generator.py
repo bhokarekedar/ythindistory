@@ -64,23 +64,26 @@ class CloudflareImageGenerator:
             print("  [Cloudflare] Error: No Cloudflare accounts configured in .env")
             return None
 
-        # Pipeline Auto-Enforcement for Stick-Comic & Kid's Pencil Doodle Style
+        # Pipeline Auto-Enforcement for Stick-Comic & MS Paint Style
         refined_prompt = prompt
         p_lower = prompt.lower()
-        if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive"]):
-            # 1. Enforce kid's pencil doodle face for human stick figures (prevent realistic faces or extra people)
-            if "zero realistic" not in p_lower and "dot eyes" not in p_lower:
-                refined_prompt += " Any character must be drawn strictly as a basic 2D minimalist stick figure with a circular white head, two tiny black dot eyes, a simple line mouth, and thin black stick limbs. Zero realistic human faces, zero extra people."
+        if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive", "webcomic"]):
+            # 1. Enforce strict MS Paint aesthetics (Kill FLUX's 3D/Shading bias)
+            if "zero shading" not in p_lower:
+                refined_prompt += " ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH. Must look like a low-effort MS Paint drawing with thick, unpolished black outlines and flat bucket-fill colors."
 
-            # 2. Enforce ample headroom and wide framing to prevent cut-offs
+            # 2. Enforce stick figure anatomy strictly
+            if "zero realistic" not in p_lower:
+                refined_prompt += " All characters MUST be basic 2D minimalist stick figures with pure white circular heads, black dot eyes, and single-line stick limbs. Zero realistic human anatomy, zero flesh tones, zero extra people."
+
+            # 3. Enforce wide camera framing
             if "headroom" not in p_lower and "wide shot" not in p_lower:
-                refined_prompt += " Wide camera framing with ample empty headroom above heads, entire bodies completely visible inside the frame."
+                refined_prompt += " Wide camera framing with ample empty headroom, entire bodies visible."
 
-            # 3. Enforce flat white stick-comic style for animals (prevent realistic fur or random animal crowds)
+            # 4. Enforce flat animal style
             animal_keywords = ["animal", "elephant", "dog", "cat", "monkey", "horse", "bear", "lion", "tiger", "bird", "rabbit", "creature", "pet"]
             if any(ak in p_lower for ak in animal_keywords):
-                if "zero gray shading" not in p_lower and "pure solid flat white body" not in p_lower:
-                    refined_prompt += " Any animal present must be drawn strictly in flat stick-comic style: pure flat solid white body fill, thin black stick legs, bold black outlines, zero 3D shading, zero gray fur, zero extra animals."
+                refined_prompt += " Any animal present must be drawn strictly in flat stick-comic style: flat solid white body fill, thin black stick legs, zero 3D shading, zero fur texture."
 
         payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
@@ -130,7 +133,6 @@ class CloudflareImageGenerator:
 
     def _save_as_16_9(self, img, output_path: str, target_width: int = 1920, target_height: int = 1080):
         from PIL import Image
-        import numpy as np
 
         if img.mode != "RGB":
             img = img.convert("RGB")
@@ -139,32 +141,21 @@ class CloudflareImageGenerator:
         target_aspect = target_width / target_height
         current_aspect = w / h
 
-        # If image is squarish or taller than 16:9 (common for 1024x1024 AI outputs)
-        # fit vertically so NO heads or feet get cropped off, and extend background horizontally
         if current_aspect < target_aspect:
+            # Image is too tall/squarish. Resize to match height, then pad sides with a solid color.
             scale = target_height / h
             new_w = int(w * scale)
             scaled = img.resize((new_w, target_height), Image.Resampling.LANCZOS)
-            scaled_arr = np.array(scaled)
 
-            canvas = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+            # Sample the top-left pixel to use as a seamless background padding color
+            bg_color = scaled.getpixel((5, 5))
+
+            canvas = Image.new("RGB", (target_width, target_height), bg_color)
             x_offset = (target_width - new_w) // 2
-
-            # Place image in horizontal center
-            canvas[:, x_offset:x_offset + new_w] = scaled_arr
-
-            # Seamlessly extend left and right background edges
-            left_edge = scaled_arr[:, 0:1, :]
-            canvas[:, :x_offset] = np.repeat(left_edge, x_offset, axis=1)
-
-            right_edge = scaled_arr[:, -1:, :]
-            r_width = target_width - (x_offset + new_w)
-            if r_width > 0:
-                canvas[:, x_offset + new_w:] = np.repeat(right_edge, r_width, axis=1)
-
-            final_img = Image.fromarray(canvas)
+            canvas.paste(scaled, (x_offset, 0))
+            final_img = canvas
         else:
-            # If image is wider than 16:9, crop sides
+            # Image is too wide. Crop the center to fit 16:9 perfectly.
             new_w = int(h * target_aspect)
             left = (w - new_w) // 2
             cropped = img.crop((left, 0, left + new_w, h))
