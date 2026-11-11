@@ -64,14 +64,23 @@ class CloudflareImageGenerator:
             print("  [Cloudflare] Error: No Cloudflare accounts configured in .env")
             return None
 
-        # Enforce stick-comic consistency for animals if in stick-figure MS Paint mode
+        # Pipeline Auto-Enforcement for Stick-Comic & Kid's Pencil Doodle Style
         refined_prompt = prompt
         p_lower = prompt.lower()
-        if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint"]):
+        if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive"]):
+            # 1. Enforce kid's pencil doodle face for human stick figures (prevent realistic faces or extra people)
+            if "zero realistic" not in p_lower and "dot eyes" not in p_lower:
+                refined_prompt += " Any character must be drawn strictly as a basic 2D minimalist stick figure with a circular white head, two tiny black dot eyes, a simple line mouth, and thin black stick limbs. Zero realistic human faces, zero extra people."
+
+            # 2. Enforce ample headroom and wide framing to prevent cut-offs
+            if "headroom" not in p_lower and "wide shot" not in p_lower:
+                refined_prompt += " Wide camera framing with ample empty headroom above heads, entire bodies completely visible inside the frame."
+
+            # 3. Enforce flat white stick-comic style for animals (prevent realistic fur or random animal crowds)
             animal_keywords = ["animal", "elephant", "dog", "cat", "monkey", "horse", "bear", "lion", "tiger", "bird", "rabbit", "creature", "pet"]
             if any(ak in p_lower for ak in animal_keywords):
                 if "zero gray shading" not in p_lower and "pure solid flat white body" not in p_lower:
-                    refined_prompt += " Crucially, all animals must be drawn in the same stick comic style: pure flat solid white body fill, thin black stick legs, bold black outlines, zero 3D shading, zero gray color, zero fur texture, completely flat 2D MS Paint webcomic."
+                    refined_prompt += " Any animal present must be drawn strictly in flat stick-comic style: pure flat solid white body fill, thin black stick legs, bold black outlines, zero 3D shading, zero gray fur, zero extra animals."
 
         payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 

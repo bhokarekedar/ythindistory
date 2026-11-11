@@ -831,14 +831,14 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
    - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
    - If 'english': Write witty, punchy, conversational spoken English narration.
 
-7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
+7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT (STRICT SUBJECT COUNT & ZERO CROWDS):
    Every single segment MUST include an 'image_prompt' following this EXACT template:
-   "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [SPECIFIC ACTION, POSE, EXPRESSION, AND MINIMAL ROLE DETAILS LIKE COAT, HAIR, GLASSES, OR PROPS. FOR ANIMALS: ALWAYS SPECIFY PURE SOLID WHITE BODY FILL, THIN BLACK STICK LEGS, ZERO GRAY/COLOR SHADING, AND ZERO TEXTURE]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [SPECIFIC ENVIRONMENTAL DETAILS] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+   "A 2D minimalist kid's pencil drawing in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Clean solid flat plain white background with ample empty headroom. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only two subjects: exactly one minimalist stick figure with circular flat white head, spiky orange hair, two tiny black dot eyes, a simple line mouth, and thin black pencil stick limbs... and exactly one small cute stick dog with pure solid flat white body and thin black stick legs...']. Zero other people, zero extra animals, zero extra characters, zero realistic human faces, zero 3D shading."
 
-   INSTRUCTIONS FOR THE BRACKETS:
-   - Composition: Wide 16:9 landscape canvas, centered horizontal framing.
-   - Replace [SPECIFIC ACTION...] with character actions: for the human narrator, always specify the iconic Basically Primitive stick figure with an oversized round white head, bright orange spiky hair, dot eyes, and a literal black stick figure body with zero clothing and zero hoodie. For other characters or scientists, specify minimal stick-figure details. If animals appear, enforce 'pure solid white body fill, thin black stick legs, zero gray shading'.
-   - Replace [SPECIFIC ENVIRONMENTAL DETAILS] with muted background elements (e.g., 'the muted sandstone university archways, scribbled olive palm trees, and fluffy clouds with black ink borders', 'a muted beige room wall, gray couch, and lamp').
+   CRITICAL RULES FOR THE BRACKETS:
+   - STRICT COUNT: Always specify the EXACT number (e.g. 'only one stick figure', 'only two subjects: one stick figure and one dog'). NEVER say 'all characters' or 'all animals' because that causes the image model to hallucinate crowds and extra animals!
+   - NARRATOR IDENTITY: For the narrator, describe as: 'a minimalist stick figure with oversized round flat white paper head, two tiny black dot eyes, simple line mouth, spiky orange hair, and thin black stick limbs with zero clothing and zero hoodie'.
+   - ZERO EXTRA SUBJECTS: Always end the prompt with: 'Zero other people, zero extra animals, zero extra characters, completely flat 2D pencil doodle.'
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
 
 Output strictly a JSON object with a single key 'segments':
@@ -847,7 +847,7 @@ Output strictly a JSON object with a single key 'segments':
     {{
       "id": 1,
       "text": "spoken narration line in target language",
-      "image_prompt": "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [action with character/animal details]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [details] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+      "image_prompt": "A 2D minimalist kid's pencil drawing in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Clean solid flat plain white background with ample empty headroom. There are [exact subjects with actions and pencil doodle stick details]. Zero other people, zero extra animals, zero extra characters, zero realistic human faces, zero 3D shading."
     }}
   ]
 }}"""
