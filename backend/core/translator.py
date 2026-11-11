@@ -831,14 +831,20 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
    - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
    - If 'english': Write witty, punchy, conversational spoken English narration.
 
-7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT (STRICT SUBJECT COUNT & ZERO CROWDS):
+7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT (SCRIPT-DRIVEN SCENERY & STRICT SUBJECT COUNT):
    Every single segment MUST include an 'image_prompt' following this EXACT template:
-   "A 2D minimalist kid's pencil drawing in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Clean solid flat plain white background with ample empty headroom. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only two subjects: exactly one minimalist stick figure with circular flat white head, spiky orange hair, two tiny black dot eyes, a simple line mouth, and thin black pencil stick limbs... and exactly one small cute stick dog with pure solid flat white body and thin black stick legs...']. Zero other people, zero extra animals, zero extra characters, zero realistic human faces, zero 3D shading."
+   "A 2D minimalist kid's pencil doodle in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Wide shot with ample empty headroom. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only one subject: an old wise stick figure with an oversized circular flat white head, sparse gray hair on the sides, small round wireframe glasses, two tiny black dot eyes, a simple line mouth, and thin black pencil stick limbs...']. The background depicts [SCRIPT-MATCHING 2D ENVIRONMENT, e.g. 'soft earth-tan rolling mountains under a pale powder blue sky', 'a muted beige ancient stone temple', 'a soft sage green field with scribbled trees'] drawn with flat, muted matte colors and simple pencil linework (zero 3D shading, zero gradients, zero realistic textures, no bright neon). Zero other people, zero extra animals, zero extra characters, zero realistic human faces."
 
    CRITICAL RULES FOR THE BRACKETS:
-   - STRICT COUNT: Always specify the EXACT number (e.g. 'only one stick figure', 'only two subjects: one stick figure and one dog'). NEVER say 'all characters' or 'all animals' because that causes the image model to hallucinate crowds and extra animals!
-   - NARRATOR IDENTITY: For the narrator, describe as: 'a minimalist stick figure with oversized round flat white paper head, two tiny black dot eyes, simple line mouth, spiky orange hair, and thin black stick limbs with zero clothing and zero hoodie'.
-   - ZERO EXTRA SUBJECTS: Always end the prompt with: 'Zero other people, zero extra animals, zero extra characters, completely flat 2D pencil doodle.'
+   - SCRIPT-MATCHING BACKGROUNDS (NOT JUST PLAIN WHITE): Give every scene contextual scenery matching its topic (e.g. mountains, forest, ancient ruins, castle, library, bedroom, desert) rendered in soft muted pastel block colors (sage green, powder blue, sandy beige, soft slate gray). NEVER use bright neon.
+   - SCRIPT-DRIVEN CHARACTER AGE & IDENTITY:
+     * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, two tiny black dot eyes, simple line mouth, thin black stick limbs.
+     * Young Narrator: Circular white head, spiky orange or black hair, two tiny black dot eyes, simple line mouth, thin black stick limbs.
+     * Scientist / Doctor: Circular white head with glasses, simple flat white lab coat shape over thin stick limbs.
+     * Historical King / Emperor: Circular white head, simple flat cartoon crown on stick head.
+     * ALL characters MUST strictly remain 2D stick figures with circular flat white paper heads (NO flesh tones, NO realistic faces).
+   - STRICT COUNT: Always state the EXACT number of subjects (e.g. 'only one stick figure', 'only two subjects: one stick figure and one dog'). NEVER use plural words like 'all characters' or 'all animals'.
+   - ZERO EXTRA SUBJECTS: Always end the prompt with: 'Zero other people, zero extra animals, zero extra characters, zero realistic human faces, completely flat 2D pencil doodle.'
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
 
 Output strictly a JSON object with a single key 'segments':
@@ -847,7 +853,7 @@ Output strictly a JSON object with a single key 'segments':
     {{
       "id": 1,
       "text": "spoken narration line in target language",
-      "image_prompt": "A 2D minimalist kid's pencil drawing in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Clean solid flat plain white background with ample empty headroom. There are [exact subjects with actions and pencil doodle stick details]. Zero other people, zero extra animals, zero extra characters, zero realistic human faces, zero 3D shading."
+      "image_prompt": "A 2D minimalist kid's pencil doodle in Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. Wide shot with ample empty headroom. There are [exact subjects with script-driven stick details]. The background depicts [contextual scenery matching narration in muted flat 2D colors]. Zero other people, zero extra animals, zero extra characters, zero realistic human faces."
     }}
   ]
 }}"""
