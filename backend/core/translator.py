@@ -836,14 +836,35 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
    "A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Extreme wide long shot, centered 16:9 composition with generous empty headroom above and wide ground below. There are [EXACT NUMBER OF SUBJECTS, e.g. 'only one subject: an old wise stick figure with an oversized circular white head, sparse gray hair on the sides, small round wireframe glasses, tiny dot eyes, and thin black stick limbs']. The background depicts [SCRIPT-MATCHING SCENERY, e.g. 'solid powder blue sky and flat sage green grass with scribbled bushes', 'flat earth-tan mountains under a muted blue sky', 'a muted beige room wall'] drawn with flat, muted MS Paint bucket-fill colors. Deliberately messy, mouse-drawn linework. Absolutely zero shading, zero gradients, zero 3D depth, and zero realistic textures. Zero extra people or realistic human faces."
 
    CRITICAL RULES FOR THE BRACKETS:
-   - SCRIPT-MATCHING BACKGROUNDS: Use flat block colors matching the script topic (e.g. mountains, forest, ancient ruins, castle, library, bedroom, desert) rendered in flat muted MS Paint bucket-fill colors (sage green, powder blue, sandy beige, soft slate gray). NO shadows, NO gradients.
+   - SCRIPT-MATCHING BACKGROUNDS & ENVIRONMENTAL DETAIL:
+     * NEVER depict a plain empty wall or blank void. The background must establish the story's actual physical location!
+     * Include 2 to 3 iconic environmental details drawn in flat MS Paint bucket-fill colors:
+       - Library / Study: Tall scribbled wooden bookshelves with muted book spines, a wooden desk with open books/papers, and a flat sage green or slate gray floor.
+       - Desert / Outdoors: Rolling sand dunes under a powder blue sky, ancient stone pyramids or ruins in the background, flat sandy horizon.
+       - Science Lab: Blackboard with scribbled formulas, lab workbench with flat-colored beakers/flasks.
+       - House / Bedroom: Simple wooden bed, window showing outdoors, wooden floorboards.
+     * All scenery drawn with flat, muted MS Paint bucket-fill colors (powder blue, sage green, sandy beige, soft slate gray, muted rust). NO gradients, NO 3D shading.
+
+   - NATURAL POSES & FURNITURE INTERACTIONS (NO STANDING ON TABLES):
+     * If a character is sitting: Describe them as "sitting on a simple chair behind a wooden desk with stick arms resting on the tabletop". NEVER use words like "perched on a rectangle" or "standing on a table".
+     * If a character is standing: They stand on the flat floor or ground with feet touching the ground line.
+     * If reading or holding something: Stick arms extend holding the specific prop (e.g. "holding an open book", "pointing toward the horizon").
+
+   - VISUAL PROGRESSION & SHOT DIVERSITY (NO REPEATING STATIC SHOTS):
+     * NEVER generate two identical static poses for consecutive sentences that describe the same character!
+     * If consecutive beats focus on the same subject:
+       - Beat 1: Wide establishing shot showing the character in their environment (e.g. wide shot of professor sitting at the library desk surrounded by tall bookshelves).
+       - Beat 2: Medium shot or active gesture (e.g. medium shot of the professor leaning forward with wide curious dot eyes, holding up a glowing book, or pointing an arm).
+
    - ZERO PENCIL/SKETCH: NEVER use the word "pencil", "doodle", or "sketch" in any image_prompt, as the AI model will add unwanted graphite shading. Always use "MS Paint", "bucket-fill", and "mouse-drawn" instead.
+
    - SCRIPT-DRIVEN CHARACTER AGE & IDENTITY:
      * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, tiny dot eyes, simple line mouth, thin black stick limbs.
      * Young Narrator: Circular white head, spiky orange or black hair, tiny dot eyes, simple line mouth, thin black stick limbs.
      * Scientist / Doctor: Circular white head with glasses, simple flat white lab coat shape over thin stick limbs.
      * Historical King / Emperor: Circular white head, simple flat cartoon crown on stick head.
      * ALL characters MUST strictly remain 2D stick figures with circular flat white heads (NO flesh tones, NO realistic faces).
+
    - STRICT COUNT: Always state the EXACT number of subjects (e.g. 'only one stick figure', 'only two subjects: one stick figure and one dog'). NEVER use plural words like 'all characters' or 'all animals'.
    - ZERO EXTRA SUBJECTS: Always end the prompt with: 'Zero extra people, zero extra animals, zero realistic human faces.'
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
