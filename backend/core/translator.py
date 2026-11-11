@@ -858,6 +858,12 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
 
    - ZERO PENCIL/SKETCH: NEVER use the word "pencil", "doodle", or "sketch" in any image_prompt, as the AI model will add unwanted graphite shading. Always use "MS Paint", "bucket-fill", and "mouse-drawn" instead.
 
+   - SCRIPT-DRIVEN FOCAL PRIORITY (ANIMALS & PROPS FIRST):
+     * When the narration explicitly talks about specific animals, creatures, or objects (e.g. "pigeons and squirrels", "sleeping sea lion", "pet dog", "glowing red book", "pyramid"):
+       Make those specific mentioned creatures/objects the PRIMARY focal subjects in the foreground of the prompt!
+       Example: "The main subjects are a cartoon stick pigeon and a cartoon stick squirrel on a flat gray sidewalk eating breadcrumbs tossed by a stick figure."
+       NEVER bury key story animals behind giant buildings or generic full-body standing poses, or the AI will omit them!
+
    - SCRIPT-DRIVEN CHARACTER AGE & IDENTITY:
      * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, tiny dot eyes, simple line mouth, thin black stick limbs.
      * Young Narrator: Circular white head, spiky orange or black hair, tiny dot eyes, simple line mouth, thin black stick limbs.
