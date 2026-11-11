@@ -826,10 +826,13 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
      * Example Monkey: "a minimalist stick-figure monkey with a pure solid flat white body, thin black stick limbs and long stick tail, and cute dot eyes (pure white fill, zero shading)".
      * NEVER draw standard clip-art, Disney-style, or 3D shaded animals. They must look like a hand-drawn MS Paint webcomic stick creature!
 
-6. NARRATION TEXT:
-   - Provide the narration text for each segment in '{lang}'.
-   - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
-   - If 'english': Write witty, punchy, conversational spoken English narration.
+6. VERBATIM SCRIPT PRESERVATION (THE SCRIPT IS THE ABSOLUTE SOURCE OF TRUTH):
+   - CRITICAL: DO NOT alter, rewrite, paraphrase, summarize, embellish, or invent a single word of the user's spoken script!
+   - Every sentence from the input text MUST be preserved VERBATIM in the 'text' field.
+   - DO NOT add channel intros (e.g. "Welcome back to the channel", "Hey guys"), commentary, or fake dialogue.
+   - Simply take the exact, verbatim sentences from the input text, segment them sentence-by-sentence (or clause-by-clause), and write the matching 'image_prompt' for each one.
+   - If '{lang}' == 'english': the 'text' field MUST MATCH THE INPUT SCRIPT SENTENCES 100% WORD-FOR-WORD.
+   - If '{lang}' == 'hindi': provide a faithful direct spoken Hindi translation of that exact sentence without altering its meaning.
 
 7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
    Every single segment MUST include an 'image_prompt' following this EXACT template:
@@ -892,26 +895,41 @@ Output strictly a JSON object with a single key 'segments':
             if k and k not in groq_keys:
                 groq_keys.append(k)
 
-        # 1. Clean and parse sections (supporting markdown headers and **[0-5 sec | HOOK]** tags)
+        # 1. Clean and parse sections (filtering headers, divider lines, and estimated length metadata)
+        def is_metadata_line(raw: str) -> bool:
+            c = raw.strip()
+            if not c:
+                return True
+            if c.startswith("#"):
+                return True
+            if re.match(r"^[_\-*=]{3,}$", c):
+                return True
+            c_low = c.lower()
+            if any(k in c_low for k in ["estimated length", "estimated duration", "word count", "target length"]):
+                return True
+            return False
+
         lines = script_text.split("\n")
         sections = []
-        cur_title = "Scene"
+        cur_title = None
         cur_lines = []
 
         for l in lines:
             s = l.strip()
-            if not s or s.startswith("#"):
+            if is_metadata_line(s):
                 continue
             m = re.match(r"^\*?\*?\[(.*?)\]\*?\*?", s)
             if m:
-                if cur_lines:
+                if cur_lines and cur_title:
                     sections.append((cur_title, " ".join(cur_lines)))
                     cur_lines = []
-                cur_title = m.group(1)
+                cur_title = m.group(1).strip()
                 continue
+            if cur_title is None:
+                cur_title = "Scene"
             cur_lines.append(s)
 
-        if cur_lines:
+        if cur_lines and cur_title:
             sections.append((cur_title, " ".join(cur_lines)))
 
         if not sections:
@@ -927,61 +945,81 @@ Output strictly a JSON object with a single key 'segments':
             ("qwen/qwen3.8-27b", 600)  # Capped at 600 tokens to stay well below 1000 OTPM ceiling
         ]
 
+        # Focused system instructions for rapid, reliable JSON output across all sentence batches
+        batch_system_prompt = """You are a storyboard director for a 2D stick-figure YouTube animation channel (Basically Primitive / Casually Explained style).
+Your task is to generate a visual scene description for each provided sentence.
+Style rules:
+- Characters: 2D minimalist stick figures with circular flat white heads, dot eyes, and thin black stick limbs (narrator has spiky orange hair; old people have sparse gray hair and glasses).
+- Animals: pure flat solid white bodies with thin black stick limbs (e.g. stick pigeon, stick sea lion, stick dog).
+- Environment: flat muted MS Paint bucket-fill colors (powder blue sky, sage green grass, earth-tan sand, beige rooms).
+- Composition: extreme wide long shot, 16:9 framing, characters and animals in the middle vertical safe zone.
+- Output: valid JSON with key "scenes": [{"id": 1, "visual": "short visual action description"}]"""
+
         def decode_single_section(s_title: str, s_text: str) -> list:
             from groq import Groq
-            sec_prompt = f"Section Context: {s_title}. Discard any headers or timecodes; output ONLY clean spoken narration in '{lang}' and a low-fi MS Paint stick-figure image prompt for each sentence/action as a JSON object."
-            messages = [
-                {"role": "system", "content": system_prompt + f"\n\n{sec_prompt}"},
-                {"role": "user", "content": f"Please decode this story section into a JSON object with 'segments':\n\n{s_text}"}
-            ]
 
-            max_cooldown_retries = 3
-            for cooldown_attempt in range(max_cooldown_retries):
-                wait_times = []
+            # 1. Deterministic sentence extraction: PRESERVES 100% OF VERBATIM SCRIPT SENTENCES
+            raw_sentences = [st.strip() for st in re.split(r'(?<=[.!?])\s+', s_text) if st.strip()]
+            if not raw_sentences:
+                return []
+
+            # 2. Process in mini-batches of up to 4 sentences to guarantee zero dropped sentences and prevent Groq token limits
+            BATCH_SIZE = 4
+            section_segs = []
+
+            for b_idx in range(0, len(raw_sentences), BATCH_SIZE):
+                batch_sents = raw_sentences[b_idx:b_idx + BATCH_SIZE]
+                batch_input = "\n".join([f"{i+1}. {sent}" for i, sent in enumerate(batch_sents)])
+                user_msg = (
+                    f"Section Context: [{s_title}].\n"
+                    f"Generate a visual description for each of these {len(batch_sents)} sentences:\n\n"
+                    f"{batch_input}\n\n"
+                    f"Respond strictly with a JSON object: {{\"scenes\": [{{\"id\": 1, \"visual\": \"...\"}}]}}"
+                )
+
+                batch_prompts = []
                 for model_name, max_toks in models_to_try:
                     for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
                         try:
                             client = Groq(api_key=key)
                             completion = client.chat.completions.create(
                                 model=model_name,
-                                messages=messages,
+                                messages=[
+                                    {"role": "system", "content": batch_system_prompt},
+                                    {"role": "user", "content": user_msg}
+                                ],
                                 response_format={"type": "json_object"},
                                 temperature=0.2,
-                                max_tokens=max_toks
+                                max_tokens=min(max_toks, 800)
                             )
                             data = json.loads(completion.choices[0].message.content)
-                            segs = data.get("segments", [])
-                            if segs:
-                                return segs
+                            scs = data.get("scenes", []) or data.get("segments", [])
+                            if scs:
+                                batch_prompts = [sc.get("visual", "") or sc.get("image_prompt", "") for sc in scs]
+                                while len(batch_prompts) < len(batch_sents):
+                                    batch_prompts.append("")
+                                break
                         except Exception as e:
                             err_str = str(e)
                             if "429" in err_str or "rate_limit" in err_str.lower():
-                                m = re.search(r"try again in ([\d\.]+)s", err_str)
-                                wait_s = float(m.group(1)) if m else 3.5
-                                wait_times.append(wait_s)
-                                print(f"  [Cartoon Director] ⚠️ 429 Rate limit on Key #{k_idx+1} ({model_name}). Rotating to next key...")
                                 continue
-                            else:
-                                break  # Model-level error, switch to next model
+                            break
+                    if batch_prompts:
+                        break
 
-                # If all keys on all models hit rate limits, wait for the shortest cooldown and retry
-                if wait_times and cooldown_attempt < max_cooldown_retries - 1:
-                    sleep_dur = min(max(wait_times), 8.0)
-                    print(f"  [Cartoon Director] ⏳ All keys cooling down. Sleeping {sleep_dur:.1f}s before retry (Attempt {cooldown_attempt+1}/{max_cooldown_retries})...")
-                    time.sleep(sleep_dur)
-                else:
-                    break
+                for i, sent in enumerate(batch_sents):
+                    vis = batch_prompts[i] if (i < len(batch_prompts) and batch_prompts[i] and len(batch_prompts[i].strip()) > 10) else f"Stick-figure scene illustrating: {sent}"
+                    full_prompt = (
+                        f"A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide 16:9 framing. "
+                        f"{vis}. Flat muted MS Paint bucket-fill colors, deliberately messy mouse-drawn linework. "
+                        f"Zero shading, zero 3D depth, zero gradients. Zero extra people, zero extra animals."
+                    )
+                    section_segs.append({
+                        "text": sent,
+                        "image_prompt": full_prompt
+                    })
 
-            # Deterministic sentence split fallback if all LLM attempts are exhausted
-            print(f"  [Cartoon Director] Notice: Using sentence fallback for section '{s_title}'.")
-            sentences = [st.strip() for st in re.split(r'(?<=[.!?])\s+', s_text) if st.strip()]
-            fallback_segs = []
-            for sent in sentences:
-                fallback_segs.append({
-                    "text": sent,
-                    "image_prompt": f"A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows stick figures illustrating: {sent}. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones."
-                })
-            return fallback_segs
+            return section_segs
 
         all_section_segs = []
         for s_title, s_text in sections:
