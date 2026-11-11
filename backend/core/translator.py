@@ -800,14 +800,13 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
      * Sun: Pale pastel yellow.
      * Backgrounds use solid, flat block colors with zero gradients and zero shading.
 
-3. SCRIPT-DRIVEN CHARACTER IDENTITY & MINIMALIST DETAILING:
-   - Characters are stick figures with oversized round white heads and thin black stick limbs, BUT when the script mentions a specific role or persona, give them minimal, iconic visual detailing:
-     * Professor / Scholar: Balding with sparse gray tufts of hair on the sides, small round wireframe glasses on the round white head, brown/tan trench coat or tweed jacket with a tie, holding a manila folder or book.
-     * Student / Young Adult: Messy hair tuft, backpack over stick shoulders, casual hoodie.
-     * Doctor / Scientist: Simple white lab coat, stethoscope around stick neck.
-     * Detective / Police: Beige trench coat or peaked cap, holding a small notepad or magnifying glass.
-     * Office Worker: Simple black necktie, briefcase.
-     * Caveman / Ancestor: Wild messy brown hair, crude animal skin tunic, stone spear.
+3. SCRIPT-DRIVEN CHARACTER IDENTITY & ULTRA-MINIMALIST STICK ANATOMY:
+   - ALL characters are literal 2D black stick figures with oversized round flat white paper heads (NO flesh tones) and thin black stick limbs:
+     * Protagonist / Narrator (Iconic Basically Primitive style): Oversized perfectly circular white head with bold black outline, bright orange spiky hair on top, two tiny black dot eyes, simple open/line mouth, and a pure minimalist black stick figure body (single thin black line torso, straight black stick arms, straight black stick legs). Absolutely ZERO clothing, ZERO hoodie, ZERO shirt, ZERO pants, completely flat 2D stick linework!
+     * Professor / Scholar: Circular white head with sparse gray side hair and tiny round wireframe glasses, thin black stick body holding a simple flat book or manila folder.
+     * Doctor / Scientist: Circular white head with glasses, simple flat white lab coat shape over thin black stick limbs.
+     * Office Worker: Circular white head, thin black stick body with a simple small black necktie.
+   - CRITICAL RULE: NEVER mention "hoodie", "jacket", "jeans", "shoes", or detailed clothing for the narrator/characters, as that causes image models to draw realistic 3D figures instead of pure stick figures! Keep them as pure stick figures with single-line limbs.
 
 4. DISTINCT IDENTITIES DURING CONVERSATIONS & INTERACTIONS:
    - When two or more characters appear in the same scene or dialogue, NEVER make them identical generic clones!
@@ -838,7 +837,7 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
 
    INSTRUCTIONS FOR THE BRACKETS:
    - Composition: Wide 16:9 landscape canvas, centered horizontal framing.
-   - Replace [SPECIFIC ACTION...] with character actions, their specific role details (e.g. 'professor with gray side hair, round glasses, and tan coat holding a folder', 'student with messy black hair and blue backpack looking confused'), and clear facial expressions. If animals appear, enforce 'pure solid white body fill, thin black stick legs, zero gray shading'.
+   - Replace [SPECIFIC ACTION...] with character actions: for the human narrator, always specify the iconic Basically Primitive stick figure with an oversized round white head, bright orange spiky hair, dot eyes, and a literal black stick figure body with zero clothing and zero hoodie. For other characters or scientists, specify minimal stick-figure details. If animals appear, enforce 'pure solid white body fill, thin black stick legs, zero gray shading'.
    - Replace [SPECIFIC ENVIRONMENTAL DETAILS] with muted background elements (e.g., 'the muted sandstone university archways, scribbled olive palm trees, and fluffy clouds with black ink borders', 'a muted beige room wall, gray couch, and lamp').
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
 
