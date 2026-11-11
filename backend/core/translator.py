@@ -887,61 +887,77 @@ Output strictly a JSON object with a single key 'segments':
         decoded_segments = []
         total_raw_segs = []
 
-        # Choose model: prefer high-capacity openai/gpt-oss-120b or fallback to qwen
-        pref_model = "openai/gpt-oss-120b"
+        # Intelligent multi-model & multi-key rotation to eliminate 429 rate limit errors
+        models_to_try = [
+            ("openai/gpt-oss-120b", 1500),
+            ("openai/gpt-oss-20b", 1200),
+            ("qwen/qwen3.8-27b", 600)  # Capped at 600 tokens to stay well below 1000 OTPM ceiling
+        ]
 
-        for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
-            try:
-                from groq import Groq
-                client = Groq(api_key=key)
+        def decode_single_section(s_title: str, s_text: str) -> list:
+            from groq import Groq
+            sec_prompt = f"Section Context: {s_title}. Discard any headers or timecodes; output ONLY clean spoken narration in '{lang}' and a low-fi MS Paint stick-figure image prompt for each sentence/action as a JSON object."
+            messages = [
+                {"role": "system", "content": system_prompt + f"\n\n{sec_prompt}"},
+                {"role": "user", "content": f"Please decode this story section into a JSON object with 'segments':\n\n{s_text}"}
+            ]
 
-                # Process each section to avoid rate limit truncation and guarantee 100% complete story coverage
-                all_section_segs = []
-                for s_title, s_text in sections:
-                    if not s_text.strip():
-                        continue
-                    sec_prompt = f"Section Context: {s_title}. Discard any headers or timecodes; output ONLY clean spoken narration in '{lang}' and a low-fi MS Paint stick-figure image prompt for each sentence/action."
-                    completion = client.chat.completions.create(
-                        model=pref_model,
-                        messages=[
-                            {"role": "system", "content": system_prompt + f"\n\n{sec_prompt}"},
-                            {"role": "user", "content": f"Narration text to decode into stick-figure animation scenes:\n\n{s_text}"}
-                        ],
-                        response_format={"type": "json_object"},
-                        temperature=0.2,
-                        max_tokens=1500
-                    )
-                    data = json.loads(completion.choices[0].message.content)
-                    all_section_segs.extend(data.get("segments", []))
+            max_cooldown_retries = 3
+            for cooldown_attempt in range(max_cooldown_retries):
+                wait_times = []
+                for model_name, max_toks in models_to_try:
+                    for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
+                        try:
+                            client = Groq(api_key=key)
+                            completion = client.chat.completions.create(
+                                model=model_name,
+                                messages=messages,
+                                response_format={"type": "json_object"},
+                                temperature=0.2,
+                                max_tokens=max_toks
+                            )
+                            data = json.loads(completion.choices[0].message.content)
+                            segs = data.get("segments", [])
+                            if segs:
+                                return segs
+                        except Exception as e:
+                            err_str = str(e)
+                            if "429" in err_str or "rate_limit" in err_str.lower():
+                                m = re.search(r"try again in ([\d\.]+)s", err_str)
+                                wait_s = float(m.group(1)) if m else 3.5
+                                wait_times.append(wait_s)
+                                print(f"  [Cartoon Director] ⚠️ 429 Rate limit on Key #{k_idx+1} ({model_name}). Rotating to next key...")
+                                continue
+                            else:
+                                break  # Model-level error, switch to next model
 
-                total_raw_segs = all_section_segs
-                break
-            except Exception as e:
-                err_str = str(e).lower()
-                print(f"  [Cartoon Director] Key #{k_idx+1} ({pref_model}) error: {e}. Trying fallback...")
-                # Try qwen fallback with smaller token limit
-                try:
-                    all_section_segs = []
-                    for s_title, s_text in sections:
-                        if not s_text.strip():
-                            continue
-                        completion = client.chat.completions.create(
-                            model="qwen/qwen3.8-27b",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": f"Narration text:\n\n{s_text}"}
-                            ],
-                            response_format={"type": "json_object"},
-                            temperature=0.2,
-                            max_tokens=750
-                        )
-                        data = json.loads(completion.choices[0].message.content)
-                        all_section_segs.extend(data.get("segments", []))
-                    total_raw_segs = all_section_segs
+                # If all keys on all models hit rate limits, wait for the shortest cooldown and retry
+                if wait_times and cooldown_attempt < max_cooldown_retries - 1:
+                    sleep_dur = min(max(wait_times), 8.0)
+                    print(f"  [Cartoon Director] ⏳ All keys cooling down. Sleeping {sleep_dur:.1f}s before retry (Attempt {cooldown_attempt+1}/{max_cooldown_retries})...")
+                    time.sleep(sleep_dur)
+                else:
                     break
-                except Exception as e2:
-                    print(f"  [Cartoon Director] Fallback error on Key #{k_idx+1}: {e2}")
-                    continue
+
+            # Deterministic sentence split fallback if all LLM attempts are exhausted
+            print(f"  [Cartoon Director] Notice: Using sentence fallback for section '{s_title}'.")
+            sentences = [st.strip() for st in re.split(r'(?<=[.!?])\s+', s_text) if st.strip()]
+            fallback_segs = []
+            for sent in sentences:
+                fallback_segs.append({
+                    "text": sent,
+                    "image_prompt": f"A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows stick figures illustrating: {sent}. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones."
+                })
+            return fallback_segs
+
+        all_section_segs = []
+        for s_title, s_text in sections:
+            if not s_text.strip():
+                continue
+            segs = decode_single_section(s_title, s_text)
+            all_section_segs.extend(segs)
+
+        total_raw_segs = all_section_segs
 
         # Format and assign timings
         cur_time = 0.0
