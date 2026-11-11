@@ -186,6 +186,22 @@ function App() {
     }
   }
 
+  const handleCancelJob = async () => {
+    if (!window.confirm("Do you want to discard this paused job and start fresh?")) return
+    if (jobId) {
+      try {
+        await fetch(`http://localhost:8000/api/cancel/${jobId}`, { method: 'POST' })
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    setJobId(null)
+    setStatus('')
+    setWaitingReview(false)
+    setScriptInfo(null)
+    setShowScriptEditor(false)
+  }
+
   const handleOpenScriptEditor = async () => {
     if (!jobId) return
     setShowScriptEditor(true)
@@ -844,12 +860,13 @@ function App() {
             )}
           </div>
 
-          <div className="review-actions-row">
+          <div className="review-actions-row" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <button
               type="button"
               className="btn-resume-pipeline"
               onClick={handleResume}
               disabled={isResuming}
+              style={{ flex: 2, minWidth: '260px' }}
             >
               {isResuming ? '⏳ Resuming...' : '▶️ OK, Resume Pipeline (Generate Audio & Video)'}
             </button>
@@ -860,8 +877,29 @@ function App() {
                 if (!showScriptEditor) handleOpenScriptEditor()
                 else setShowScriptEditor(false)
               }}
+              style={{ flex: 1, minWidth: '180px' }}
             >
               {showScriptEditor ? 'Hide Script Editor' : '📝 Open Script Editor in UI'}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelJob}
+              style={{
+                backgroundColor: '#dc2626',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 18px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Discard this job and start with a fresh or new script"
+            >
+              🗑️ Discard & Start Fresh Script
             </button>
           </div>
 

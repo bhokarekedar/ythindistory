@@ -641,13 +641,8 @@ def execute_resume_pipeline(job_id: str, state: dict):
             os.makedirs(ai_dir, exist_ok=True)
             for seg in segments:
                 img_path = os.path.join(ai_dir, f"seg_{seg['id']:04d}.jpg")
-                if os.path.exists(img_path) and os.path.getsize(img_path) > 1000:
-                    seg["use_ai_image"] = True
-                    seg["ai_image_path"] = img_path
-                elif (seg.get("use_ai_image") or channel_type == "cartoon_story") and seg.get("image_prompt"):
-                    if not os.path.exists(img_path) or os.path.getsize(img_path) < 1000:
-                        print(f"  [Cloudflare FLUX.1] Generating stick-figure visual for segment {seg['id']}...")
-                        img_gen.generate_image(seg["image_prompt"], img_path)
+                if (seg.get("use_ai_image") or channel_type == "cartoon_story") and seg.get("image_prompt"):
+                    img_gen.generate_image(seg["image_prompt"], img_path, target_width=1920, target_height=1080)
                     seg["use_ai_image"] = True
                     seg["ai_image_path"] = img_path
 
@@ -886,6 +881,14 @@ def resume_pipeline_endpoint(job_id: str, background_tasks: BackgroundTasks):
     job_status[job_id] = "Resuming pipeline (generating audio)..."
     background_tasks.add_task(execute_resume_pipeline, job_id, p_job)
     return {"status": "resumed", "job_id": job_id}
+
+@app.post("/api/cancel/{job_id}")
+def cancel_job_endpoint(job_id: str):
+    if job_id in job_status:
+        job_status[job_id] = "Cancelled by user"
+    if job_id in pending_jobs:
+        del pending_jobs[job_id]
+    return {"status": "cancelled", "job_id": job_id}
 
 @app.get("/api/script/{job_id}")
 def get_script_endpoint(job_id: str):

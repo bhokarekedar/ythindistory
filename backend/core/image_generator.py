@@ -30,21 +30,33 @@ class CloudflareImageGenerator:
             print(f"  [Cloudflare] Failed to auto-discover account ID: {e}")
         return None
 
-    def generate_image(self, prompt: str, output_path: str, max_retries: int = 3) -> Optional[str]:
+    def generate_image(self, prompt: str, output_path: str, max_retries: int = 3, target_width: int = 1920, target_height: int = 1080) -> Optional[str]:
         """
-        Generates an image from prompt and writes it directly to output_path.
+        Generates an image from prompt and writes it directly to output_path
+        in true 16:9 widescreen YouTube longform resolution (1920x1080).
         Returns output_path on success, None on failure.
         """
-        if not self.api_key or not self.account_id:
-            print("  [Cloudflare] Error: Missing CLOUDFARE_API_KEY or CLOUDFLARE_ACCOUNT_ID")
-            return None
-
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         
-        # If image already generated, return cached path
+        # If image already generated, check if it's already target resolution
         if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            return output_path
+            try:
+                from PIL import Image
+                with Image.open(output_path) as chk:
+                    if chk.size == (target_width, target_height):
+                        return output_path
+                    else:
+                        # Existing image was square (e.g. 1024x1024), convert it now!
+                        self._save_as_16_9(chk, output_path, target_width, target_height)
+                        print(f"  [Image Processor] 🔄 Upgraded existing image to 1920x1080: {output_path}")
+                        return output_path
+            except Exception:
+                pass
+
+        if not self.api_key or not self.account_id:
+            print("  [Cloudflare] Error: Missing CLOUDFARE_API_KEY or CLOUDFLARE_ACCOUNT_ID")
+            return None
 
         url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{self.model}"
         payload = json.dumps({"prompt": prompt}).encode("utf-8")
@@ -64,10 +76,12 @@ class CloudflareImageGenerator:
                     data = json.loads(resp.read().decode("utf-8"))
                     if data.get("success") and "result" in data and "image" in data["result"]:
                         import base64
+                        import io
+                        from PIL import Image
                         image_bytes = base64.b64decode(data["result"]["image"])
-                        with open(output_path, "wb") as f:
-                            f.write(image_bytes)
-                        print(f"  [Cloudflare AI] ✅ Image generated: {output_path}")
+                        raw_img = Image.open(io.BytesIO(image_bytes))
+                        self._save_as_16_9(raw_img, output_path, target_width, target_height)
+                        print(f"  [Cloudflare AI] ✅ Image generated in 1920x1080: {output_path}")
                         return output_path
                     else:
                         print(f"  [Cloudflare AI] API error: {data.get('errors')}")
@@ -77,3 +91,22 @@ class CloudflareImageGenerator:
                 time.sleep(2)
 
         return None
+
+    def _save_as_16_9(self, img, output_path: str, target_width: int = 1920, target_height: int = 1080):
+        from PIL import Image
+        w, h = img.size
+        target_aspect = target_width / target_height
+        current_aspect = w / h
+        if current_aspect > target_aspect:
+            new_w = int(h * target_aspect)
+            left = (w - new_w) // 2
+            img = img.crop((left, 0, left + new_w, h))
+        else:
+            new_h = int(w / target_aspect)
+            top = (h - new_h) // 2
+            img = img.crop((0, top, w, top + new_h))
+        
+        resized = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+        if resized.mode in ("RGBA", "P"):
+            resized = resized.convert("RGB")
+        resized.save(output_path, "JPEG", quality=95)

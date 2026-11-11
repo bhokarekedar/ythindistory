@@ -816,18 +816,29 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
      * Distinct clothing item or prop (e.g., one in a jacket holding a folder, the other in a t-shirt with a backpack).
      * Contrasting expressions and poses (e.g., one speaking actively with stick arm gesturing, the other listening with arms crossed or an eyebrow raised).
 
-5. NARRATION TEXT:
+5. ANIMAL & CREATURE VISUAL CONSISTENCY (STRICTLY PURE WHITE STICK-COMIC STYLE - NO REALISTIC OR SHADED ANIMALS):
+   - All animals, pets, and creatures (elephants, dogs, monkeys, cats, birds, etc.) MUST be drawn in the EXACT same simplistic stick-comic aesthetic as the human stick figures:
+     * Body Fill: Pure flat solid WHITE fill (like paper). NEVER gray, brown, textured, or realistically colored.
+     * Outlines: Bold black marker ink contour outlines.
+     * Limbs & Tails: Thin black stick legs, thin black stick arms, and thin curved stick tails.
+     * Faces: Minimalist cartoon dot eyes, simple black marker mouth/snout, zero 3D shading, zero fur/skin textures, and zero muscle contours.
+     * Example Elephant: "a minimalist stick-figure elephant with a pure solid flat white body, thin black stick legs, a simple curved white trunk with black outlines, and simple dot eyes (zero gray shading, zero 3D textures, flat white fill)".
+     * Example Dog: "a minimalist stick-figure dog with a pure solid flat white body, thin black stick legs, floppy ears, and black dot eyes (pure white fill, zero shading)".
+     * Example Monkey: "a minimalist stick-figure monkey with a pure solid flat white body, thin black stick limbs and long stick tail, and cute dot eyes (pure white fill, zero shading)".
+     * NEVER draw standard clip-art, Disney-style, or 3D shaded animals. They must look like a hand-drawn MS Paint webcomic stick creature!
+
+6. NARRATION TEXT:
    - Provide the narration text for each segment in '{lang}'.
    - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
    - If 'english': Write witty, punchy, conversational spoken English narration.
 
-6. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
+7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
    Every single segment MUST include an 'image_prompt' following this EXACT template:
-   "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [SPECIFIC ACTION, POSE, EXPRESSION, AND MINIMAL ROLE DETAILS LIKE COAT, HAIR, GLASSES, OR PROPS]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [SPECIFIC ENVIRONMENTAL DETAILS] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+   "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [SPECIFIC ACTION, POSE, EXPRESSION, AND MINIMAL ROLE DETAILS LIKE COAT, HAIR, GLASSES, OR PROPS. FOR ANIMALS: ALWAYS SPECIFY PURE SOLID WHITE BODY FILL, THIN BLACK STICK LEGS, ZERO GRAY/COLOR SHADING, AND ZERO TEXTURE]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [SPECIFIC ENVIRONMENTAL DETAILS] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
 
    INSTRUCTIONS FOR THE BRACKETS:
    - Composition: Wide 16:9 landscape canvas, centered horizontal framing.
-   - Replace [SPECIFIC ACTION...] with character actions, their specific role details (e.g. 'professor with gray side hair, round glasses, and tan coat holding a folder', 'student with messy black hair and blue backpack looking confused'), and clear facial expressions.
+   - Replace [SPECIFIC ACTION...] with character actions, their specific role details (e.g. 'professor with gray side hair, round glasses, and tan coat holding a folder', 'student with messy black hair and blue backpack looking confused'), and clear facial expressions. If animals appear, enforce 'pure solid white body fill, thin black stick legs, zero gray shading'.
    - Replace [SPECIFIC ENVIRONMENTAL DETAILS] with muted background elements (e.g., 'the muted sandstone university archways, scribbled olive palm trees, and fluffy clouds with black ink borders', 'a muted beige room wall, gray couch, and lamp').
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
 
@@ -837,7 +848,7 @@ Output strictly a JSON object with a single key 'segments':
     {{
       "id": 1,
       "text": "spoken narration line in target language",
-      "image_prompt": "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [action with character details]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [details] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+      "image_prompt": "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [action with character/animal details]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [details] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
     }}
   ]
 }}"""
