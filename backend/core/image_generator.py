@@ -64,7 +64,16 @@ class CloudflareImageGenerator:
             print("  [Cloudflare] Error: No Cloudflare accounts configured in .env")
             return None
 
-        payload = json.dumps({"prompt": prompt}).encode("utf-8")
+        # Enforce stick-comic consistency for animals if in stick-figure MS Paint mode
+        refined_prompt = prompt
+        p_lower = prompt.lower()
+        if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint"]):
+            animal_keywords = ["animal", "elephant", "dog", "cat", "monkey", "horse", "bear", "lion", "tiger", "bird", "rabbit", "creature", "pet"]
+            if any(ak in p_lower for ak in animal_keywords):
+                if "zero gray shading" not in p_lower and "pure solid flat white body" not in p_lower:
+                    refined_prompt += " Crucially, all animals must be drawn in the same stick comic style: pure flat solid white body fill, thin black stick legs, bold black outlines, zero 3D shading, zero gray color, zero fur texture, completely flat 2D MS Paint webcomic."
+
+        payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
         # Try across all available accounts in rotation
         for _ in range(len(self.accounts)):

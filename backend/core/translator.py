@@ -778,11 +778,11 @@ RULES:
         lang = target_language.lower()
         print(f"\n  [Cartoon Director] 🎨 Decoding story script into stick-figure MS Paint scenes ({lang.capitalize()})...")
 
-        system_prompt = f"""You are an elite YouTube webcomic director and storyboard animator specializing in viral, high-retention 2D explainer storytelling (inspired by Basically Primitive, Sam O'Nella Academy, and Casually Explained).
+        system_prompt = f"""You are an elite YouTube webcomic director and animator specializing in viral, high-retention stick-figure storytelling (inspired by Basically Primitive, Sam O'Nella Academy, and Casually Explained).
 
-Your mission is to transform the user's narration script into sequential, rapid-paced animation scene segments.
+Your mission is to convert the user's story script into sequential, rapid-paced animation scene segments.
 
-CRITICAL VISUAL STYLE BIBLE & ANIMATION RULES:
+CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
 
 1. FREQUENT VISUAL CUTS (CHANGE PER SENTENCE OR ACTION BEAT):
    - Audience retention drops if an image stays on screen for too long.
@@ -792,51 +792,54 @@ CRITICAL VISUAL STYLE BIBLE & ANIMATION RULES:
      * Cut A: The professor passionately explaining.
      * Cut B: The student staring with spiral dizzy eyes.
 
-2. UNIVERSAL 2D WEBCOMIC THEME & PALETTE:
-   - Hand-drawn 2D minimalist explainer webcomic aesthetic with bold black marker contour outlines.
-   - Solid flat block colors with zero 3D shading, zero gradients, and zero realistic textures.
-   - Controlled muted pastel palette:
+2. COLOR PALETTE (STRICTLY MUTED & SOFT - NO BRIGHT/NEON COLOURS):
+   - NEVER use bright, saturated, or neon colors. The palette MUST be muted, matte, and understated (like Basically Primitive):
      * Sky: Pale desaturated powder blue.
-     * Nature/Foliage: Soft sage green, pale olive, or muted mint green.
-     * Ground/Buildings: Muted warm beige, sandy limestone, or soft earth tan.
+     * Grass / Foliage: Soft sage green, pale olive, or muted mint green.
+     * Buildings / Dirt: Muted warm beige, sandy limestone, or soft earth tan.
      * Sun: Pale pastel yellow.
-     * Interiors/Walls: Soft cream, muted tan, or light slate gray.
+     * Backgrounds use solid, flat block colors with zero gradients and zero shading.
 
-3. UNIVERSAL LIVING ENTITY DESIGN (CHARACTERS & CREATURES):
-   - ALL living subjects in this universe (humans, animals, creatures) share the EXACT same visual identity:
-     * Heads & Bodies: Pure solid flat PAPER-WHITE fill (like unpainted paper). Zero skin tones, zero flesh/peach color, zero fur textures, zero gray/brown shading.
-     * Features: Simple expressive black dot eyes, minimal black line mouths, and bold black marker outlines.
-     * Limbs: Thin black stick limbs (straight line arms and legs with no complex joint anatomy).
-     * Iconic Role Detailing: Add minimal recognizable attire or props ONLY when demanded by the story (e.g. scientist in white lab coat with wireframe glasses, office worker with black necktie at a desk, student with backpack, astronaut with simple fishbowl helmet).
-     * Non-human creatures (if present in the script): Must also be drawn as white stick-comic figures with pure white bodies, thin stick legs, and bold black outlines (e.g. white stick elephant, white stick dog, white stick bird). NEVER realistic, shaded, or furry.
+3. SCRIPT-DRIVEN CHARACTER IDENTITY & MINIMALIST DETAILING:
+   - Characters are stick figures with oversized round white heads and thin black stick limbs, BUT when the script mentions a specific role or persona, give them minimal, iconic visual detailing:
+     * Professor / Scholar: Balding with sparse gray tufts of hair on the sides, small round wireframe glasses on the round white head, brown/tan trench coat or tweed jacket with a tie, holding a manila folder or book.
+     * Student / Young Adult: Messy hair tuft, backpack over stick shoulders, casual hoodie.
+     * Doctor / Scientist: Simple white lab coat, stethoscope around stick neck.
+     * Detective / Police: Beige trench coat or peaked cap, holding a small notepad or magnifying glass.
+     * Office Worker: Simple black necktie, briefcase.
+     * Caveman / Ancestor: Wild messy brown hair, crude animal skin tunic, stone spear.
 
-4. SENIOR ANIMATION DIRECTOR COMPOSITION RULES (PREVENTING VISUAL GLITCHES):
-   - RULE A (MAX 1-2 HERO SUBJECTS PER FRAME):
-     * NEVER cram 3 or more distinct characters/subjects doing separate micro-actions into one shot (it causes limb hallucinations and fused subjects).
-     * Keep each frame focused on 1 primary action or a simple 2-subject interaction with a clear focal point.
-   - RULE B (SIMPLE STICK ANATOMY ONLY — NO COMPLEX JOINTS):
-     * Stick figures have straight line limbs with NO elbows or wrists.
-     * NEVER request jointed micro-gestures like "hand on chin", "fingers scratching head", or complex anatomical bends.
-     * Use bold, iconic stick poses: straight arms at sides, one arm pointing, arms raised in excitement (\\o/), or sitting flat.
-   - RULE C (NO FLOATING ORGANS OR ABSTRACT METAPHORS):
-     * NEVER prompt for floating internal organs (like "brain hovering above head") or literal body metaphors.
-     * Use clean cartoon iconography: a glowing yellow cartoon lightbulb for ideas, a question mark for confusion, or an exclamation mark for shock.
-   - RULE D (THEME-RELEVANT SUBJECTS ONLY):
-     * Describe ONLY the subjects and environment that belong in that specific scene. Do not mention irrelevant subjects (e.g. never mention animals in human office scenes).
+4. DISTINCT IDENTITIES DURING CONVERSATIONS & INTERACTIONS:
+   - When two or more characters appear in the same scene or dialogue, NEVER make them identical generic clones!
+   - Give each character a distinct identity matching the script:
+     * Distinct hair or headwear (e.g., one has glasses and gray hair, the other has messy black hair or a cap).
+     * Distinct clothing item or prop (e.g., one in a jacket holding a folder, the other in a t-shirt with a backpack).
+     * Contrasting expressions and poses (e.g., one speaking actively with stick arm gesturing, the other listening with arms crossed or an eyebrow raised).
 
-5. NARRATION TEXT:
+5. ANIMAL & CREATURE VISUAL CONSISTENCY (STRICTLY PURE WHITE STICK-COMIC STYLE - NO REALISTIC OR SHADED ANIMALS):
+   - All animals, pets, and creatures (elephants, dogs, monkeys, cats, birds, etc.) MUST be drawn in the EXACT same simplistic stick-comic aesthetic as the human stick figures:
+     * Body Fill: Pure flat solid WHITE fill (like paper). NEVER gray, brown, textured, or realistically colored.
+     * Outlines: Bold black marker ink contour outlines.
+     * Limbs & Tails: Thin black stick legs, thin black stick arms, and thin curved stick tails.
+     * Faces: Minimalist cartoon dot eyes, simple black marker mouth/snout, zero 3D shading, zero fur/skin textures, and zero muscle contours.
+     * Example Elephant: "a minimalist stick-figure elephant with a pure solid flat white body, thin black stick legs, a simple curved white trunk with black outlines, and simple dot eyes (zero gray shading, zero 3D textures, flat white fill)".
+     * Example Dog: "a minimalist stick-figure dog with a pure solid flat white body, thin black stick legs, floppy ears, and black dot eyes (pure white fill, zero shading)".
+     * Example Monkey: "a minimalist stick-figure monkey with a pure solid flat white body, thin black stick limbs and long stick tail, and cute dot eyes (pure white fill, zero shading)".
+     * NEVER draw standard clip-art, Disney-style, or 3D shaded animals. They must look like a hand-drawn MS Paint webcomic stick creature!
+
+6. NARRATION TEXT:
    - Provide the narration text for each segment in '{lang}'.
    - If 'hindi': Write natural, conversational spoken Hindi story narration in clean Devanagari script.
    - If 'english': Write witty, punchy, conversational spoken English narration.
 
-6. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
+7. MANDATORY PROMPT TEMPLATE FOR EVERY SEGMENT:
    Every single segment MUST include an 'image_prompt' following this EXACT template:
-   "A 2D digital illustration in clean minimalist Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. The subjects are minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [SPECIFIC ACTION, POSE, EXPRESSION, AND MINIMAL ROLE ATTIRE OR PROPS]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [SPECIFIC SCENERY/ENVIRONMENT DETAILS] are drawn with clean, flat block colors and black ink outlines, resembling a high-retention 2D YouTube explainer webcomic."
+   "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [SPECIFIC ACTION, POSE, EXPRESSION, AND MINIMAL ROLE DETAILS LIKE COAT, HAIR, GLASSES, OR PROPS. FOR ANIMALS: ALWAYS SPECIFY PURE SOLID WHITE BODY FILL, THIN BLACK STICK LEGS, ZERO GRAY/COLOR SHADING, AND ZERO TEXTURE]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [SPECIFIC ENVIRONMENTAL DETAILS] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
 
    INSTRUCTIONS FOR THE BRACKETS:
    - Composition: Wide 16:9 landscape canvas, centered horizontal framing.
-   - Replace [SPECIFIC ACTION...] with 1-2 hero subjects, their action, pure white body fill, and simple stick poses.
-   - Replace [SPECIFIC SCENERY...] with contextual 2D background elements matching the scene (e.g. 'a simple beige office wall, flat wooden desk, and coffee mug', 'a pale powder blue sky and soft sage green grass').
+   - Replace [SPECIFIC ACTION...] with character actions, their specific role details (e.g. 'professor with gray side hair, round glasses, and tan coat holding a folder', 'student with messy black hair and blue backpack looking confused'), and clear facial expressions. If animals appear, enforce 'pure solid white body fill, thin black stick legs, zero gray shading'.
+   - Replace [SPECIFIC ENVIRONMENTAL DETAILS] with muted background elements (e.g., 'the muted sandstone university archways, scribbled olive palm trees, and fluffy clouds with black ink borders', 'a muted beige room wall, gray couch, and lamp').
    - NEVER place words, letters, text overlays, or speech bubbles inside the image itself.
 
 Output strictly a JSON object with a single key 'segments':
@@ -845,7 +848,7 @@ Output strictly a JSON object with a single key 'segments':
     {{
       "id": 1,
       "text": "spoken narration line in target language",
-      "image_prompt": "A 2D digital illustration in clean minimalist Basically Primitive webcomic style, 16:9 widescreen YouTube longform framing. The subjects are minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [action with character details]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [details] are drawn with clean, flat block colors and black ink outlines, resembling a high-retention 2D YouTube explainer webcomic."
+      "image_prompt": "A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows [action with character/animal details]. The background uses solid, flat, muted desaturated block colors with absolutely no shading and no bright neon tones. Crucially, the environmental details like [details] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
     }}
   ]
 }}"""
@@ -973,8 +976,8 @@ Output strictly a JSON object with a single key 'segments':
             cur_time = end_t
             
             prompt = s.get("image_prompt", "")
-            if not prompt or "MS Paint" not in prompt:
-                prompt = f"A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [a stick figure expressing: {seg_text[:80]}]. The background uses solid, flat, muted desaturated block colors with absolutely no shading. Crucially, the environmental details like [crude walls and scribbled background items] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
+            if not prompt or len(prompt.strip()) < 20:
+                prompt = f"A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen YouTube longform framing. All characters and animals are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows a minimalist stick-figure character with clean simple gestures. The background uses solid, flat, muted desaturated block colors with absolutely no shading and zero text overlays. Crucially, the environmental details are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing."
 
             seg_dict = {
                 "id": len(decoded_segments) + 1,
@@ -1007,7 +1010,7 @@ Output strictly a JSON object with a single key 'segments':
                     "end": end_t,
                     "text": line,
                     lang: line,
-                    "image_prompt": f"A 2D digital illustration in a child-like, low-fidelity MS Paint style. The characters are basic stick figures with large, perfectly round white heads, thin black stick limbs, and simple, expressive facial features. The scene shows [a stick figure expressing: {line[:80]}]. The background uses solid, flat block colors with absolutely no shading. Crucially, the environmental details like [the green tree leaves and bushes] are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing.",
+                    "image_prompt": f"A 2D digital illustration in a child-like, low-fidelity MS Paint style, 16:9 widescreen. All characters are basic minimalist stick-comic figures with pure solid flat white bodies, thin black stick limbs, bold black marker outlines, and simple expressive facial features. The scene shows a minimalist stick-figure character with clean simple gestures. The background uses solid, flat block colors with absolutely no shading and zero text overlays. Crucially, the environmental details like the green tree leaves and bushes are drawn with deliberately messy, scribbled linework, resembling a poorly drawn webcomic or a kid's drawing.",
                     "use_ai_image": True
                 })
 
