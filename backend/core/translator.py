@@ -851,10 +851,11 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
        - House / Bedroom: Simple wooden bed, window showing outdoors, wooden floorboards.
      * All scenery drawn with flat, muted MS Paint bucket-fill colors (powder blue, sage green, sandy beige, soft slate gray, muted rust). NO gradients, NO 3D shading.
 
-   - NATURAL POSES & FURNITURE INTERACTIONS (NO STANDING ON TABLES):
+   - NATURAL POSES, FURNITURE & ANIMAL INTERACTIONS:
      * If a character is sitting: Describe them as "sitting on a simple chair behind a wooden desk with stick arms resting on the tabletop". NEVER use words like "perched on a rectangle" or "standing on a table".
      * If a character is standing: They stand on the flat floor or ground with feet touching the ground line.
      * If reading or holding something: Stick arms extend holding the specific prop (e.g. "holding an open book", "pointing toward the horizon").
+     * BIRD & ANIMAL INTERACTIONS (STRICT CONTACT PHYSICS): Stick figures do NOT have shoulders. NEVER describe birds or animals as "perched on the shoulder" (this causes AI models to float the bird in mid-air). Instead, describe the stick figure as "holding out an outstretched stick arm horizontally with the bird firmly perched on their arm or hand with feet gripping it" or have the animal "sitting on the solid ground next to the stick figure". Non-flying animals must NEVER hover or float in mid-air.
 
    - VISUAL PROGRESSION & SHOT DIVERSITY (NO REPEATING STATIC SHOTS):
      * NEVER generate two identical static poses for consecutive sentences that describe the same character!
@@ -871,10 +872,11 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
        NEVER bury key story animals behind giant buildings or generic full-body standing poses, or the AI will omit them!
 
    - SCRIPT-DRIVEN CHARACTER AGE & IDENTITY:
-     * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, tiny dot eyes, simple line mouth, thin black stick limbs.
-     * Young Narrator: Circular white head, spiky orange or black hair, tiny dot eyes, simple line mouth, thin black stick limbs.
-     * Scientist / Doctor: Circular white head with glasses, simple flat white lab coat shape over thin stick limbs.
-     * Historical King / Emperor: Circular white head, simple flat cartoon crown on stick head.
+     * Old Person / Elder / Professor: Circular white head, sparse gray hair tufts on the sides, small round wireframe glasses, two distinct solid black dot eyes, simple line mouth, thin black stick limbs.
+     * Young Narrator: Circular white head, spiky orange or black hair, two distinct solid black dot eyes, simple line mouth, thin black stick limbs.
+     * Scientist / Doctor: Circular white head with glasses, two distinct solid black dot eyes, simple flat white lab coat shape over thin stick limbs.
+     * Historical King / Emperor: Circular white head, simple flat cartoon crown on stick head, two distinct solid black dot eyes.
+     * MANDATORY EYES & NO BLANK FACES: Every human stick figure MUST have two distinct solid black dot eyes in the center of their head. NEVER omit the eyes, and NEVER use words like "blank face", "blank head", or "faceless".
      * ALL characters MUST strictly remain 2D stick figures with circular flat white heads (NO flesh tones, NO realistic faces).
 
    - STRICT COUNT: Always state the EXACT number of subjects (e.g. 'only one stick figure', 'only two subjects: one stick figure and one dog'). NEVER use plural words like 'all characters' or 'all animals'.

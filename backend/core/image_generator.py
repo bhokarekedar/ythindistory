@@ -82,17 +82,35 @@ class CloudflareImageGenerator:
         )
         # Sanitize bare "stick humans" to ensure clothed figures instead of naked mannequins
         refined_prompt = re.sub(r'(?i)\bstick humans?\b', 'stick figures wearing plain shirts', refined_prompt)
+
+        # 3. Sanitize destructive "blank face / blank head" phrases that cause AI models to omit eyes
+        # "blank white face" causes diffusion models to paint an empty featureless void. Replace with explicit eyes:
+        refined_prompt = re.sub(
+            r'(?i)\b(?:pure\s+)?blank\s+(?:paper-white\s+)?(?:white\s+)?(?:circular\s+head|face|head)\b',
+            'white circular head with two visible solid black dot eyes',
+            refined_prompt
+        )
+
+        # 4. Correct "shoulder perching" on stick figures:
+        # 2D stick figures have narrow single-line shoulders, which causes diffusion models to float animals in mid-air.
+        # Direct the creature to an outstretched stick arm/hand with claws gripping it, or solid ground:
+        refined_prompt = re.sub(
+            r'(?i)\b(?:perched|sitting|lands?|resting)\s+(?:directly\s+)?on\s+(?:the\s+)?(?:stick\s+figure[\x27s]*|narrator[\x27s]*|human[\x27s]*|person[\x27s]*)?\s*shoulder(?:[\x27s]*)?\b',
+            "perched firmly on top of the stick figure\x27s outstretched stick arm with claws gripping the arm",
+            refined_prompt
+        )
+
         p_lower = refined_prompt.lower()
         if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive", "webcomic"]):
             # Universal, high-impact constraints applicable across any topic, script, or genre
+            # Kept concise (< 500 chars) to prevent truncating scene subjects, animals, or actions
             rules = []
             if "zero shading" not in p_lower:
-                rules.append("Low-effort 2D MS Paint style, thick black outlines, flat bucket-fill colors. ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH.")
-            rules.append("HUMAN CHARACTERS ONLY: Any human stick figure MUST be a pure 2D minimalist stick figure with an uncolored, pure blank paper-white circular head (#FFFFFF), two tiny black dot eyes, thin black stick limbs (single black line arms and legs), and a plain white shirt. ABSOLUTELY ZERO FLESH TONES, ZERO SKIN COLOR, ZERO PEACH OR TAN FACES, ZERO REALISTIC CARTOON HANDS, ZERO FINGERS, ZERO HUMAN EARS, ZERO REALISTIC ANATOMY, ZERO UNDERWEAR.")
-            rules.append("ANIMALS & CREATURES: All non-human creatures, animals, pets, and wildlife MUST have authentic animal heads and bodies (proper snout, muzzle, whiskers, ears, beak, fur, paws, flippers, or hooves). ANIMALS NEVER HAVE CIRCULAR HUMAN STICK HEADS, NEVER HAVE HUMAN MOUTHS, AND NEVER WEAR SHIRTS. Zero human-animal hybrids, zero centaurs.")
-            rules.append("PHYSICAL GRAVITY & PERCHING: All subjects obey gravity. Land creatures must have feet/paws on solid ground. Any creature in mid-air MUST be actively flying with wings spread wide. Non-flying birds must be perched with claws gripping a shoulder, branch, or ground. ABSOLUTELY ZERO HOVERING IN MID-AIR, ZERO STANDING ON NOTHING.")
-            rules.append("DISTANCED 16:9 FRAMING: Camera at a distance, subjects vertically centered on ground with generous 30% empty sky headroom above, full bodies visible in frame. Never draw tall subjects touching borders.")
-            rules.append("ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO ONOMATOPOEIA, ZERO SOUND EFFECTS, ZERO COMIC LETTERING, ZERO SPEECH BUBBLES, ZERO FLOATING SYMBOLS.")
+                rules.append("Low-effort 2D MS Paint style, flat bucket fill, zero shading/gradients/3D.")
+            rules.append("HUMANS: 2D stick figures, uncolored white circular head with TWO DISTINCT SOLID BLACK DOT EYES in center of face (never a faceless blank void), thin black stick limbs, plain shirt. Zero flesh tones/realistic hands/underwear.")
+            rules.append("ANIMALS: Authentic 2D cartoon animal anatomy (beaks, fur, paws, snouts), never human stick faces or shirts.")
+            rules.append("PHYSICS: All subjects grounded or perched on arms/branches/ground, never hovering in mid-air.")
+            rules.append("DISTANCED 16:9: Camera at a distance, generous sky headroom, full bodies in frame. Zero text or speech bubbles.")
 
             suffix = " " + " ".join(rules)
             # Ensure total prompt stays safely under Cloudflare's 2048 character limit
