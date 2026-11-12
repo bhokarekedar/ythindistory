@@ -86,10 +86,18 @@ class CloudflareImageGenerator:
             if "headroom" not in p_lower and "wide shot" not in p_lower:
                 refined_prompt += " Extreme wide long shot, centered 16:9 composition with ample empty headroom above and wide ground below, entire bodies visible in middle vertical third."
 
-            # 4. Enforce flat animal style & full bodies (no severed heads)
-            refined_prompt += " All characters and animals MUST be drawn full body with complete head, torso, and legs. Zero floating or severed heads."
+            # 4. Enforce flat style & full bodies (no severed heads)
+            refined_prompt += " All characters, animals, and creatures MUST be drawn full body with complete head, torso, and limbs. Zero floating or severed heads."
 
-            # 5. Strict negative constraint: Zero text, zero speech bubbles
+            # 5. Universal Physical Gravity & Grounding (generic across all subjects, animals, and objects)
+            refined_prompt += (
+                " STRICT PHYSICAL GRAVITY & GROUNDING: All subjects, animals, humans, and props MUST obey gravity and be physically grounded. "
+                "All land creatures must have their feet or paws firmly planted on a visible solid surface (ground, floor, chair, rock). "
+                "Any creature in the air must be actively flying with spread wings. All props and objects must rest on solid surfaces. "
+                "ABSOLUTELY ZERO FLOATING SUBJECTS, ZERO UNGROUNDED ANIMALS, ZERO HOVERING IN MID-AIR, ZERO LEVITATION."
+            )
+
+            # 6. Strict negative constraint: Zero text, zero speech bubbles
             refined_prompt += " ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO SPEECH BUBBLES, ZERO THOUGHT BUBBLES. Pure visual drawing with no written text."
 
         payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
