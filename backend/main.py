@@ -653,6 +653,8 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 json.dump(segments, f, indent=4, ensure_ascii=False)
 
         aligned_audio_segments = []
+        cur_audio_cursor = 0.0
+
         for i, seg in enumerate(segments):
             text = seg.get(target_lang, "").strip()
             if not text or text.lower() in ["translation/rewrite failed", "error", "failed", "[skip_promo]", "skip_promo"]:
@@ -666,6 +668,24 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 print(f"  [TTS] Generating Audio for Segment {seg['id']} ({i+1}/{len(segments)})...")
                 tts.generate_audio(seg["id"], text)
 
+            # Option 1: Zero-drift real audio timing directly from the generated TTS WAV file!
+            real_dur = 0.0
+            if os.path.exists(audio_path):
+                try:
+                    import wave
+                    with wave.open(audio_path, "r") as wf:
+                        real_dur = round(wf.getnframes() / float(wf.getframerate()), 2)
+                except Exception as e:
+                    print(f"  [TTS Warning] Could not measure audio duration for {audio_path}: {e}")
+            
+            if real_dur <= 0.0:
+                real_dur = round(seg.get("end", 0.0) - seg.get("start", 0.0), 2)
+
+            seg["start"] = round(cur_audio_cursor, 2)
+            seg["end"] = round(cur_audio_cursor + real_dur, 2)
+            seg["duration"] = real_dur
+            cur_audio_cursor = seg["end"]
+
             aligned_audio_segments.append({
                 "id": seg["id"],
                 "start": seg["start"],
@@ -678,6 +698,10 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 "use_ai_image": seg.get("use_ai_image", False),
                 "ai_image_path": seg.get("ai_image_path", None)
             })
+
+        # Persist the 100% accurate, real-measured audio timestamps to disk for UI and sync
+        with open(script_path, "w", encoding="utf-8") as f:
+            json.dump(segments, f, indent=4, ensure_ascii=False)
 
         # For cartoon_story: Pause after generating voiceover and images for Visual Storyboard Review!
         if channel_type == "cartoon_story":

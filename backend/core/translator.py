@@ -967,7 +967,10 @@ Style rules:
 
         def est_dur(text: str) -> float:
             words = len(text.split())
-            return max(1.2, round(words / 2.3, 2))
+            commas = text.count(",") + text.count("—") + text.count(";")
+            sentence_ends = text.count(".") + text.count("?") + text.count("!")
+            # Natural speech model accounting for punctuation pauses: 155-160 WPM + punctuation breathing pauses
+            return max(1.5, round((words / 2.6) + (0.35 * commas) + (0.60 * sentence_ends), 2))
 
         def split_long_sentence(sent: str, is_hook: bool = False) -> list:
             max_words = 7 if is_hook else 17
