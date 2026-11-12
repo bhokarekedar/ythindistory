@@ -88,7 +88,7 @@ class CloudflareImageGenerator:
             rules = []
             if "zero shading" not in p_lower:
                 rules.append("Low-effort 2D MS Paint style, thick black outlines, flat bucket-fill colors. ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH.")
-            rules.append("HUMAN CHARACTERS ONLY: Human stick figures MUST have an uncolored, pure blank white circular head (#FFFFFF) with two tiny black dot eyes, wearing a plain white shirt and long black stick legs. The figure stands upright on two straight black stick legs. ABSOLUTELY ZERO UNDERWEAR, ZERO UNDERPANTS, ZERO NAKED PELVIS, ZERO BROKEN LIMBS.")
+            rules.append("HUMAN CHARACTERS ONLY: Any human stick figure MUST be a pure 2D minimalist stick figure with an uncolored, pure blank paper-white circular head (#FFFFFF), two tiny black dot eyes, thin black stick limbs (single black line arms and legs), and a plain white shirt. ABSOLUTELY ZERO FLESH TONES, ZERO SKIN COLOR, ZERO PEACH OR TAN FACES, ZERO REALISTIC CARTOON HANDS, ZERO FINGERS, ZERO HUMAN EARS, ZERO REALISTIC ANATOMY, ZERO UNDERWEAR.")
             rules.append("ANIMALS & CREATURES: All non-human creatures, animals, pets, and wildlife MUST have authentic animal heads and bodies (proper snout, muzzle, whiskers, ears, beak, fur, paws, flippers, or hooves). ANIMALS NEVER HAVE CIRCULAR HUMAN STICK HEADS, NEVER HAVE HUMAN MOUTHS, AND NEVER WEAR SHIRTS. Zero human-animal hybrids, zero centaurs.")
             rules.append("PHYSICAL GRAVITY & PERCHING: All subjects obey gravity. Land creatures must have feet/paws on solid ground. Any creature in mid-air MUST be actively flying with wings spread wide. Non-flying birds must be perched with claws gripping a shoulder, branch, or ground. ABSOLUTELY ZERO HOVERING IN MID-AIR, ZERO STANDING ON NOTHING.")
             rules.append("DISTANCED 16:9 FRAMING: Camera at a distance, subjects vertically centered on ground with generous 30% empty sky headroom above, full bodies visible in frame. Never draw tall subjects touching borders.")
@@ -172,39 +172,27 @@ class CloudflareImageGenerator:
             arr = np.array(img.convert("RGB"))
 
             # 1. Detect Character / Subject Presence
-            # Human characters in webcomic style have uncolored paper-white heads/shirts and/or orange hair
-            white = np.all(arr > 230, axis=-1)
+            # Detect narrator signature: spiky orange hair
             orange = (arr[:, :, 0] > 175) & (arr[:, :, 1] < 135) & (arr[:, :, 2] < 85)
-            char_mask = white | orange
+            orange_rows = np.where(np.sum(orange, axis=1) > 8)[0]
 
-            # Exclude rows where white covers > 50% of width (pure white background)
-            row_char_counts = np.sum(char_mask, axis=1)
-            char_rows = np.where((row_char_counts > 10) & (row_char_counts < 0.50 * w))[0]
-
-            if len(char_rows) > 0:
-                # Subject detected!
-                char_top = int(char_rows[0])
-                char_bottom = int(char_rows[-1])
-                # Character head/hair starts slightly above detected torso/face
-                head_top = max(0, char_top - 40)
-                # Legs and ground contact extend below torso
-                feet_bottom = min(h, char_bottom + 180)
-
-                # Center the 16:9 crop window vertically around the character
+            if len(orange_rows) > 0:
+                # Orange hair precisely locates the narrator head!
+                head_top = max(0, int(orange_rows[0]) - 15)
+                # Headroom reservation: aim for 40px above hair top
+                desired_top = max(0, head_top - 40)
+                # Ground/feet extend ~500px below hair top
+                feet_bottom = min(h, head_top + 500)
                 center_y = (head_top + feet_bottom) // 2
                 top = center_y - crop_h // 2
-
-                # Enforce headroom: NEVER scalp the head
-                if top > max(0, head_top - 25):
-                    top = max(0, head_top - 25)
-
-                # Enforce ground/feet: if there is headroom to spare, shift down to preserve feet
-                if feet_bottom > top + crop_h and top < max(0, head_top - 25):
-                    shift = min(feet_bottom - (top + crop_h), (head_top - 25) - top)
-                    top += max(0, shift)
+                if top > desired_top:
+                    top = desired_top
+                # If character is low in the frame, shift down to keep feet
+                if feet_bottom > top + crop_h:
+                    top = min(feet_bottom - crop_h, head_top - 20)
             else:
-                # 2. General Scenery / Animal Detection
-                # Measure content divergence from top-corner background
+                # Check for white circular heads with black marker outlines (avoiding clouds)
+                # Look for high contrast / outline presence
                 gray = np.array(img.convert("L"))
                 bg_val = float(np.mean(gray[:25, :25]))
                 diff = np.abs(gray.astype(float) - bg_val)
@@ -212,15 +200,13 @@ class CloudflareImageGenerator:
                 content_rows = np.where(row_density > 20)[0]
 
                 if len(content_rows) > 0 and content_rows[0] > 60:
-                    # Clear empty sky exists at top: honor headroom
                     desired_top = max(0, int(content_rows[0]) - 35)
                     center_y = (int(content_rows[0]) + int(content_rows[-1])) // 2
                     top = center_y - crop_h // 2
                     if top > desired_top:
                         top = desired_top
                 else:
-                    # Full environment scene (trees, room, forest, landscape touching top):
-                    # Natural cinematic crop positioned to frame the lower-middle action/ground
+                    # Full environment scene: center crop
                     top = int(0.50 * (h - crop_h))
 
             # Clamp securely within [0, h - crop_h]
