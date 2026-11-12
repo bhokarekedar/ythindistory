@@ -508,10 +508,16 @@ Identify all characters, villains, victims, and crucial props/locations. Be thor
 
             # Duration & word-count pacing check (prevent voiceover from spilling into next scene)
             dur = 0.0
-            if "start" in src and "end" in src:
-                dur = float(src["end"]) - float(src["start"])
-            elif "duration" in src:
-                dur = float(src["duration"])
+            if "start" in src and "end" in src and src["start"] is not None and src["end"] is not None:
+                try:
+                    dur = float(src["end"]) - float(src["start"])
+                except (ValueError, TypeError):
+                    dur = 0.0
+            elif "duration" in src and src["duration"] is not None:
+                try:
+                    dur = float(src["duration"])
+                except (ValueError, TypeError):
+                    dur = 0.0
             if dur > 0.5:
                 word_count = len(trans_text.split())
                 max_allowed_words = max(8, int(round(dur * 3.0)))
@@ -947,18 +953,22 @@ Output strictly a JSON object with a single key 'segments':
 
         # Focused system instructions for rapid, reliable JSON output across all scene batches
         batch_system_prompt = """You are a storyboard director for a 2D stick-figure YouTube animation channel (Basically Primitive / Casually Explained style).
-Your task is to generate a visual scene description for each provided narration beat.
+Your task is to generate a visual scene description and cinematic direction for each narration beat.
 Style rules:
-- Characters: 2D minimalist stick figures with circular flat white heads, dot eyes, and thin black stick limbs (narrator has spiky orange hair; old people have sparse gray hair and glasses).
-- Animals & Props: clearly feature any mentioned animal or object (e.g. stick pigeon, stick squirrel, stick sea lion, stick dog, stick deer, campfire, island, trees) interacting directly with the characters.
-- Environment: flat muted MS Paint bucket-fill colors (powder blue sky, sage green grass, earth-tan sand, beige rooms).
-- Composition: wide 16:9 shot, eye-level framing, showing all characters and animals clearly in frame.
-- Output: valid JSON with key "scenes": [{"id": 1, "visual": "short 15-25 word action description focusing directly on characters and animals"}]"""
+- Recurring Characters: narrator is ALWAYS a minimalist 2D stick figure with a circular white head, spiky bright orange hair, dot eyes, thin black stick limbs, and a plain white torso. Old humans have sparse gray hair/glasses.
+- Animals: simple 2D stick-figure animals with flat body fill and thin black stick legs (stick dog, stick deer, stick crow, stick cat, stick fox, stick sea lion).
+- Composition Variety: vary shots dynamically (wide, close-up, split-screen, diagram/chalkboard) to maximize viewer retention.
+- Overlay Text: punchy all-caps phrase (1-3 words) for key concepts (e.g. 'ECOLOGICAL NAIVETY', 'TRUST = CALCULATION', 'CALM ≠ TAME'), or empty string if none needed.
+- Motion: dynamic camera cues (zoom_in, zoom_out, pan_left, static). Use zoom_in for emotional/dramatic lines and questions.
+- Output strictly a valid JSON object:
+{"scenes": [{"id": 1, "visual": "15-25 word description featuring the exact subjects", "shot_type": "wide|close-up|split-screen|diagram", "motion": "zoom_in|zoom_out|pan_left|static", "overlay_text": "KEY PHRASE OR EMPTY", "transition": "cut|fade"}]}"""
 
         IDEA_SHIFT_PREFIXES = (
             "now imagine", "now think", "but ", "so why ", "then there are", 
             "suddenly", "meanwhile", "here's the", "and here's where", "still, ", 
-            "take ", "for example", "instead", "in contrast", "so some ", "so nature ", "which means "
+            "take ", "for example", "instead", "in contrast", "so some ", "so nature ", 
+            "which means ", "so here's", "trust wasn't just", "over time", "studies in", 
+            "scientists call this", "and it cost", "in both cases", "the relationship"
         )
 
         def is_idea_shift(sentence: str) -> bool:
@@ -1038,7 +1048,8 @@ Style rules:
                         cur_dur = dur_with_next
                 else:
                     # Body (4-6s), Twist (6-8s), Closing (5-7s)
-                    if (cur_dur >= pacing["min_dur"] and (has_shift or dur_with_next > pacing["max_dur"])) or (cur_dur >= pacing["target"]):
+                    # Always break on an idea shift regardless of current duration!
+                    if has_shift or (cur_dur >= pacing["min_dur"] and dur_with_next > pacing["max_dur"]) or (cur_dur >= pacing["target"]):
                         sec_chunks.append((cur_chunk, cur_dur))
                         cur_chunk = [sent]
                         cur_dur = sd
@@ -1059,12 +1070,12 @@ Style rules:
                 batch_input = "\n".join([f"{i+1}. {txt}" for i, txt in enumerate(batch_texts)])
                 user_msg = (
                     f"Section Context: [{s_title}].\n"
-                    f"Generate a visual description for each of these {len(batch_texts)} narration beats:\n\n"
+                    f"Generate a visual description and cinematic cues for each of these {len(batch_texts)} narration beats:\n\n"
                     f"{batch_input}\n\n"
-                    f"Respond strictly with a JSON object: {{\"scenes\": [{{\"id\": 1, \"visual\": \"...\"}}]}}"
+                    f"Respond strictly with a JSON object: {{\"scenes\": [{{\"id\": 1, \"visual\": \"...\", \"shot_type\": \"wide|close-up|split-screen|diagram\", \"motion\": \"zoom_in|zoom_out|pan_left|static\", \"overlay_text\": \"...\", \"transition\": \"cut|fade\"}}]}}"
                 )
 
-                batch_prompts = []
+                batch_meta = []
                 for model_name, max_toks in models_to_try:
                     for k_idx, key in enumerate(groq_keys if groq_keys else [None]):
                         try:
@@ -1082,31 +1093,45 @@ Style rules:
                             data = json.loads(completion.choices[0].message.content)
                             scs = data.get("scenes", []) or data.get("segments", [])
                             if scs:
-                                batch_prompts = [sc.get("visual", "") or sc.get("image_prompt", "") for sc in scs]
-                                while len(batch_prompts) < len(batch_texts):
-                                    batch_prompts.append("")
+                                batch_meta = scs
+                                while len(batch_meta) < len(batch_texts):
+                                    batch_meta.append({})
                                 break
                         except Exception as e:
                             err_str = str(e)
                             if "429" in err_str or "rate_limit" in err_str.lower():
                                 continue
                             break
-                    if batch_prompts:
+                    if batch_meta:
                         break
 
                 for i, (c_sents, c_d) in enumerate(batch_chunks):
                     chunk_text = " ".join(c_sents)
-                    vis = batch_prompts[i] if (i < len(batch_prompts) and batch_prompts[i] and len(batch_prompts[i].strip()) > 10) else f"Stick-figure scene illustrating: {chunk_text}"
+                    m_item = batch_meta[i] if i < len(batch_meta) else {}
+                    vis = m_item.get("visual", "") or m_item.get("image_prompt", "")
+                    if not vis or len(vis.strip()) < 10:
+                        vis = f"Stick-figure scene illustrating: {chunk_text}"
+                    
+                    shot_type = m_item.get("shot_type", "wide")
+                    motion = m_item.get("motion", "static")
+                    overlay_text = m_item.get("overlay_text", "")
+                    transition = m_item.get("transition", "cut")
+
+                    # Non-contradictory prompt ending with explicit character consistency
                     full_prompt = (
-                        f"A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide 16:9 framing. "
+                        f"A low-fidelity MS Paint digital drawing in a deadpan webcomic style. {shot_type.replace('_', ' ').capitalize()} shot, 16:9 framing. "
                         f"{vis}. Flat muted MS Paint bucket-fill colors, deliberately messy mouse-drawn linework. "
-                        f"Zero shading, zero 3D depth, zero gradients. Zero extra people, zero extra animals."
+                        f"Zero shading, zero 3D depth, zero gradients. Only the characters and animals listed in this scene, no additional characters."
                     )
                     # Enforce hard floor (2.0s) and ceiling (8.0s)
                     final_dur = max(2.0, min(8.0, round(c_d, 2)))
                     section_segs.append({
                         "text": chunk_text,
                         "image_prompt": full_prompt,
+                        "shot_type": shot_type,
+                        "motion": motion,
+                        "overlay_text": overlay_text,
+                        "transition": transition,
                         "dur": final_dur
                     })
 
@@ -1148,6 +1173,10 @@ Style rules:
                 "text": seg_text,
                 lang: seg_text,
                 "image_prompt": prompt,
+                "shot_type": s.get("shot_type", "wide"),
+                "motion": s.get("motion", "static"),
+                "overlay_text": s.get("overlay_text", ""),
+                "transition": s.get("transition", "cut"),
                 "use_ai_image": True
             }
             if lang != "english":

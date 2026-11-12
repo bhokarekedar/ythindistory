@@ -576,12 +576,19 @@ function App() {
               }}
             />
 
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#fbbf24', marginBottom: '6px' }}>
-              📝 Paste Story Script:
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#fbbf24' }}>
+                📝 Paste Story Script or JSON Storyboard:
+              </label>
+              {(scriptText.trim().startsWith('[') || scriptText.trim().startsWith('{')) && (
+                <span style={{ fontSize: '11px', background: '#065f46', color: '#34d399', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                  ⚡ JSON Mode Detected
+                </span>
+              )}
+            </div>
             <textarea 
               rows={9}
-              placeholder="Paste your story script here in English or Hindi...&#10;&#10;Section tags like **[0–5 sec | HOOK]** and markdown titles are automatically filtered from voice audio."
+              placeholder="Paste either:&#10;1. Raw script / markdown text (e.g. # Story Title... [HOOK] ...)&#10;2. Pre-structured JSON scenes [ { &quot;id&quot;: 1, &quot;text&quot;: &quot;...&quot;, &quot;image_prompt&quot;: &quot;...&quot; } ]&#10;&#10;If JSON is pasted, the pipeline bypasses LLM decoding, uses your exact prompts, and measures real audio timestamps!"
               value={scriptText}
               onChange={(e) => setScriptText(e.target.value)}
               required
@@ -590,11 +597,11 @@ function App() {
                 boxSizing: 'border-box',
                 padding: '14px',
                 borderRadius: '8px',
-                border: '1.5px solid #f59e0b',
+                border: (scriptText.trim().startsWith('[') || scriptText.trim().startsWith('{')) ? '1.5px solid #10b981' : '1.5px solid #f59e0b',
                 background: '#181e2b',
                 color: '#ffffff',
                 fontSize: '14px',
-                fontFamily: 'Inter, system-ui, sans-serif',
+                fontFamily: (scriptText.trim().startsWith('[') || scriptText.trim().startsWith('{')) ? 'monospace' : 'Inter, system-ui, sans-serif',
                 resize: 'vertical',
                 minHeight: '180px',
                 lineHeight: '1.6',

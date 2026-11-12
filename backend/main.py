@@ -424,21 +424,94 @@ def process_pipeline(job_id: str, request: VideoRequest):
                 job_status[job_id] = f"Script generation skipped (using cache)"
                 print(f"\n[JOB {job_id}] Step 3: {target_lang.capitalize()} cartoon script found in cache. Skipping.")
             else:
-                job_status[job_id] = f"Decoding script into stick-figure cartoon scenes ({target_lang})..."
-                print(f"\n[JOB {job_id}] Step 3: Decoding script into stick-figure cartoon scenes for {target_lang}...")
-                translator = StoryTranslator(
-                    primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
-                    fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
-                    translation_model=config.get("groq", {}).get("translation_model", "qwen/qwen3.8-27b"),
-                    batch_size=config.get("translation", {}).get("batch_size", 20),
-                    api_key=groq_api_key
-                )
-                translator.decode_script_to_stick_figure_cartoon(
-                    script_text=script_text,
-                    target_language=target_lang,
-                    output_path=script_path
-                )
-                print(f"[JOB {job_id}] Stick-figure cartoon script ready: {script_path}")
+                # Support either plain text/markdown script OR pre-structured JSON scenes
+                parsed_json_scenes = None
+                trimmed_input = script_text.strip()
+                if (trimmed_input.startswith("[") and trimmed_input.endswith("]")) or \
+                   (trimmed_input.startswith("{") and trimmed_input.endswith("}")):
+                    try:
+                        loaded = json.loads(trimmed_input)
+                        if isinstance(loaded, list):
+                            parsed_json_scenes = loaded
+                        elif isinstance(loaded, dict):
+                            if "scenes" in loaded or "segments" in loaded:
+                                parsed_json_scenes = loaded.get("scenes", []) or loaded.get("segments", [])
+                            elif "text" in loaded:
+                                parsed_json_scenes = [loaded]
+                    except Exception as e:
+                        print(f"  [Cartoon Director] Note: input looks like JSON but parse failed: {e}. Falling back to script decoder.")
+                        parsed_json_scenes = None
+
+                if parsed_json_scenes and len(parsed_json_scenes) > 0:
+                    job_status[job_id] = f"Loaded {len(parsed_json_scenes)} pre-structured JSON scenes..."
+                    print(f"\n[JOB {job_id}] Step 3: Using {len(parsed_json_scenes)} pre-structured JSON scenes provided by user (bypassing LLM decode)...")
+
+                    normalized_scenes = []
+                    cur_t = 0.0
+                    for idx, s in enumerate(parsed_json_scenes, 1):
+                        seg_text = s.get("text") or s.get(target_lang) or s.get("english") or ""
+                        
+                        raw_dur = s.get("duration")
+                        try:
+                            dur = float(raw_dur) if raw_dur is not None else 0.0
+                        except (ValueError, TypeError):
+                            dur = 0.0
+
+                        if dur <= 0.0:
+                            raw_st = s.get("start")
+                            raw_et = s.get("end")
+                            if raw_st is not None and raw_et is not None:
+                                try:
+                                    dur = float(raw_et) - float(raw_st)
+                                except (ValueError, TypeError):
+                                    dur = 0.0
+
+                        if dur <= 0.0:
+                            words = len(seg_text.split())
+                            dur = max(2.0, round((words / 2.6) + 0.35 * seg_text.count(",") + 0.60 * seg_text.count("."), 2))
+
+                        start_t = round(cur_t, 2)
+                        end_t = round(cur_t + dur, 2)
+                        cur_t = end_t
+
+                        norm_s = {
+                            "id": idx,
+                            "start": start_t,
+                            "end": end_t,
+                            "duration": dur,
+                            "text": seg_text,
+                            target_lang: seg_text,
+                            "english": s.get("english", seg_text),
+                            "image_prompt": s.get("image_prompt", ""),
+                            "use_ai_image": True,
+                            "shot_type": s.get("shot_type", "wide"),
+                            "motion": s.get("motion", "static"),
+                            "overlay_text": s.get("overlay_text", ""),
+                            "transition": s.get("transition", "cut")
+                        }
+                        if s.get("ai_image_path"):
+                            norm_s["ai_image_path"] = s.get("ai_image_path")
+                        normalized_scenes.append(norm_s)
+
+                    with open(script_path, "w", encoding="utf-8") as f:
+                        json.dump(normalized_scenes, f, indent=4, ensure_ascii=False)
+                    print(f"[JOB {job_id}] Normalized {len(normalized_scenes)} JSON scenes saved to: {script_path}")
+                else:
+                    job_status[job_id] = f"Decoding script into stick-figure cartoon scenes ({target_lang})..."
+                    print(f"\n[JOB {job_id}] Step 3: Decoding script into stick-figure cartoon scenes for {target_lang}...")
+                    translator = StoryTranslator(
+                        primary_provider=config.get("llm", {}).get("primary_provider", "groq"),
+                        fallback_provider=config.get("llm", {}).get("fallback_provider", "none"),
+                        translation_model=config.get("groq", {}).get("translation_model", "qwen/qwen3.8-27b"),
+                        batch_size=config.get("translation", {}).get("batch_size", 20),
+                        api_key=groq_api_key
+                    )
+                    translator.decode_script_to_stick_figure_cartoon(
+                        script_text=script_text,
+                        target_language=target_lang,
+                        output_path=script_path
+                    )
+                    print(f"[JOB {job_id}] Stick-figure cartoon script ready: {script_path}")
         else:
             # ─────────────────────────────────────────────────────────────
             # CHANNELS 1 & 2: YOUTUBE MOVIE RECAP & THRILLER STORY
@@ -647,7 +720,8 @@ def execute_resume_pipeline(job_id: str, state: dict):
                 if (seg.get("use_ai_image") or channel_type == "cartoon_story") and seg.get("image_prompt"):
                     img_gen.generate_image(seg["image_prompt"], img_path, target_width=1920, target_height=1080)
                     seg["use_ai_image"] = True
-                    seg["ai_image_path"] = img_path
+                    # Portable relative path (runs on any machine)
+                    seg["ai_image_path"] = os.path.relpath(img_path, os.getcwd())
 
             with open(script_path, "w", encoding="utf-8") as f:
                 json.dump(segments, f, indent=4, ensure_ascii=False)
@@ -679,7 +753,16 @@ def execute_resume_pipeline(job_id: str, state: dict):
                     print(f"  [TTS Warning] Could not measure audio duration for {audio_path}: {e}")
             
             if real_dur <= 0.0:
-                real_dur = round(seg.get("end", 0.0) - seg.get("start", 0.0), 2)
+                try:
+                    s_end = float(seg.get("end")) if seg.get("end") is not None else 0.0
+                    s_start = float(seg.get("start")) if seg.get("start") is not None else 0.0
+                    real_dur = round(s_end - s_start, 2)
+                except Exception:
+                    real_dur = 0.0
+
+            if real_dur <= 0.0:
+                words = len(text.split())
+                real_dur = max(2.0, round((words / 2.6) + 0.35 * text.count(",") + 0.60 * text.count("."), 2))
 
             seg["start"] = round(cur_audio_cursor, 2)
             seg["end"] = round(cur_audio_cursor + real_dur, 2)
