@@ -69,36 +69,35 @@ class CloudflareImageGenerator:
         refined_prompt = prompt
         # Clean out speech/thought bubble requests that cause garbled text hallucinations
         refined_prompt = re.sub(r'(?i)\b(thought|speech|dialogue)\s+bubbles?\b[^,.;]*', '', refined_prompt)
+        # Sanitize "stick <animal>" to "simple 2D cartoon <animal>" so diffusion models don't draw human faces on animals
+        refined_prompt = re.sub(
+            r'(?i)\bstick\s+(animals?|creatures?|sea\s+lions?|seals?|dogs?|cats?|birds?|pigeons?|crows?|deers?|elephants?|squirrels?|raccoons?|foxes?|bears?|monkeys?|wolves?|rabbits?|fish|horses?|cows?|pigs?|tigers?|lions?|dodos?|dolphins?|whales?)\b',
+            r'simple 2D cartoon \1',
+            refined_prompt
+        )
+        # Sanitize bare "stick humans" to avoid naked creepy mannequins
+        refined_prompt = re.sub(r'(?i)\bstick humans?\b', 'stick figures wearing plain shirts', refined_prompt)
         p_lower = refined_prompt.lower()
         if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive", "webcomic"]):
-            # 1. Enforce strict MS Paint aesthetics (Kill FLUX's 3D/Shading bias)
+            # Compact, high-impact constraints (strictly under Cloudflare 2048 char limit)
+            rules = []
             if "zero shading" not in p_lower:
-                refined_prompt += " ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH. Must look like a low-effort MS Paint drawing with thick, unpolished black outlines and flat bucket-fill colors."
-
-            # 2. Enforce stick figure anatomy strictly (Pure blank white head, zero skin/flesh color)
-            refined_prompt += (
-                " All human characters MUST have uncolored, pure blank paper-white circular heads (#FFFFFF), "
-                "two tiny black dot eyes, thin black stick limbs. "
-                "ABSOLUTELY ZERO FLESH TONES, ZERO SKIN COLOR, ZERO PEACH OR TAN FACES, ZERO REALISTIC HUMAN ANATOMY."
-            )
-
-            # 3. Enforce wide camera framing
+                rules.append("Low-effort 2D MS Paint style, thick black outlines, flat bucket-fill colors. ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH.")
+            rules.append("Human characters MUST be minimalist stick figures with pure blank white circular heads (#FFFFFF), two tiny black dot eyes, thin black stick limbs, wearing plain shirts. Zero skin color, zero realistic anatomy, zero naked mannequins.")
+            rules.append("STRICT ANIMAL ANATOMY: Animals must have authentic cute animal features (proper snout, whiskers, ears, paws, or flippers). ANIMALS NEVER HAVE HUMAN FACES OR STICK HEADS. Zero human-animal hybrids, zero centaurs.")
+            rules.append("STRICT GRAVITY: All subjects physically grounded with feet/paws on solid ground. Zero floating in air, zero hovering.")
             if "headroom" not in p_lower and "wide shot" not in p_lower:
-                refined_prompt += " Extreme wide long shot, centered 16:9 composition with ample empty headroom above and wide ground below, entire bodies visible in middle vertical third."
+                rules.append("Extreme wide 16:9 composition, generous headroom above, wide ground below, full bodies visible. Zero severed heads.")
+            rules.append("ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO SPEECH BUBBLES.")
 
-            # 4. Enforce flat style & full bodies (no severed heads)
-            refined_prompt += " All characters, animals, and creatures MUST be drawn full body with complete head, torso, and limbs. Zero floating or severed heads."
+            suffix = " " + " ".join(rules)
+            # Ensure total prompt stays safely under Cloudflare's 2048 character limit
+            if len(refined_prompt) + len(suffix) > 2000:
+                avail = 2000 - len(suffix)
+                refined_prompt = refined_prompt[:avail].rsplit(' ', 1)[0]
+            refined_prompt += suffix
 
-            # 5. Universal Physical Gravity & Grounding (generic across all subjects, animals, and objects)
-            refined_prompt += (
-                " STRICT PHYSICAL GRAVITY & GROUNDING: All subjects, animals, humans, and props MUST obey gravity and be physically grounded. "
-                "All land creatures must have their feet or paws firmly planted on a visible solid surface (ground, floor, chair, rock). "
-                "Any creature in the air must be actively flying with spread wings. All props and objects must rest on solid surfaces. "
-                "ABSOLUTELY ZERO FLOATING SUBJECTS, ZERO UNGROUNDED ANIMALS, ZERO HOVERING IN MID-AIR, ZERO LEVITATION."
-            )
-
-            # 6. Strict negative constraint: Zero text, zero speech bubbles
-            refined_prompt += " ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO SPEECH BUBBLES, ZERO THOUGHT BUBBLES. Pure visual drawing with no written text."
+        payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
         payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
@@ -136,6 +135,11 @@ class CloudflareImageGenerator:
                             print(f"  [Cloudflare AI] API error ({acc_name}): {data.get('errors')}")
                 except Exception as e:
                     err_str = str(e)
+                    if hasattr(e, "read"):
+                        try:
+                            err_str += f" - Response: {e.read().decode('utf-8')[:300]}"
+                        except Exception:
+                            pass
                     if "429" in err_str or "4006" in err_str or "Too Many Requests" in err_str:
                         print(f"  [Cloudflare AI] ⚠️ {acc_name} reached quota / 429 rate limit. Rotating to next account...")
                         self.active_idx = (self.active_idx + 1) % len(self.accounts)

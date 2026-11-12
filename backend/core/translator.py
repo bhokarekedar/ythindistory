@@ -821,16 +821,13 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
      * Distinct clothing item or prop (e.g., one in a jacket holding a folder, the other in a t-shirt with a backpack).
      * Contrasting expressions and poses (e.g., one speaking actively with stick arm gesturing, the other listening with arms crossed or an eyebrow raised).
 
-5. ANIMAL & CREATURE VISUAL CONSISTENCY (STRICTLY PURE WHITE STICK-COMIC STYLE - NO REALISTIC OR SHADED ANIMALS):
-   - All animals, pets, and creatures (elephants, dogs, monkeys, cats, birds, etc.) MUST be drawn in the EXACT same simplistic stick-comic aesthetic as the human stick figures:
-     * Body Fill: Pure flat solid WHITE fill (like paper). NEVER gray, brown, textured, or realistically colored.
-     * Outlines: Bold black marker ink contour outlines.
-     * Limbs & Tails: Thin black stick legs, thin black stick arms, and thin curved stick tails.
-     * Faces: Minimalist cartoon dot eyes, simple black marker mouth/snout, zero 3D shading, zero fur/skin textures, and zero muscle contours.
-     * Example Elephant: "a minimalist stick-figure elephant with a pure solid flat white body, thin black stick legs, a simple curved white trunk with black outlines, and simple dot eyes (zero gray shading, zero 3D textures, flat white fill)".
-     * Example Dog: "a minimalist stick-figure dog with a pure solid flat white body, thin black stick legs, floppy ears, and black dot eyes (pure white fill, zero shading)".
-     * Example Monkey: "a minimalist stick-figure monkey with a pure solid flat white body, thin black stick limbs and long stick tail, and cute dot eyes (pure white fill, zero shading)".
-     * NEVER draw standard clip-art, Disney-style, or 3D shaded animals. They must look like a hand-drawn MS Paint webcomic stick creature!
+5. ANIMAL & CREATURE VISUAL RULES (SIMPLE 2D CARTOON - NO HUMAN FACES ON ANIMALS):
+   - All animals, pets, and creatures (sea lions, deer, elephants, dogs, crows, cats, etc.) MUST be drawn with authentic cute animal anatomy in simple 2D webcomic linework:
+     * Natural Animal Heads: Distinct animal head with proper snout, muzzle, whiskers, ears, beak, or bill. ANIMALS MUST NEVER BE GIVEN HUMAN CIRCULAR HEADS OR HUMAN FACES.
+     * Natural Animal Limbs: Flippers, paws, claws, wings, or hooves. Never draw animals as stick humans or centaur hybrids.
+     * Flat Colors: Solid flat bucket-fill colors matching the animal (tan sea lion, gray elephant, black crow, golden dog), bold black ink contour outlines. Zero 3D shading, zero fur textures.
+     * Clear Separation: Humans and animals are completely separate individual entities. Never merge human characters with animals.
+     * NEVER use the phrase "stick animal" or "stick sea lion" in prompts—always use "simple 2D cartoon [animal]".
 
 6. VERBATIM SCRIPT PRESERVATION (THE SCRIPT IS THE ABSOLUTE SOURCE OF TRUTH):
    - CRITICAL: DO NOT alter, rewrite, paraphrase, summarize, embellish, or invent a single word of the user's spoken script!
