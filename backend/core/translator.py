@@ -945,34 +945,118 @@ Output strictly a JSON object with a single key 'segments':
             ("qwen/qwen3.8-27b", 600)  # Capped at 600 tokens to stay well below 1000 OTPM ceiling
         ]
 
-        # Focused system instructions for rapid, reliable JSON output across all sentence batches
+        # Focused system instructions for rapid, reliable JSON output across all scene batches
         batch_system_prompt = """You are a storyboard director for a 2D stick-figure YouTube animation channel (Basically Primitive / Casually Explained style).
-Your task is to generate a visual scene description for each provided sentence.
+Your task is to generate a visual scene description for each provided narration beat.
 Style rules:
 - Characters: 2D minimalist stick figures with circular flat white heads, dot eyes, and thin black stick limbs (narrator has spiky orange hair; old people have sparse gray hair and glasses).
-- Animals: pure flat solid white bodies with thin black stick limbs (e.g. stick pigeon, stick sea lion, stick dog).
+- Animals & Props: clearly feature any mentioned animal or object (e.g. stick pigeon, stick squirrel, stick sea lion, stick dog, stick deer, campfire, island, trees) interacting directly with the characters.
 - Environment: flat muted MS Paint bucket-fill colors (powder blue sky, sage green grass, earth-tan sand, beige rooms).
-- Composition: extreme wide long shot, 16:9 framing, characters and animals in the middle vertical safe zone.
-- Output: valid JSON with key "scenes": [{"id": 1, "visual": "short visual action description"}]"""
+- Composition: wide 16:9 shot, eye-level framing, showing all characters and animals clearly in frame.
+- Output: valid JSON with key "scenes": [{"id": 1, "visual": "short 15-25 word action description focusing directly on characters and animals"}]"""
+
+        IDEA_SHIFT_PREFIXES = (
+            "now imagine", "now think", "but ", "so why ", "then there are", 
+            "suddenly", "meanwhile", "here's the", "and here's where", "still, ", 
+            "take ", "for example", "instead", "in contrast", "so some ", "so nature ", "which means "
+        )
+
+        def is_idea_shift(sentence: str) -> bool:
+            s_low = sentence.lower().strip()
+            return any(s_low.startswith(p) for p in IDEA_SHIFT_PREFIXES)
+
+        def est_dur(text: str) -> float:
+            words = len(text.split())
+            return max(1.2, round(words / 2.3, 2))
+
+        def split_long_sentence(sent: str, is_hook: bool = False) -> list:
+            max_words = 7 if is_hook else 17
+            if len(sent.split()) <= max_words:
+                return [sent]
+            parts = re.split(r'(?<=,)\s+(?=where |and |but |so |which |because )|(?<=—)\s*|(?<=;)\s*', sent)
+            clean = [p.strip() for p in parts if p.strip()]
+            if len(clean) > 1:
+                return clean
+            return [sent]
+
+        def get_section_pacing(title: str):
+            t = title.lower()
+            if any(k in t for k in ["hook", "intro", "teaser", "opening"]):
+                # Hook (0-30s): 2-3s per visual (rapid cuts signals 'this is worth staying for')
+                return {"min_dur": 1.8, "max_dur": 3.2, "target": 2.5, "type": "Hook"}
+            elif any(k in t for k in ["emotional", "twist", "dramatic", "climax"]):
+                # Emotional or twist moments: 6-8s (slow zoom lets the point land)
+                return {"min_dur": 5.0, "max_dur": 8.0, "target": 6.8, "type": "Twist"}
+            elif any(k in t for k in ["closing", "outro", "conclusion"]):
+                # Closing: 5-7s (calm, satisfying ending)
+                return {"min_dur": 4.5, "max_dur": 7.5, "target": 5.8, "type": "Closing"}
+            else:
+                # Setup and body: 4-6s (enough time to register while explaining idea)
+                return {"min_dur": 3.8, "max_dur": 6.8, "target": 5.0, "type": "Body"}
 
         def decode_single_section(s_title: str, s_text: str) -> list:
             from groq import Groq
 
-            # 1. Deterministic sentence extraction: PRESERVES 100% OF VERBATIM SCRIPT SENTENCES
+            is_hook = any(k in s_title.lower() for k in ["hook", "intro", "teaser", "opening"])
+            pacing = get_section_pacing(s_title)
+
+            # 1. Deterministic sentence extraction & long sentence splitting
             raw_sentences = [st.strip() for st in re.split(r'(?<=[.!?])\s+', s_text) if st.strip()]
             if not raw_sentences:
                 return []
 
-            # 2. Process in mini-batches of up to 4 sentences to guarantee zero dropped sentences and prevent Groq token limits
+            expanded_sentences = []
+            for rs in raw_sentences:
+                expanded_sentences.extend(split_long_sentence(rs, is_hook=is_hook))
+
+            # 2. Hybrid Idea Chunking (Floor 2s, Ceiling 8s, Target based on section type)
+            sec_chunks = []
+            cur_chunk = []
+            cur_dur = 0.0
+
+            for sent in expanded_sentences:
+                sd = est_dur(sent)
+                if not cur_chunk:
+                    cur_chunk.append(sent)
+                    cur_dur = sd
+                    continue
+
+                dur_with_next = cur_dur + sd
+                has_shift = is_idea_shift(sent)
+
+                if is_hook:
+                    # Hook: 2-3s rapid cuts
+                    if cur_dur >= pacing["min_dur"] or has_shift or dur_with_next > pacing["max_dur"]:
+                        sec_chunks.append((cur_chunk, cur_dur))
+                        cur_chunk = [sent]
+                        cur_dur = sd
+                    else:
+                        cur_chunk.append(sent)
+                        cur_dur = dur_with_next
+                else:
+                    # Body (4-6s), Twist (6-8s), Closing (5-7s)
+                    if (cur_dur >= pacing["min_dur"] and (has_shift or dur_with_next > pacing["max_dur"])) or (cur_dur >= pacing["target"]):
+                        sec_chunks.append((cur_chunk, cur_dur))
+                        cur_chunk = [sent]
+                        cur_dur = sd
+                    else:
+                        cur_chunk.append(sent)
+                        cur_dur = dur_with_next
+
+            if cur_chunk:
+                sec_chunks.append((cur_chunk, cur_dur))
+
+            # 3. Process scenes in mini-batches of up to 4 scenes for rapid reliable visual generation
             BATCH_SIZE = 4
             section_segs = []
 
-            for b_idx in range(0, len(raw_sentences), BATCH_SIZE):
-                batch_sents = raw_sentences[b_idx:b_idx + BATCH_SIZE]
-                batch_input = "\n".join([f"{i+1}. {sent}" for i, sent in enumerate(batch_sents)])
+            for b_idx in range(0, len(sec_chunks), BATCH_SIZE):
+                batch_chunks = sec_chunks[b_idx:b_idx + BATCH_SIZE]
+                batch_texts = [" ".join(c[0]) for c in batch_chunks]
+                batch_input = "\n".join([f"{i+1}. {txt}" for i, txt in enumerate(batch_texts)])
                 user_msg = (
                     f"Section Context: [{s_title}].\n"
-                    f"Generate a visual description for each of these {len(batch_sents)} sentences:\n\n"
+                    f"Generate a visual description for each of these {len(batch_texts)} narration beats:\n\n"
                     f"{batch_input}\n\n"
                     f"Respond strictly with a JSON object: {{\"scenes\": [{{\"id\": 1, \"visual\": \"...\"}}]}}"
                 )
@@ -996,7 +1080,7 @@ Style rules:
                             scs = data.get("scenes", []) or data.get("segments", [])
                             if scs:
                                 batch_prompts = [sc.get("visual", "") or sc.get("image_prompt", "") for sc in scs]
-                                while len(batch_prompts) < len(batch_sents):
+                                while len(batch_prompts) < len(batch_texts):
                                     batch_prompts.append("")
                                 break
                         except Exception as e:
@@ -1007,16 +1091,20 @@ Style rules:
                     if batch_prompts:
                         break
 
-                for i, sent in enumerate(batch_sents):
-                    vis = batch_prompts[i] if (i < len(batch_prompts) and batch_prompts[i] and len(batch_prompts[i].strip()) > 10) else f"Stick-figure scene illustrating: {sent}"
+                for i, (c_sents, c_d) in enumerate(batch_chunks):
+                    chunk_text = " ".join(c_sents)
+                    vis = batch_prompts[i] if (i < len(batch_prompts) and batch_prompts[i] and len(batch_prompts[i].strip()) > 10) else f"Stick-figure scene illustrating: {chunk_text}"
                     full_prompt = (
                         f"A low-fidelity MS Paint digital drawing in a deadpan webcomic style. Wide 16:9 framing. "
                         f"{vis}. Flat muted MS Paint bucket-fill colors, deliberately messy mouse-drawn linework. "
                         f"Zero shading, zero 3D depth, zero gradients. Zero extra people, zero extra animals."
                     )
+                    # Enforce hard floor (2.0s) and ceiling (8.0s)
+                    final_dur = max(2.0, min(8.0, round(c_d, 2)))
                     section_segs.append({
-                        "text": sent,
-                        "image_prompt": full_prompt
+                        "text": chunk_text,
+                        "image_prompt": full_prompt,
+                        "dur": final_dur
                     })
 
             return section_segs
@@ -1040,8 +1128,8 @@ Style rules:
             if not seg_text:
                 continue
 
-            word_count = len(seg_text.split())
-            dur = max(2.0, min(4.0, round(word_count / 2.4, 2)))
+            # Use hybrid-pacing duration assigned during section chunking (clamped between 2.0s and 8.0s)
+            dur = s.get("dur", max(2.0, min(8.0, round(len(seg_text.split()) / 2.3, 2))))
             start_t = round(cur_time, 2)
             end_t = round(cur_time + dur, 2)
             cur_time = end_t

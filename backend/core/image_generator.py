@@ -144,49 +144,60 @@ class CloudflareImageGenerator:
 
         if current_aspect < target_aspect:
             # Image is taller than 16:9 (e.g. 1024x1024 square from FLUX).
-            # Crop to 16:9 intelligently preserving head and subject
             crop_h = int(w / target_aspect)
             crop_w = w
 
-            # Analyze inner 70% width to ignore frame borders and edge artifacts
-            x_margin = int(0.15 * w)
+            # Analyze inner width to detect vertical span of subjects (head, body, animals on ground)
+            x_margin = int(0.12 * w)
             gray = np.array(img.convert("L"))
             inner_gray = gray[:, x_margin:w - x_margin]
 
-            # Sample background reference from corners
-            bg_val = float(np.mean(gray[:30, :30]))
+            bg_val = float(np.mean(gray[:25, :25]))
             diff = np.abs(inner_gray.astype(float) - bg_val)
             content_rows = np.where(np.max(diff, axis=1) > 25)[0]
 
             if len(content_rows) > 0:
                 top_content_y = content_rows[0]
                 bottom_content_y = content_rows[-1]
-
-                # CINEMATIC RULE: Headroom is priority #1!
-                # Always preserve at least 40px of headroom above the character's head/hair.
-                # Never sacrifice the head to show extra floor or table legs.
-                desired_top = max(0, top_content_y - 40)
-
-                # If the character + action fits inside crop_h, center vertically around them
                 subject_height = bottom_content_y - top_content_y
-                if subject_height < crop_h:
-                    # Content fits! Center subject with balanced headroom and floor
-                    center_y = (top_content_y + bottom_content_y) // 2
-                    top = center_y - crop_h // 2
-                    # Maintain headroom
-                    if top > desired_top:
-                        top = desired_top
-                else:
-                    # Content is taller than 16:9 crop: Always keep the head and upper body
-                    top = desired_top
-
-                # Clamp within image bounds
-                top = max(0, min(h - crop_h, top))
             else:
-                top = (h - crop_h) // 2
+                top_content_y, bottom_content_y, subject_height = 0, h, h
 
-            cropped = img.crop((0, top, crop_w, top + crop_h))
-            final_img = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            # Check if subject + comfortable margins (45px head, 25px floor) fits inside 16:9 crop height
+            if subject_height + 70 <= crop_h:
+                # Content fits vertically inside 16:9 frame without slicing anything off
+                desired_top = max(0, top_content_y - 45)
+                center_y = (top_content_y + bottom_content_y) // 2
+                top = center_y - crop_h // 2
+                if top > desired_top:
+                    top = desired_top
+                top = max(0, min(h - crop_h, top))
+
+                cropped = img.crop((0, top, crop_w, top + crop_h))
+                final_img = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            else:
+                # Subject + ground animals span taller than crop window (e.g. standing person + pigeons/sea lion on ground).
+                # Slicing vertically would cut off animals on the ground or character heads.
+                # Instead, scale full height into 1080 and extend flat background horizontally.
+                scale = target_height / h
+                new_w = int(w * scale)
+                resized = img.resize((new_w, target_height), Image.Resampling.LANCZOS)
+
+                canvas = Image.new("RGB", (target_width, target_height))
+                x_offset = (target_width - new_w) // 2
+                canvas.paste(resized, (x_offset, 0))
+
+                # Seamlessly extend left margin from edge column
+                left_strip = resized.crop((0, 0, 1, target_height))
+                canvas.paste(left_strip.resize((x_offset, target_height), Image.Resampling.NEAREST), (0, 0))
+
+                # Seamlessly extend right margin from edge column
+                right_x = x_offset + new_w
+                right_w = target_width - right_x
+                right_strip = resized.crop((new_w - 1, 0, new_w, target_height))
+                canvas.paste(right_strip.resize((right_w, target_height), Image.Resampling.NEAREST), (right_x, 0))
+
+                final_img = canvas
         else:
             # Image is wider than 16:9. Crop sides to center fit.
             crop_w = int(h * target_aspect)
