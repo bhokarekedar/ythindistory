@@ -75,9 +75,12 @@ class CloudflareImageGenerator:
             if "zero shading" not in p_lower:
                 refined_prompt += " ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH. Must look like a low-effort MS Paint drawing with thick, unpolished black outlines and flat bucket-fill colors."
 
-            # 2. Enforce stick figure anatomy strictly
-            if "zero realistic" not in p_lower:
-                refined_prompt += " All characters MUST be basic 2D minimalist stick figures with pure white circular heads, black dot eyes, and single-line stick limbs. Zero realistic human anatomy, zero flesh tones, zero extra people."
+            # 2. Enforce stick figure anatomy strictly (Pure blank white head, zero skin/flesh color)
+            refined_prompt += (
+                " All human characters MUST have uncolored, pure blank paper-white circular heads (#FFFFFF), "
+                "two tiny black dot eyes, thin black stick limbs. "
+                "ABSOLUTELY ZERO FLESH TONES, ZERO SKIN COLOR, ZERO PEACH OR TAN FACES, ZERO REALISTIC HUMAN ANATOMY."
+            )
 
             # 3. Enforce wide camera framing
             if "headroom" not in p_lower and "wide shot" not in p_lower:

@@ -955,8 +955,8 @@ Output strictly a JSON object with a single key 'segments':
         batch_system_prompt = """You are a storyboard director for a 2D stick-figure YouTube animation channel (Basically Primitive / Casually Explained style).
 Your task is to generate a visual scene description and cinematic direction for each narration beat.
 Style rules:
-- Recurring Characters: narrator is ALWAYS a minimalist 2D stick figure with a circular white head, spiky bright orange hair, dot eyes, thin black stick limbs, and a plain white torso. Old humans have sparse gray hair/glasses.
-- Animals: full-body 2D stick-figure animals with complete bodies and stick legs (stick dog, stick deer, stick crow, stick cat, stick fox, stick sea lion). All subjects must have full bodies, NEVER floating or severed heads.
+- Character Signatures: narrator is ALWAYS a minimalist 2D stick figure with an uncolored pure blank white circular head (#FFFFFF), absolutely ZERO skin tone / zero peach color, two tiny black dot eyes, spiky bright orange hair, plain white shirt, and thin black stick limbs.
+- Animals & Scale: full-body 2D stick animals with complete bodies and stick legs. Keep scene scale realistic: only 1 or 2 small animals can perch on a character (never a crowded flock, which causes floating or severed limbs). All subjects must have full bodies, NEVER floating or severed heads.
 - STRICT NO-TEXT RULE: NEVER include speech bubbles, thought bubbles, dialogue boxes, or written text inside the scene description. Image models cannot generate text and create garbled gibberish. The visual must be 100% pictorial and action-based (characters acting, gesturing, and reacting).
 - Composition Variety: vary shots dynamically (wide, close-up, split-screen, diagram/chalkboard) to maximize viewer retention.
 - Overlay Text: punchy all-caps phrase (1-3 words) for key concepts (e.g. 'ECOLOGICAL NAIVETY', 'TRUST = CALCULATION', 'CALM ≠ TAME'), or empty string if none needed. (Rendered cleanly by video editor, NOT inside the AI image).
