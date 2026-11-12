@@ -867,7 +867,7 @@ CRITICAL VISUAL STYLE, PALETTE & RETENTION RULES:
    - SCRIPT-DRIVEN FOCAL PRIORITY (ANIMALS & PROPS FIRST):
      * When the narration explicitly talks about specific animals, creatures, or objects (e.g. "pigeons and squirrels", "sleeping sea lion", "pet dog", "glowing red book", "pyramid"):
        Make those specific mentioned creatures/objects the PRIMARY focal subjects in the foreground of the prompt!
-       Example: "The main subjects are a cartoon stick pigeon and a cartoon stick squirrel on a flat gray sidewalk eating breadcrumbs tossed by a stick figure."
+       Example: "The main subjects are a simple 2D cartoon pigeon and a simple 2D cartoon squirrel on a flat gray sidewalk eating breadcrumbs tossed by a stick figure."
        NEVER bury key story animals behind giant buildings or generic full-body standing poses, or the AI will omit them!
 
    - SCRIPT-DRIVEN CHARACTER AGE & IDENTITY:

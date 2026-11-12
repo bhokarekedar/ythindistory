@@ -67,11 +67,13 @@ class CloudflareImageGenerator:
         # Pipeline Auto-Enforcement for Stick-Comic & MS Paint Style
         import re
         refined_prompt = prompt
-        # Clean out speech/thought bubble requests that cause garbled text hallucinations
+        # Clean out speech/thought bubbles, question marks, floating icons, and comic sound effects/onomatopoeia that cause garbled text hallucinations
         refined_prompt = re.sub(r'(?i)\b(thought|speech|dialogue)\s+bubbles?\b[^,.;]*', '', refined_prompt)
+        refined_prompt = re.sub(r'(?i)\b(question\s+marks?|\?|heart\s+icons?|exclamation\s+marks?)\b[^,.;]*', '', refined_prompt)
+        refined_prompt = re.sub(r'(?i)\b(?:with\s+)?(?:a\s+)?(?:big\s+|loud\s+)?(?:snap|crack|boom|pow|bang|crunch|splat|whoosh|sound|pop)\s*(?:lines?|words?|effects?|text|symbols?|bubbles?)?\b', '', refined_prompt)
         # Sanitize "stick <animal>" to "simple 2D cartoon <animal>" so diffusion models don't draw human faces on animals
         refined_prompt = re.sub(
-            r'(?i)\bstick\s+(animals?|creatures?|sea\s+lions?|seals?|dogs?|cats?|birds?|pigeons?|crows?|deers?|elephants?|squirrels?|raccoons?|foxes?|bears?|monkeys?|wolves?|rabbits?|fish|horses?|cows?|pigs?|tigers?|lions?|dodos?|dolphins?|whales?)\b',
+            r'(?i)\bstick\s+(animals?|creatures?|sea\s+lions?|seals?|dogs?|cats?|birds?|pigeons?|crows?|deers?|fawns?|elephants?|squirrels?|raccoons?|foxes?|bears?|monkeys?|wolves?|rabbits?|fish|horses?|cows?|pigs?|tigers?|lions?|dodos?|dolphins?|whales?)\b',
             r'simple 2D cartoon \1',
             refined_prompt
         )
@@ -83,12 +85,11 @@ class CloudflareImageGenerator:
             rules = []
             if "zero shading" not in p_lower:
                 rules.append("Low-effort 2D MS Paint style, thick black outlines, flat bucket-fill colors. ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH.")
-            rules.append("Human characters MUST be minimalist stick figures with pure blank white circular heads (#FFFFFF), two tiny black dot eyes, thin black stick limbs, wearing plain shirts. Zero skin color, zero realistic anatomy, zero naked mannequins.")
-            rules.append("STRICT ANIMAL ANATOMY: Animals must have authentic cute animal features (proper snout, whiskers, ears, paws, or flippers). ANIMALS NEVER HAVE HUMAN FACES OR STICK HEADS. Zero human-animal hybrids, zero centaurs.")
+            rules.append("HUMAN CHARACTERS ONLY: Any human stick figure MUST have an uncolored, pure blank white circular head (#FFFFFF) with two tiny black dot eyes, thin black stick limbs, and a plain white shirt. Zero skin tone.")
+            rules.append("STRICT ANIMAL ANATOMY: Animals (deer, fawns, wolves, dogs, seals, birds) MUST be drawn with authentic cute animal features (snout, ears, whiskers, beak, fur, paws, flippers). ANIMALS NEVER HAVE HUMAN FACES, NEVER HAVE CIRCULAR STICK HEADS, AND NEVER WEAR SHIRTS. Zero hybrids.")
             rules.append("STRICT GRAVITY: All subjects physically grounded with feet/paws on solid ground. Zero floating in air, zero hovering.")
-            if "headroom" not in p_lower and "wide shot" not in p_lower:
-                rules.append("Extreme wide 16:9 composition, generous headroom above, wide ground below, full bodies visible. Zero severed heads.")
-            rules.append("ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO SPEECH BUBBLES.")
+            rules.append("DISTANCED ZOOMED-OUT WIDE SHOT: Camera at a distance, generous 30% empty sky headroom above, wide ground below, full bodies visible in center frame. Never draw tall subjects touching borders.")
+            rules.append("ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO ONOMATOPOEIA, ZERO SOUND EFFECTS, ZERO COMIC LETTERING, ZERO SPEECH BUBBLES, ZERO FLOATING SYMBOLS.")
 
             suffix = " " + " ".join(rules)
             # Ensure total prompt stays safely under Cloudflare's 2048 character limit
@@ -174,29 +175,30 @@ class CloudflareImageGenerator:
 
             bg_val = float(np.mean(gray[:25, :25]))
             diff = np.abs(inner_gray.astype(float) - bg_val)
-            content_rows = np.where(np.max(diff, axis=1) > 25)[0]
+            # Detect content bounds based on meaningful row density (> 10 pixels), ignoring single stray specks
+            row_density = np.sum(diff > 25, axis=1)
+            content_rows = np.where(row_density > 10)[0]
+            if len(content_rows) == 0:
+                content_rows = np.where(np.max(diff, axis=1) > 25)[0]
 
             if len(content_rows) > 0:
-                top_content_y = content_rows[0]
-                bottom_content_y = content_rows[-1]
+                top_content_y = int(content_rows[0])
+                bottom_content_y = int(content_rows[-1])
                 subject_height = bottom_content_y - top_content_y
 
-                # If subject fits inside 16:9 crop height with margins, preserve headroom & center
-                if subject_height + 50 <= crop_h:
+                if subject_height <= crop_h:
+                    # Fits inside 16:9 crop height: center vertically while honoring headroom
                     desired_top = max(0, top_content_y - 40)
                     center_y = (top_content_y + bottom_content_y) // 2
                     top = center_y - crop_h // 2
                     if top > desired_top:
                         top = desired_top
-                    top = max(0, min(h - crop_h, top))
                 else:
-                    # Full environment scene (trees, room, city) or tall character:
-                    # Natural cinematic center crop
-                    top = (h - crop_h) // 2
-                    # If there is clear empty sky/headroom at the top, respect it
-                    if top_content_y > 30 and top < top_content_y - 30:
-                        top = min(top_content_y - 30, h - crop_h)
-                    top = max(0, min(h - crop_h, top))
+                    # Taller than 16:9 crop height: prioritize keeping head, torso, and maximizing legs
+                    top = max(0, top_content_y - 30)
+
+                # Clamp within image bounds
+                top = max(0, min(h - crop_h, top))
             else:
                 top = (h - crop_h) // 2
 
