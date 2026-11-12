@@ -67,28 +67,31 @@ class CloudflareImageGenerator:
         # Pipeline Auto-Enforcement for Stick-Comic & MS Paint Style
         import re
         refined_prompt = prompt
-        # Clean out speech/thought bubbles, question marks, floating icons, and comic sound effects/onomatopoeia that cause garbled text hallucinations
+        # 1. Strip comic sound effects, onomatopoeia, speech bubbles, question marks, and floating graphic symbols
         refined_prompt = re.sub(r'(?i)\b(thought|speech|dialogue)\s+bubbles?\b[^,.;]*', '', refined_prompt)
         refined_prompt = re.sub(r'(?i)\b(question\s+marks?|\?|heart\s+icons?|exclamation\s+marks?)\b[^,.;]*', '', refined_prompt)
         refined_prompt = re.sub(r'(?i)\b(?:with\s+)?(?:a\s+)?(?:big\s+|loud\s+)?(?:snap|crack|boom|pow|bang|crunch|splat|whoosh|sound|pop)\s*(?:lines?|words?|effects?|text|symbols?|bubbles?)?\b', '', refined_prompt)
-        # Sanitize "stick <animal>" to "simple 2D cartoon <animal>" so diffusion models don't draw human faces on animals
+
+        # 2. Universal "stick" sanitization:
+        # Keep human stick figures as stick figures. Automatically convert any other "stick <subject>" (animal, creature, vehicle, object)
+        # into "simple 2D cartoon <subject>" so diffusion models never draw human circular heads or stick limbs on non-humans.
         refined_prompt = re.sub(
-            r'(?i)\bstick\s+(animals?|creatures?|sea\s+lions?|seals?|dogs?|cats?|birds?|pigeons?|crows?|deers?|fawns?|elephants?|squirrels?|raccoons?|foxes?|bears?|monkeys?|wolves?|rabbits?|fish|horses?|cows?|pigs?|tigers?|lions?|dodos?|dolphins?|whales?)\b',
+            r'(?i)\bstick\s+(?!(?:figures?|humans?|persons?|people|men|man|women|woman|boys?|girls?|guys?|characters?|narrators?|bodies|body|limbs|arms|legs)\b)([a-zA-Z]+)',
             r'simple 2D cartoon \1',
             refined_prompt
         )
-        # Sanitize bare "stick humans" to avoid naked creepy mannequins
+        # Sanitize bare "stick humans" to ensure clothed figures instead of naked mannequins
         refined_prompt = re.sub(r'(?i)\bstick humans?\b', 'stick figures wearing plain shirts', refined_prompt)
         p_lower = refined_prompt.lower()
         if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive", "webcomic"]):
-            # Compact, high-impact constraints (strictly under Cloudflare 2048 char limit)
+            # Universal, high-impact constraints applicable across any topic, script, or genre
             rules = []
             if "zero shading" not in p_lower:
                 rules.append("Low-effort 2D MS Paint style, thick black outlines, flat bucket-fill colors. ABSOLUTELY NO SHADING, NO GRADIENTS, NO 3D DEPTH.")
-            rules.append("HUMAN CHARACTERS ONLY: Any human stick figure MUST have an uncolored, pure blank white circular head (#FFFFFF) with two tiny black dot eyes, thin black stick limbs, and a plain white shirt. Zero skin tone.")
-            rules.append("STRICT ANIMAL ANATOMY: Animals (deer, fawns, wolves, dogs, seals, birds) MUST be drawn with authentic cute animal features (snout, ears, whiskers, beak, fur, paws, flippers). ANIMALS NEVER HAVE HUMAN FACES, NEVER HAVE CIRCULAR STICK HEADS, AND NEVER WEAR SHIRTS. Zero hybrids.")
-            rules.append("STRICT GRAVITY: All subjects physically grounded with feet/paws on solid ground. Zero floating in air, zero hovering.")
-            rules.append("DISTANCED ZOOMED-OUT WIDE SHOT: Camera at a distance, generous 30% empty sky headroom above, wide ground below, full bodies visible in center frame. Never draw tall subjects touching borders.")
+            rules.append("HUMAN CHARACTERS ONLY: Human stick figures MUST have an uncolored, pure blank white circular head (#FFFFFF) with two tiny black dot eyes, wearing a plain white shirt and long black stick legs. The figure stands upright on two straight black stick legs. ABSOLUTELY ZERO UNDERWEAR, ZERO UNDERPANTS, ZERO NAKED PELVIS, ZERO BROKEN LIMBS.")
+            rules.append("ANIMALS & CREATURES: All non-human creatures, animals, pets, and wildlife MUST have authentic animal heads and bodies (proper snout, muzzle, whiskers, ears, beak, fur, paws, flippers, or hooves). ANIMALS NEVER HAVE CIRCULAR HUMAN STICK HEADS, NEVER HAVE HUMAN MOUTHS, AND NEVER WEAR SHIRTS. Zero human-animal hybrids, zero centaurs.")
+            rules.append("PHYSICAL GRAVITY & PERCHING: All subjects obey gravity. Land creatures must have feet/paws on solid ground. Any creature in mid-air MUST be actively flying with wings spread wide. Non-flying birds must be perched with claws gripping a shoulder, branch, or ground. ABSOLUTELY ZERO HOVERING IN MID-AIR, ZERO STANDING ON NOTHING.")
+            rules.append("DISTANCED 16:9 FRAMING: Camera at a distance, subjects vertically centered on ground with generous 30% empty sky headroom above, full bodies visible in frame. Never draw tall subjects touching borders.")
             rules.append("ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO ONOMATOPOEIA, ZERO SOUND EFFECTS, ZERO COMIC LETTERING, ZERO SPEECH BUBBLES, ZERO FLOATING SYMBOLS.")
 
             suffix = " " + " ".join(rules)
@@ -97,8 +100,6 @@ class CloudflareImageGenerator:
                 avail = 2000 - len(suffix)
                 refined_prompt = refined_prompt[:avail].rsplit(' ', 1)[0]
             refined_prompt += suffix
-
-        payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
         payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
@@ -168,40 +169,62 @@ class CloudflareImageGenerator:
             crop_h = int(w / target_aspect)
             crop_w = w
 
-            # Detect content bounds
-            x_margin = int(0.10 * w)
-            gray = np.array(img.convert("L"))
-            inner_gray = gray[:, x_margin:w - x_margin]
+            arr = np.array(img.convert("RGB"))
 
-            bg_val = float(np.mean(gray[:25, :25]))
-            diff = np.abs(inner_gray.astype(float) - bg_val)
-            # Detect content bounds based on meaningful row density (> 10 pixels), ignoring single stray specks
-            row_density = np.sum(diff > 25, axis=1)
-            content_rows = np.where(row_density > 10)[0]
-            if len(content_rows) == 0:
-                content_rows = np.where(np.max(diff, axis=1) > 25)[0]
+            # 1. Detect Character / Subject Presence
+            # Human characters in webcomic style have uncolored paper-white heads/shirts and/or orange hair
+            white = np.all(arr > 230, axis=-1)
+            orange = (arr[:, :, 0] > 175) & (arr[:, :, 1] < 135) & (arr[:, :, 2] < 85)
+            char_mask = white | orange
 
-            if len(content_rows) > 0:
-                top_content_y = int(content_rows[0])
-                bottom_content_y = int(content_rows[-1])
-                subject_height = bottom_content_y - top_content_y
+            # Exclude rows where white covers > 50% of width (pure white background)
+            row_char_counts = np.sum(char_mask, axis=1)
+            char_rows = np.where((row_char_counts > 10) & (row_char_counts < 0.50 * w))[0]
 
-                if subject_height <= crop_h:
-                    # Fits inside 16:9 crop height: center vertically while honoring headroom
-                    desired_top = max(0, top_content_y - 40)
-                    center_y = (top_content_y + bottom_content_y) // 2
+            if len(char_rows) > 0:
+                # Subject detected!
+                char_top = int(char_rows[0])
+                char_bottom = int(char_rows[-1])
+                # Character head/hair starts slightly above detected torso/face
+                head_top = max(0, char_top - 40)
+                # Legs and ground contact extend below torso
+                feet_bottom = min(h, char_bottom + 180)
+
+                # Center the 16:9 crop window vertically around the character
+                center_y = (head_top + feet_bottom) // 2
+                top = center_y - crop_h // 2
+
+                # Enforce headroom: NEVER scalp the head
+                if top > max(0, head_top - 25):
+                    top = max(0, head_top - 25)
+
+                # Enforce ground/feet: if there is headroom to spare, shift down to preserve feet
+                if feet_bottom > top + crop_h and top < max(0, head_top - 25):
+                    shift = min(feet_bottom - (top + crop_h), (head_top - 25) - top)
+                    top += max(0, shift)
+            else:
+                # 2. General Scenery / Animal Detection
+                # Measure content divergence from top-corner background
+                gray = np.array(img.convert("L"))
+                bg_val = float(np.mean(gray[:25, :25]))
+                diff = np.abs(gray.astype(float) - bg_val)
+                row_density = np.sum(diff > 25, axis=1)
+                content_rows = np.where(row_density > 20)[0]
+
+                if len(content_rows) > 0 and content_rows[0] > 60:
+                    # Clear empty sky exists at top: honor headroom
+                    desired_top = max(0, int(content_rows[0]) - 35)
+                    center_y = (int(content_rows[0]) + int(content_rows[-1])) // 2
                     top = center_y - crop_h // 2
                     if top > desired_top:
                         top = desired_top
                 else:
-                    # Taller than 16:9 crop height: prioritize keeping head, torso, and maximizing legs
-                    top = max(0, top_content_y - 30)
+                    # Full environment scene (trees, room, forest, landscape touching top):
+                    # Natural cinematic crop positioned to frame the lower-middle action/ground
+                    top = int(0.50 * (h - crop_h))
 
-                # Clamp within image bounds
-                top = max(0, min(h - crop_h, top))
-            else:
-                top = (h - crop_h) // 2
-
+            # Clamp securely within [0, h - crop_h]
+            top = max(0, min(h - crop_h, int(top)))
             cropped = img.crop((0, top, crop_w, top + crop_h))
             final_img = cropped.resize((target_width, target_height), Image.Resampling.LANCZOS)
         else:
