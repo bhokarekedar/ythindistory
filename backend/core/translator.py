@@ -956,9 +956,10 @@ Output strictly a JSON object with a single key 'segments':
 Your task is to generate a visual scene description and cinematic direction for each narration beat.
 Style rules:
 - Recurring Characters: narrator is ALWAYS a minimalist 2D stick figure with a circular white head, spiky bright orange hair, dot eyes, thin black stick limbs, and a plain white torso. Old humans have sparse gray hair/glasses.
-- Animals: simple 2D stick-figure animals with flat body fill and thin black stick legs (stick dog, stick deer, stick crow, stick cat, stick fox, stick sea lion).
+- Animals: full-body 2D stick-figure animals with complete bodies and stick legs (stick dog, stick deer, stick crow, stick cat, stick fox, stick sea lion). All subjects must have full bodies, NEVER floating or severed heads.
+- STRICT NO-TEXT RULE: NEVER include speech bubbles, thought bubbles, dialogue boxes, or written text inside the scene description. Image models cannot generate text and create garbled gibberish. The visual must be 100% pictorial and action-based (characters acting, gesturing, and reacting).
 - Composition Variety: vary shots dynamically (wide, close-up, split-screen, diagram/chalkboard) to maximize viewer retention.
-- Overlay Text: punchy all-caps phrase (1-3 words) for key concepts (e.g. 'ECOLOGICAL NAIVETY', 'TRUST = CALCULATION', 'CALM ≠ TAME'), or empty string if none needed.
+- Overlay Text: punchy all-caps phrase (1-3 words) for key concepts (e.g. 'ECOLOGICAL NAIVETY', 'TRUST = CALCULATION', 'CALM ≠ TAME'), or empty string if none needed. (Rendered cleanly by video editor, NOT inside the AI image).
 - Motion: dynamic camera cues (zoom_in, zoom_out, pan_left, static). Use zoom_in for emotional/dramatic lines and questions.
 - Output strictly a valid JSON object:
 {"scenes": [{"id": 1, "visual": "15-25 word description featuring the exact subjects", "shot_type": "wide|close-up|split-screen|diagram", "motion": "zoom_in|zoom_out|pan_left|static", "overlay_text": "KEY PHRASE OR EMPTY", "transition": "cut|fade"}]}"""

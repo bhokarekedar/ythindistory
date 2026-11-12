@@ -65,8 +65,11 @@ class CloudflareImageGenerator:
             return None
 
         # Pipeline Auto-Enforcement for Stick-Comic & MS Paint Style
+        import re
         refined_prompt = prompt
-        p_lower = prompt.lower()
+        # Clean out speech/thought bubble requests that cause garbled text hallucinations
+        refined_prompt = re.sub(r'(?i)\b(thought|speech|dialogue)\s+bubbles?\b[^,.;]*', '', refined_prompt)
+        p_lower = refined_prompt.lower()
         if any(k in p_lower for k in ["stick figure", "stick-figure", "stick-comic", "ms paint", "basically primitive", "webcomic"]):
             # 1. Enforce strict MS Paint aesthetics (Kill FLUX's 3D/Shading bias)
             if "zero shading" not in p_lower:
@@ -80,10 +83,11 @@ class CloudflareImageGenerator:
             if "headroom" not in p_lower and "wide shot" not in p_lower:
                 refined_prompt += " Extreme wide long shot, centered 16:9 composition with ample empty headroom above and wide ground below, entire bodies visible in middle vertical third."
 
-            # 4. Enforce flat animal style
-            animal_keywords = ["animal", "elephant", "dog", "cat", "monkey", "horse", "bear", "lion", "tiger", "bird", "rabbit", "creature", "pet"]
-            if any(ak in p_lower for ak in animal_keywords):
-                refined_prompt += " Any animal present must be drawn strictly in flat stick-comic style: flat solid white body fill, thin black stick legs, zero 3D shading, zero fur texture."
+            # 4. Enforce flat animal style & full bodies (no severed heads)
+            refined_prompt += " All characters and animals MUST be drawn full body with complete head, torso, and legs. Zero floating or severed heads."
+
+            # 5. Strict negative constraint: Zero text, zero speech bubbles
+            refined_prompt += " ABSOLUTELY ZERO TEXT, ZERO WORDS, ZERO LETTERS, ZERO SPEECH BUBBLES, ZERO THOUGHT BUBBLES. Pure visual drawing with no written text."
 
         payload = json.dumps({"prompt": refined_prompt}).encode("utf-8")
 
