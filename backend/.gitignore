@@ -8,3 +8,4 @@ models/
 bin/
 training_dataset/
 donwloadedmovies/
+data/browser_profile/

@@ -2076,6 +2076,73 @@ def archive_campaign_endpoint(campaign_id: str):
     return {"status": "success", "message": "Campaign archived."}
 
 
+# -------------------------------------------------------------
+# CAMPAIGN DISCOVERY & PLAYWRIGHT SCRAPING ENDPOINTS
+# -------------------------------------------------------------
+class DiscoveryStartRequest(BaseModel):
+    max_campaigns: int = 5
+    refresh_existing: bool = False
+
+class DiscoveryExtractUrlRequest(BaseModel):
+    campaign_url: str
+
+
+@app.post("/api/campaign-discovery/start")
+def start_campaign_discovery_endpoint(request: DiscoveryStartRequest):
+    """Triggers automated Content Rewards campaign discovery and extraction."""
+    from campaign_discovery import CampaignDiscoveryService
+    try:
+        with CampaignDiscoveryService(repository=campaign_repo) as service:
+            result = service.discover_and_sync(
+                max_campaigns=request.max_campaigns,
+                refresh_existing=request.refresh_existing
+            )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Discovery sync failed: {str(e)}")
+
+
+@app.post("/api/campaign-discovery/extract")
+def extract_single_campaign_endpoint(request: DiscoveryExtractUrlRequest):
+    """Extracts and persists a single Content Rewards campaign from its URL."""
+    from campaign_discovery import CampaignDiscoveryService
+    url = (request.campaign_url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Please provide a valid campaign URL.")
+    try:
+        with CampaignDiscoveryService(repository=campaign_repo) as service:
+            result = service.extract_and_save_single_url(url)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Campaign extraction failed: {str(e)}")
+
+
+@app.get("/api/campaign-discovery/auth-status")
+def get_campaign_discovery_auth_status():
+    """Checks whether the Content Rewards persistent browser session is authenticated."""
+    from campaign_discovery import SessionManager
+    try:
+        session_mgr = SessionManager()
+        status = session_mgr.check_auth_status()
+        session_mgr.browser_manager.close()
+        return {"status": "success", "session": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auth check failed: {str(e)}")
+
+
+@app.post("/api/campaign-discovery/manual-login")
+def trigger_manual_login_session(timeout_seconds: int = 180):
+    """Launches headed Chromium to allow manual user sign-in to Content Rewards."""
+    from campaign_discovery import SessionManager
+    try:
+        session_mgr = SessionManager()
+        result = session_mgr.launch_manual_login(timeout_seconds=timeout_seconds)
+        return {"status": "success", "login_result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Manual login failed: {str(e)}")
+
+
+
 
 
 if __name__ == "__main__":
