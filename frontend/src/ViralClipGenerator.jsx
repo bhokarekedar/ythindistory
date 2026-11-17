@@ -84,6 +84,7 @@ export default function ViralClipGenerator() {
   const [uploadResult, setUploadResult] = useState(null)
   const [uploadError, setUploadError] = useState(null)
   const [youtubeAuthStatus, setYoutubeAuthStatus] = useState(null)
+  const [copiedShortsUrl, setCopiedShortsUrl] = useState(false)
 
   const checkYouTubeStatus = async () => {
     try {
@@ -616,6 +617,58 @@ export default function ViralClipGenerator() {
               )}
               {selectedCampaign.posting_metadata?.required_mentions?.length > 0 && (
                 <span>👤 Mentions: {selectedCampaign.posting_metadata.required_mentions.join(' ')}</span>
+              )}
+            </div>
+          )}
+
+          {/* Verify / Join Campaign Banner */}
+          {selectedCampaign && (
+            <div style={{
+              marginTop: '12px',
+              padding: '12px 14px',
+              background: '#1e1b4b',
+              border: '1px solid #4338ca',
+              borderRadius: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#c7d2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🎯</span> Step 1: Verify & Join Campaign on {selectedCampaign.source_platform || 'Marketplace'}
+                </div>
+                <div style={{ fontSize: '11px', color: '#a5b4fc', marginTop: '2px' }}>
+                  Ensure you are signed in and have clicked "Join Campaign" so your posted clips qualify for payouts.
+                </div>
+              </div>
+              {selectedCampaign.campaign_url ? (
+                <a
+                  href={selectedCampaign.campaign_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                    color: '#fff',
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 8px rgba(79, 70, 229, 0.4)'
+                  }}
+                >
+                  <span>🔗</span> Open Campaign Page to Join ↗
+                </a>
+              ) : (
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  (Direct portal link)
+                </span>
               )}
             </div>
           )}
@@ -2255,8 +2308,8 @@ export default function ViralClipGenerator() {
               }}>
                 {uploadResult.success ? (
                   <div>
-                    <span style={{ fontWeight: 'bold', color: '#6ee7b7' }}>🎉 Successfully Uploaded to YouTube!</span>
-                    <div style={{ marginTop: '6px' }}>
+                    <span style={{ fontWeight: 'bold', color: '#6ee7b7' }}>🎉 Successfully Published to YouTube Shorts!</span>
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <a
                         href={uploadResult.shorts_url}
                         target="_blank"
@@ -2265,7 +2318,69 @@ export default function ViralClipGenerator() {
                       >
                         Watch on YouTube Shorts ↗
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(uploadResult.shorts_url)
+                          setCopiedShortsUrl(true)
+                          setTimeout(() => setCopiedShortsUrl(false), 2000)
+                        }}
+                        style={{
+                          background: copiedShortsUrl ? '#15803d' : '#27272a',
+                          color: '#fff',
+                          border: '1px solid #3f3f46',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {copiedShortsUrl ? '✅ URL Copied!' : '📋 Copy Shorts URL'}
+                      </button>
                     </div>
+
+                    {/* Submit URL to Campaign for Payouts */}
+                    {selectedCampaign && (
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '10px 12px',
+                        background: '#18181b',
+                        border: '1px solid #38bdf8',
+                        borderRadius: '6px'
+                      }}>
+                        <div style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '12px', marginBottom: '4px' }}>
+                          💰 Final Step: Submit Link for Payout Tracking
+                        </div>
+                        <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: '#cbd5e1' }}>
+                          Submit this live Shorts link on {selectedCampaign.source_platform} so their system begins tracking your views for payouts.
+                        </p>
+                        {selectedCampaign.campaign_url ? (
+                          <a
+                            href={selectedCampaign.campaign_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              background: '#2563eb',
+                              color: '#fff',
+                              padding: '6px 14px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <span>🚀</span> Open {selectedCampaign.source_platform} & Paste Link ↗
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            Paste copied link into the campaign submission portal.
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>
