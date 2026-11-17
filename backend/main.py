@@ -2087,10 +2087,25 @@ class DiscoveryExtractUrlRequest(BaseModel):
     campaign_url: str
 
 
+@app.get("/api/campaign-discovery/status")
+def get_campaign_discovery_status_endpoint():
+    """Returns the current concurrency and execution status of the discovery service."""
+    from campaign_discovery import CampaignDiscoveryService
+    return {
+        "status": "success",
+        "lock": CampaignDiscoveryService.get_run_status()
+    }
+
+
 @app.post("/api/campaign-discovery/start")
 def start_campaign_discovery_endpoint(request: DiscoveryStartRequest):
     """Triggers automated Content Rewards campaign discovery and extraction."""
     from campaign_discovery import CampaignDiscoveryService
+    if CampaignDiscoveryService.is_busy():
+        raise HTTPException(
+            status_code=409,
+            detail="A campaign discovery run is already in progress. Concurrent runs are rejected to protect the browser profile."
+        )
     try:
         with CampaignDiscoveryService(repository=campaign_repo) as service:
             result = service.discover_and_sync(
@@ -2098,6 +2113,8 @@ def start_campaign_discovery_endpoint(request: DiscoveryStartRequest):
                 refresh_existing=request.refresh_existing
             )
         return result
+    except RuntimeError as re:
+        raise HTTPException(status_code=409, detail=str(re))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Discovery sync failed: {str(e)}")
 

@@ -1,0 +1,344 @@
+{
+  "name": "ViralLoop - Campaign Discovery Sync",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        100
+      ],
+      "id": "node-manual-trigger",
+      "name": "Manual Run"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -500,
+        -80
+      ],
+      "id": "node-schedule-trigger",
+      "name": "Daily Schedule (9 AM)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "API_BASE_URL",
+              "value": "http://127.0.0.1:8000",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "MAX_CAMPAIGNS",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "c3",
+              "name": "REFRESH_EXISTING",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "c4",
+              "name": "ENFORCE_AUTHENTICATION",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -280,
+        0
+      ],
+      "id": "node-workflow-config",
+      "name": "Workflow Configuration"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.API_BASE_URL }}/api/campaign-discovery/status",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        0
+      ],
+      "id": "node-check-lock",
+      "name": "Check Concurrency Lock",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-busy",
+              "leftValue": "={{ $json.lock?.is_busy }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        0
+      ],
+      "id": "node-if-busy",
+      "name": "Is Run in Progress?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    workflow_name: 'ViralLoop - Campaign Discovery Sync',\n    execution_time: new Date().toISOString(),\n    status: 'ABORTED_BUSY',\n    message: 'A campaign discovery run is already in progress on the server. Skipping execution to prevent conflicting browser sessions.',\n    metrics: {\n      discovered_total: 0,\n      processed_count: 0,\n      new_saved_count: 0,\n      duplicates_skipped: 0,\n      failed_count: 0\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -120
+      ],
+      "id": "node-abort-busy",
+      "name": "Abort - Run in Progress"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.API_BASE_URL }}/api/campaign-discovery/auth-status",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        100
+      ],
+      "id": "node-check-auth",
+      "name": "Check Auth Status",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-auth",
+              "leftValue": "={{ $('Workflow Configuration').first().json.ENFORCE_AUTHENTICATION === true && $json.session?.is_authenticated === false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        620,
+        100
+      ],
+      "id": "node-if-auth-needed",
+      "name": "Auth Required?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const session = $('Check Auth Status').first()?.json?.session || {};\nreturn [{\n  json: {\n    workflow_name: 'ViralLoop - Campaign Discovery Sync',\n    execution_time: new Date().toISOString(),\n    status: 'NEEDS_AUTHENTICATION',\n    message: 'Content Rewards session is unauthenticated and authentication is strictly enforced. Please launch manual login via POST /api/campaign-discovery/manual-login or the ViralLoop dashboard.',\n    session_details: session\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -40
+      ],
+      "id": "node-abort-auth",
+      "name": "Abort - Login Required"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.API_BASE_URL }}/api/campaign-discovery/start",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"max_campaigns\": {{ $('Workflow Configuration').first().json.MAX_CAMPAIGNS }},\n  \"refresh_existing\": {{ $('Workflow Configuration').first().json.REFRESH_EXISTING }}\n}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        200
+      ],
+      "id": "node-trigger-discovery",
+      "name": "Trigger Campaign Discovery",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst config = $('Workflow Configuration').first().json;\nconst execTime = new Date().toISOString();\n\nif (response.error || response.detail) {\n  return [{\n    json: {\n      workflow_name: 'ViralLoop - Campaign Discovery Sync',\n      execution_time: execTime,\n      status: 'FAILED',\n      error: response.detail || response.error || 'Server error during discovery sync',\n      metrics: {\n        discovered_total: 0,\n        processed_count: 0,\n        new_saved_count: 0,\n        duplicates_skipped: 0,\n        failed_count: 1\n      },\n      summary: 'Campaign discovery failed with an API error.'\n    }\n  }];\n}\n\nconst metrics = response.metrics || {\n  discovered_total: 0,\n  processed_count: 0,\n  new_saved_count: 0,\n  duplicates_skipped: 0,\n  failed_count: 0\n};\n\nconst saved = response.saved_campaigns || [];\n\nlet status = response.status || 'COMPLETED';\nif (metrics.failed_count > 0 && metrics.new_saved_count === 0) {\n  status = 'FAILED';\n} else if (metrics.failed_count > 0) {\n  status = 'PARTIAL_FAILURE';\n}\n\nlet summaryText = `### ViralLoop Discovery Sync Summary\\n` +\n  `- **Status:** ${status}\\n` +\n  `- **Timestamp:** ${execTime}\\n` +\n  `- **Discovered on Platform:** ${metrics.discovered_total}\\n` +\n  `- **Processed Pages:** ${metrics.processed_count}\\n` +\n  `- **New Campaigns Saved:** ${metrics.new_saved_count}\\n` +\n  `- **Duplicates Skipped:** ${metrics.duplicates_skipped}\\n` +\n  `- **Failed:** ${metrics.failed_count}\\n` +\n  `- **Duration:** ${response.elapsed_seconds || 0}s`;\n\nreturn [{\n  json: {\n    workflow_name: 'ViralLoop - Campaign Discovery Sync',\n    execution_time: execTime,\n    status: status,\n    elapsed_seconds: response.elapsed_seconds || 0,\n    metrics: metrics,\n    saved_campaigns: saved,\n    summary_markdown: summaryText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "node-build-summary",
+      "name": "Build Execution Summary"
+    }
+  ],
+  "connections": {
+    "Manual Run": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Schedule (9 AM)": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Check Concurrency Lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Concurrency Lock": {
+      "main": [
+        [
+          {
+            "node": "Is Run in Progress?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Run in Progress?": {
+      "main": [
+        [
+          {
+            "node": "Abort - Run in Progress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Auth Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Auth Status": {
+      "main": [
+        [
+          {
+            "node": "Auth Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth Required?": {
+      "main": [
+        [
+          {
+            "node": "Abort - Login Required",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trigger Campaign Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Campaign Discovery": {
+      "main": [
+        [
+          {
+            "node": "Build Execution Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "VLDiscovSync0001",
+  "active": false
+}
