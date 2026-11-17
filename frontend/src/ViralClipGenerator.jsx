@@ -13,6 +13,13 @@ export default function ViralClipGenerator() {
   const [jobData, setJobData] = useState(null)
   const pollIntervalRef = useRef(null)
 
+  // Viral Moments & Smart Crop State
+  const [viralMoments, setViralMoments] = useState([])
+  const [loadingMoments, setLoadingMoments] = useState(false)
+  const [selectedLayouts, setSelectedLayouts] = useState({})
+  const [renderingClipId, setRenderingClipId] = useState(null)
+  const [activePreviewClip, setActivePreviewClip] = useState(null)
+
   // Real-time client-side URL validation
   useEffect(() => {
     const trimmed = url.trim()
@@ -46,6 +53,9 @@ export default function ViralClipGenerator() {
         if (data.status === 'completed' || data.status === 'error') {
           setIsProcessing(false)
           clearInterval(pollIntervalRef.current)
+          if (data.status === 'completed' && data.video_id) {
+            fetchExistingMoments(data.video_id)
+          }
         }
       } catch (err) {
         console.error('Failed to poll viral clip status:', err)
@@ -69,6 +79,8 @@ export default function ViralClipGenerator() {
     setErrorMsg('')
     setVideoMeta(null)
     setJobData(null)
+    setViralMoments([])
+    setActivePreviewClip(null)
 
     try {
       const res = await fetch('http://localhost:8000/api/viral-clips/video-info', {
@@ -83,10 +95,35 @@ export default function ViralClipGenerator() {
       }
 
       setVideoMeta(data.metadata)
+      if (data.metadata?.video_id) {
+        fetchExistingMoments(data.metadata.video_id)
+      }
     } catch (err) {
       setErrorMsg(err.message || 'Error communicating with backend server')
     } finally {
       setLoadingInfo(false)
+    }
+  }
+
+  // Check if viral moments were already generated for this video
+  const fetchExistingMoments = async (videoId) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/viral-clips/moments/${videoId}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.clips && data.clips.length > 0) {
+        setViralMoments(data.clips)
+        const layouts = {}
+        data.clips.forEach(c => {
+          layouts[c.clip_id] = c.suggested_layout || 'dynamic_smart_crop'
+          if (c.rendered && !activePreviewClip) {
+            setActivePreviewClip(c)
+          }
+        })
+        setSelectedLayouts(layouts)
+      }
+    } catch (err) {
+      console.error('Failed to fetch existing viral moments:', err)
     }
   }
 
@@ -120,6 +157,81 @@ export default function ViralClipGenerator() {
     }
   }
 
+  // Detect viral moments via LLM
+  const handleDetectViralMoments = async () => {
+    const videoId = videoMeta?.video_id || jobData?.video_id
+    if (!videoId) return
+
+    setLoadingMoments(true)
+    setErrorMsg('')
+    try {
+      const res = await fetch('http://localhost:8000/api/viral-clips/detect-moments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId, target_clips: 4 })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to identify viral moments')
+      }
+
+      setViralMoments(data.clips || [])
+      const layouts = {}
+      (data.clips || []).forEach(c => {
+        layouts[c.clip_id] = c.suggested_layout || 'dynamic_smart_crop'
+      })
+      setSelectedLayouts(layouts)
+    } catch (err) {
+      setErrorMsg(err.message || 'Error running AI viral moment detection')
+    } finally {
+      setLoadingMoments(false)
+    }
+  }
+
+  // Render a specific vertical clip via AI Smart Cropping Engine
+  const handleRenderClip = async (clip) => {
+    const videoId = videoMeta?.video_id || jobData?.video_id
+    if (!videoId) return
+
+    setRenderingClipId(clip.clip_id)
+    setErrorMsg('')
+    const layout = selectedLayouts[clip.clip_id] || clip.suggested_layout || 'dynamic_smart_crop'
+
+    try {
+      const res = await fetch('http://localhost:8000/api/viral-clips/render-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: videoId,
+          clip_id: clip.clip_id,
+          start_time: clip.start_time,
+          end_time: clip.end_time,
+          layout: layout
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to render vertical clip')
+      }
+
+      // Mark clip as rendered and set as active preview
+      const updated = viralMoments.map(c => {
+        if (c.clip_id === clip.clip_id) {
+          return { ...c, rendered: true, video_url: data.video_url, report: data.report }
+        }
+        return c
+      })
+      setViralMoments(updated)
+      setActivePreviewClip({ ...clip, rendered: true, video_url: data.video_url, report: data.report })
+    } catch (err) {
+      setErrorMsg(`Error rendering ${clip.clip_id}: ${err.message}`)
+    } finally {
+      setRenderingClipId(null)
+    }
+  }
+
   const formatViews = (count) => {
     if (!count) return '0 views'
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M views`
@@ -127,8 +239,18 @@ export default function ViralClipGenerator() {
     return `${count.toLocaleString()} views`
   }
 
+  const formatSeconds = (sec) => {
+    const s = Math.floor(sec || 0)
+    const m = Math.floor(s / 60)
+    const rem = s % 60
+    return `${m.toString().padStart(2, '0')}:${rem.toString().padStart(2, '0')}`
+  }
+
+  const effectiveVideoId = videoMeta?.video_id || jobData?.video_id
+  const isWorkflowReady = (jobData?.status === 'completed' || videoMeta?.has_transcript_cached)
+
   return (
-    <div style={{ maxWidth: '850px', margin: '0 auto', textAlign: 'left' }}>
+    <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
       {/* Top Banner / Channel Card */}
       <div style={{
         background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
@@ -156,7 +278,7 @@ export default function ViralClipGenerator() {
               }}>Active</span>
             </div>
             <p style={{ margin: '6px 0 0 0', color: '#c7d2fe', fontSize: '13px' }}>
-              Automated high-engagement short-form video extraction for YouTube Shorts & Creator Monetization
+              AI Video Cropping Engine • 1080×1920 Vertical Shorts & Creator Monetization
             </p>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -281,8 +403,7 @@ export default function ViralClipGenerator() {
           borderRadius: '12px',
           padding: '24px',
           marginBottom: '24px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-          animation: 'fadeIn 0.3s ease'
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h4 style={{ margin: 0, fontSize: '15px', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -315,7 +436,6 @@ export default function ViralClipGenerator() {
           </div>
 
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-            {/* Thumbnail Preview */}
             <div style={{ position: 'relative', width: '280px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', background: '#000' }}>
               <img
                 src={videoMeta.thumbnail}
@@ -331,14 +451,12 @@ export default function ViralClipGenerator() {
                 padding: '2px 8px',
                 borderRadius: '4px',
                 fontSize: '12px',
-                fontWeight: 'bold',
-                letterSpacing: '0.5px'
+                fontWeight: 'bold'
               }}>
                 ⏱ {videoMeta.duration_formatted}
               </span>
             </div>
 
-            {/* Video Details */}
             <div style={{ flex: 1, minWidth: '260px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#ffffff', lineHeight: 1.35 }}>
@@ -349,23 +467,9 @@ export default function ViralClipGenerator() {
                   <span>👁 {formatViews(videoMeta.view_count)}</span>
                   <span>🆔 {videoMeta.video_id}</span>
                 </div>
-                {videoMeta.description && (
-                  <p style={{
-                    margin: '0',
-                    fontSize: '12px',
-                    color: '#71717a',
-                    lineHeight: '1.4',
-                    maxHeight: '48px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {videoMeta.description}
-                  </p>
-                )}
               </div>
 
-              {/* Action Button */}
-              <div style={{ marginTop: '16px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ marginTop: '16px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={handleStartWorkflow}
@@ -380,7 +484,6 @@ export default function ViralClipGenerator() {
                     fontSize: '14px',
                     cursor: isProcessing ? 'not-allowed' : 'pointer',
                     boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
-                    transition: 'all 0.2s',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px'
@@ -416,6 +519,7 @@ export default function ViralClipGenerator() {
           border: '1px solid #3f3f46',
           borderRadius: '12px',
           padding: '24px',
+          marginBottom: '24px',
           boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -434,14 +538,8 @@ export default function ViralClipGenerator() {
             </span>
           </div>
 
-          {/* Stepper Display */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px', marginBottom: '18px' }}>
-            <div style={{
-              background: '#27272a',
-              padding: '12px',
-              borderRadius: '8px',
-              borderLeft: '4px solid #22c55e'
-            }}>
+            <div style={{ background: '#27272a', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #22c55e' }}>
               <div style={{ fontSize: '11px', color: '#a1a1aa' }}>STEP 1</div>
               <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff', marginTop: '2px' }}>Video Verified ✅</div>
             </div>
@@ -483,7 +581,6 @@ export default function ViralClipGenerator() {
             </div>
           </div>
 
-          {/* Status Message Box */}
           <div style={{
             background: '#09090b',
             padding: '14px 16px',
@@ -495,18 +592,313 @@ export default function ViralClipGenerator() {
           }}>
             ▶ {jobData.message || 'Processing video workflow...'}
           </div>
+        </div>
+      )}
 
-          {jobData.status === 'completed' && (
+      {/* Step 2: AI Viral Moment Identification & Vertical Video Studio */}
+      {isWorkflowReady && (
+        <div style={{
+          background: '#18181b',
+          border: '1px solid #4f46e5',
+          borderRadius: '12px',
+          padding: '24px',
+          marginBottom: '24px',
+          boxShadow: '0 8px 30px rgba(79, 70, 229, 0.15)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  background: '#4f46e5',
+                  color: 'white',
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '13px',
+                  fontWeight: 'bold'
+                }}>2</span>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#ffffff' }}>
+                  AI Viral Moment Discovery & Smart Cropping Studio
+                </h3>
+              </div>
+              <p style={{ margin: '6px 0 0 0', color: '#a1a1aa', fontSize: '13px' }}>
+                Groq LLM hook analysis + MediaPipe AI Face Reframing to 1080×1920 (9:16 vertical)
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleDetectViralMoments}
+              disabled={loadingMoments}
+              style={{
+                background: loadingMoments ? '#312e81' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 20px',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                cursor: loadingMoments ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+              }}
+            >
+              {loadingMoments ? '🤖 Analyzing 300+ Sentences...' : '⚡ Find Top Viral Clips (Groq AI)'}
+            </button>
+          </div>
+
+          {/* Active Preview Player if a clip is rendered */}
+          {activePreviewClip && activePreviewClip.rendered && activePreviewClip.video_url && (
             <div style={{
-              marginTop: '16px',
-              padding: '14px 16px',
-              background: '#052e16',
-              border: '1px solid #16a34a',
-              borderRadius: '8px',
-              color: '#bbf7d0',
-              fontSize: '13px'
+              background: '#09090b',
+              border: '1px solid #3f3f46',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.5)'
             }}>
-              ✨ <strong>Step 1 & Foundation Complete!</strong> Video is cached and dialogue is parsed into {jobData.total_segments} timestamped sentence units. Ready for viral moment identification!
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#4ade80', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🎬</span> Vertical 9:16 Preview: {activePreviewClip.title}
+                </span>
+                <a
+                  href={`http://localhost:8000${activePreviewClip.video_url}`}
+                  download={`${activePreviewClip.clip_id}_vertical.mp4`}
+                  style={{
+                    background: '#22c55e',
+                    color: '#052e16',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  📥 Download 1080x1920 MP4
+                </a>
+              </div>
+
+              {/* 9:16 Vertical Video Frame */}
+              <div style={{
+                width: '280px',
+                height: '497px',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                background: '#000',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.8)',
+                border: '2px solid #27272a'
+              }}>
+                <video
+                  src={`http://localhost:8000${activePreviewClip.video_url}`}
+                  controls
+                  autoPlay
+                  loop
+                  playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              </div>
+
+              {activePreviewClip.report && (
+                <div style={{ marginTop: '14px', fontSize: '12px', color: '#a1a1aa', display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <span>📐 {activePreviewClip.report.output_resolution}</span>
+                  <span>⏱ {activePreviewClip.report.duration}s</span>
+                  <span>🎥 {activePreviewClip.report.selected_layout}</span>
+                  <span>🎯 Stability: {Math.round((activePreviewClip.report.tracking_stability_score || 0.9) * 100)}%</span>
+                  <span>⚡ Rendered in {activePreviewClip.report.processing_time_seconds}s</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Discovered Viral Moments Grid */}
+          {viralMoments.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              {viralMoments.map((clip) => {
+                const isRendering = renderingClipId === clip.clip_id
+                const currentLayout = selectedLayouts[clip.clip_id] || clip.suggested_layout || 'dynamic_smart_crop'
+
+                return (
+                  <div
+                    key={clip.clip_id}
+                    style={{
+                      background: '#09090b',
+                      border: clip.rendered ? '1.5px solid #22c55e' : '1px solid #27272a',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    }}
+                  >
+                    <div>
+                      {/* Top Pill Bar */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span style={{
+                          background: '#4338ca',
+                          color: '#e0e7ff',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          padding: '2px 8px',
+                          borderRadius: '4px'
+                        }}>
+                          {clip.clip_id.toUpperCase()}
+                        </span>
+                        <span style={{
+                          background: clip.viral_score >= 95 ? '#065f46' : '#1e3a8a',
+                          color: clip.viral_score >= 95 ? '#6ee7b7' : '#93c5fd',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          padding: '2px 8px',
+                          borderRadius: '12px'
+                        }}>
+                          🔥 {clip.viral_score}/100 SCORE
+                        </span>
+                      </div>
+
+                      {/* Title */}
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', color: '#ffffff', lineHeight: 1.35 }}>
+                        {clip.title}
+                      </h4>
+
+                      {/* Duration & Time Range */}
+                      <div style={{ fontSize: '12px', color: '#818cf8', marginBottom: '10px', fontWeight: '500' }}>
+                        ⏱ {formatSeconds(clip.start_time)} - {formatSeconds(clip.end_time)} ({clip.duration}s)
+                      </div>
+
+                      {/* Opening Hook Quote */}
+                      {clip.hook && (
+                        <div style={{
+                          background: '#18181b',
+                          borderLeft: '3px solid #6366f1',
+                          padding: '8px 10px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          color: '#e2e8f0',
+                          fontStyle: 'italic',
+                          marginBottom: '10px',
+                          lineHeight: 1.4
+                        }}>
+                          "{clip.hook}"
+                        </div>
+                      )}
+
+                      {/* Why it works */}
+                      {clip.reason && (
+                        <p style={{ margin: '0 0 14px 0', fontSize: '11px', color: '#71717a', lineHeight: 1.35 }}>
+                          💡 {clip.reason}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Bottom Controls */}
+                    <div style={{ borderTop: '1px solid #1f2937', paddingTop: '12px' }}>
+                      {/* Layout Selection */}
+                      <div style={{ marginBottom: '10px' }}>
+                        <label style={{ fontSize: '11px', color: '#9ca3af', display: 'block', marginBottom: '4px' }}>
+                          Reframing Strategy:
+                        </label>
+                        <select
+                          value={currentLayout}
+                          onChange={(e) => {
+                            setSelectedLayouts({
+                              ...selectedLayouts,
+                              [clip.clip_id]: e.target.value
+                            })
+                          }}
+                          style={{
+                            width: '100%',
+                            background: '#18181b',
+                            color: '#fff',
+                            border: '1px solid #374151',
+                            borderRadius: '6px',
+                            padding: '6px 8px',
+                            fontSize: '12px',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="dynamic_smart_crop">👤 Dynamic Smart Crop (Auto Face-Follow)</option>
+                          <option value="blurred_background">🌌 Blurred Background (Wide Fill)</option>
+                          <option value="split_screen">🔲 Split Screen (Dual View)</option>
+                        </select>
+                      </div>
+
+                      {/* Action Button */}
+                      {clip.rendered ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setActivePreviewClip(clip)}
+                            style={{
+                              flex: 1,
+                              background: '#22c55e',
+                              color: '#052e16',
+                              padding: '8px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ▶ Play 9:16 Video
+                          </button>
+                          <a
+                            href={`http://localhost:8000${clip.video_url}`}
+                            download={`${clip.clip_id}_vertical.mp4`}
+                            style={{
+                              background: '#374151',
+                              color: '#fff',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center'
+                            }}
+                          >
+                            📥
+                          </a>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleRenderClip(clip)}
+                          disabled={isRendering}
+                          style={{
+                            width: '100%',
+                            background: isRendering ? '#4b5563' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                            color: '#fff',
+                            padding: '10px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            fontSize: '13px',
+                            fontWeight: 'bold',
+                            cursor: isRendering ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          {isRendering ? '⏳ Reframing 1080x1920...' : '⚡ Render Vertical Short (9:16)'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -514,4 +906,3 @@ export default function ViralClipGenerator() {
     </div>
   )
 }
-

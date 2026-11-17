@@ -1603,5 +1603,134 @@ def get_viral_clip_status(job_id: str):
     return viral_jobs[job_id]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# VIRAL MOMENT DETECTION & AI SMART CROP RENDERING ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+from core.viral_moment_detector import ViralMomentDetector
+from core.smart_crop import SmartCropEngine, SmartCropConfig
+
+def _get_base_dirs():
+    """Returns absolute paths for temp and output directories regardless of cwd."""
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    temp_dir = os.path.join(backend_dir, "temp")
+    out_dir = os.path.join(backend_dir, "output")
+    os.makedirs(temp_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+    return temp_dir, out_dir
+
+class ViralDetectRequest(BaseModel):
+    video_id: str
+    target_clips: int = 4
+
+class ViralRenderRequest(BaseModel):
+    video_id: str
+    clip_id: str
+    start_time: float
+    end_time: float
+    layout: Optional[str] = "dynamic_smart_crop"
+
+@app.post("/api/viral-clips/detect-moments")
+def detect_viral_moments_endpoint(request: ViralDetectRequest):
+    video_id = request.video_id.strip()
+    temp_dir, _ = _get_base_dirs()
+    transcript_path = os.path.join(temp_dir, f"viral_{video_id}", f"{video_id}_transcript.json")
+    
+    if not os.path.exists(transcript_path):
+        # Also check relative fallback
+        rel_path = os.path.join("temp", f"viral_{video_id}", f"{video_id}_transcript.json")
+        if os.path.exists(rel_path):
+            transcript_path = rel_path
+        else:
+            raise HTTPException(status_code=404, detail=f"Transcript not found for video {video_id}. Please download & transcribe first.")
+
+    moments_file = os.path.join(os.path.dirname(transcript_path), "viral_moments.json")
+    detector = ViralMomentDetector()
+    try:
+        clips = detector.detect_moments(transcript_path, target_clips=request.target_clips)
+        with open(moments_file, "w", encoding="utf-8") as f:
+            json.dump(clips, f, indent=2)
+        return {"status": "success", "video_id": video_id, "clips": clips}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to detect viral moments: {str(e)}")
+
+@app.get("/api/viral-clips/moments/{video_id}")
+def get_viral_moments_endpoint(video_id: str):
+    temp_dir, out_dir = _get_base_dirs()
+    moments_file = os.path.join(temp_dir, f"viral_{video_id}", "viral_moments.json")
+    if not os.path.exists(moments_file):
+        rel_moments = os.path.join("temp", f"viral_{video_id}", "viral_moments.json")
+        if os.path.exists(rel_moments):
+            moments_file = rel_moments
+        else:
+            return {"video_id": video_id, "clips": []}
+
+    try:
+        with open(moments_file, "r", encoding="utf-8") as f:
+            clips = json.load(f)
+
+        clip_dir = os.path.join(out_dir, "viral_clips", video_id)
+        for c in clips:
+            cid = c.get("clip_id")
+            mp4_path = os.path.join(clip_dir, f"{cid}.mp4")
+            c["rendered"] = os.path.exists(mp4_path) and os.path.getsize(mp4_path) > 1024
+            c["video_url"] = f"/output/viral_clips/{video_id}/{cid}.mp4" if c["rendered"] else None
+
+        return {"video_id": video_id, "clips": clips}
+    except Exception as e:
+        return {"video_id": video_id, "clips": [], "error": str(e)}
+
+@app.post("/api/viral-clips/render-clip")
+def render_viral_clip_endpoint(request: ViralRenderRequest):
+    video_id = request.video_id.strip()
+    temp_dir, out_dir = _get_base_dirs()
+    
+    # Locate source video across candidate directories
+    src_video = None
+    for base in [os.path.join(temp_dir, "videos"), "temp/videos", "backend/temp/videos"]:
+        for ext in ["mp4", "webm", "mkv"]:
+            p = os.path.join(base, f"{video_id}.{ext}")
+            if os.path.exists(p) and os.path.getsize(p) >= 1024 * 1024:
+                src_video = os.path.abspath(p)
+                break
+        if src_video:
+            break
+            
+    if not src_video:
+        raise HTTPException(status_code=404, detail=f"Source video for {video_id} not found in temp/videos.")
+
+    clip_out_dir = os.path.join(out_dir, "viral_clips", video_id)
+    os.makedirs(clip_out_dir, exist_ok=True)
+    output_path = os.path.join(clip_out_dir, f"{request.clip_id}.mp4")
+
+    engine = SmartCropEngine()
+    duration = max(1.0, request.end_time - request.start_time)
+    
+    try:
+        report = engine.process_clip(
+            source_path=src_video,
+            output_path=output_path,
+            clip_id=request.clip_id,
+            start_time=request.start_time,
+            duration=duration,
+            preferred_layout=request.layout or "dynamic_smart_crop"
+        )
+
+        if report.render_status != "completed":
+            raise HTTPException(status_code=500, detail=f"Rendering failed: {report.error}")
+
+        return {
+            "status": "completed",
+            "video_id": video_id,
+            "clip_id": request.clip_id,
+            "video_url": f"/output/viral_clips/{video_id}/{request.clip_id}.mp4",
+            "report": report.to_dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Render error: {str(e)}")
+
+
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
