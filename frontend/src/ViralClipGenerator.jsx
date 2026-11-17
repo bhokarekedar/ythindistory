@@ -32,6 +32,8 @@ export default function ViralClipGenerator() {
   const [copiedCaptionClipId, setCopiedCaptionClipId] = useState(null)
   const [campaignFootage, setCampaignFootage] = useState(null)
   const [loadingFootage, setLoadingFootage] = useState(false)
+  const [isSyncingCampaigns, setIsSyncingCampaigns] = useState(false)
+  const [syncStatusMsg, setSyncStatusMsg] = useState('')
 
   // Fetch approved campaigns for monetization linkage
   useEffect(() => {
@@ -46,6 +48,32 @@ export default function ViralClipGenerator() {
       setApprovedCampaigns(data.campaigns || [])
     } catch (e) {
       console.error('Failed to fetch approved campaigns:', e)
+    }
+  }
+
+  // Trigger Playwright discovery to pull newest campaigns from Content Rewards
+  const handleSyncLatestCampaigns = async () => {
+    setIsSyncingCampaigns(true)
+    setSyncStatusMsg('Browsing Content Rewards for newest campaigns...')
+    try {
+      const res = await fetch('http://localhost:8000/api/campaign-discovery/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_campaigns: 5, refresh_existing: false })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        await fetchApprovedCampaigns()
+        const newCount = data.discovery?.new_campaigns_saved || 0
+        setSyncStatusMsg(newCount > 0 ? `Synced! Added ${newCount} new campaign(s).` : 'Library is up to date.')
+      } else {
+        setSyncStatusMsg(data.detail || 'Sync busy or already running.')
+      }
+    } catch (e) {
+      setSyncStatusMsg('Sync error: ' + e.message)
+    } finally {
+      setIsSyncingCampaigns(false)
+      setTimeout(() => setSyncStatusMsg(''), 5000)
     }
   }
 
@@ -582,10 +610,52 @@ export default function ViralClipGenerator() {
             <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>🎯</span> Link to Approved Campaign (Optional):
             </span>
-            <span style={{ fontSize: '11px', color: '#a1a1aa' }}>
-              {approvedCampaigns.length} Approved in Library
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                {approvedCampaigns.length} Approved in Library
+              </span>
+              <button
+                type="button"
+                disabled={isSyncingCampaigns}
+                onClick={handleSyncLatestCampaigns}
+                style={{
+                  background: isSyncingCampaigns ? '#3f3f46' : '#27272a',
+                  border: '1px solid #52525b',
+                  color: isSyncingCampaigns ? '#a1a1aa' : '#e4e4e7',
+                  padding: '3px 8px',
+                  borderRadius: '5px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  cursor: isSyncingCampaigns ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+                title="Browse Content Rewards via Playwright and discover latest campaigns"
+              >
+                <span>{isSyncingCampaigns ? '⏳' : '🔄'}</span>
+                <span>{isSyncingCampaigns ? 'Syncing...' : 'Refresh Campaigns'}</span>
+              </button>
+            </div>
           </div>
+
+          {syncStatusMsg && (
+            <div style={{
+              marginBottom: '8px',
+              padding: '6px 10px',
+              background: '#082f49',
+              border: '1px solid #0284c7',
+              borderRadius: '5px',
+              color: '#bae6fd',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span>ℹ️</span>
+              <span>{syncStatusMsg}</span>
+            </div>
+          )}
 
           <select
             value={selectedCampaignId}
@@ -722,6 +792,24 @@ export default function ViralClipGenerator() {
                   >
                     Open Drive ↗
                   </a>
+                </div>
+              )}
+
+              {/* Content Bank Notice */}
+              {campaignFootage.has_content_bank && (!campaignFootage.drive_links || campaignFootage.drive_links.length === 0) && (
+                <div style={{
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: '12px', color: '#7dd3fc' }}>
+                    📁 <strong>Official Content Bank Available:</strong> The artist provided a Content Bank / Asset Pack on their Content Rewards campaign page. You can also clip the official YouTube tracks loaded below!
+                  </span>
                 </div>
               )}
 

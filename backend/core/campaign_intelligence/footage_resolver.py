@@ -36,18 +36,18 @@ class CampaignFootageResolver:
             return f"{hours}:{mins:02d}:{secs:02d}"
         return f"{mins}:{secs:02d}"
 
-    def _run_ytdlp_flat(self, target: str, max_items: int = 4) -> List[Dict[str, Any]]:
-        """Extracts flat video listings without downloading media."""
+    def _run_ytdlp_flat(self, target: str, max_items: int = 8, required_keywords: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Extracts flat video listings without downloading media, applying strict Tier-1 and relevance filters."""
         cmd = [
             self.ytdlp_bin,
             "--dump-json",
             "--flat-playlist",
             "--no-warnings",
-            "--playlist-end", str(max_items),
+            "--playlist-end", str(max_items * 2),  # Pull extra to allow filtering
             target
         ]
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=18)
             if res.returncode != 0:
                 print(f"[FootageResolver] yt-dlp warning/error for '{target}': {res.stderr[:200]}")
             
@@ -75,17 +75,39 @@ class CampaignFootageResolver:
 
                     v_title = data.get("title") or "Untitled Video"
                     v_channel = data.get("uploader") or data.get("channel") or ""
+                    combined_meta = f"{v_title} {v_channel}".lower()
 
-                    # Filter out non-Tier-1 / Hindi creator content to protect English channel strategy
-                    if re.search(r'[\u0900-\u097F]', f"{v_title} {v_channel}"):
+                    # 1. Reject non-Latin scripts (Devanagari, Arabic/Urdu, Cyrillic, CJK, etc.)
+                    if re.search(r'[\u0900-\u097F\u0A00-\u0A7F\u0600-\u06FF\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]', combined_meta):
                         continue
-                    hindi_signals = [
+
+                    # 2. Comprehensive Tier-1 / Non-English filter (Bollywood, Indian labels, regional music)
+                    non_tier1_keywords = [
+                        # Indian music labels & film channels
+                        "t-series", "tseries", "zee music", "sony music india", "yrf", "saregama",
+                        "tips official", "speed records", "geet mp3", "white hill", "desi music factory",
+                        "venus", "eros now", "aditya music", "lahari music", "rajshri", "times music",
+                        # Languages & Indian regional film industries
+                        "hindi", "punjabi", "bhojpuri", "haryanvi", "tamil", "telugu", "malayalam",
+                        "kannada", "marathi", "bengali", "gujarati", "bollywood", "tollywood", "kollywood",
+                        "desidesi", "desi", "indian", "india", "pakistan", "bangladesh", "urdu",
+                        # Common Bollywood / Hindi words in Latin script
+                        "ghar kab aaoge", "sandese aate hai", "border 2", "gaana", "geet", "bhajan",
+                        "aarti", "dj remix", "bhojpuri song", "punjabi song", "hindi song", "full movie hindi",
+                        # Prominent Indian creators
                         "carryminati", "fukra insaan", "triggered insaan", "round2hell",
                         "bb ki vines", "ashish chanchlani", "mortal", "scout", "techno gamerz",
-                        "total gaming", "sourav joshi", "mythpat", "hindi"
+                        "total gaming", "sourav joshi", "mythpat"
                     ]
-                    if any(h in f"{v_title} {v_channel}".lower() for h in hindi_signals):
+                    if any(bad in combined_meta for bad in non_tier1_keywords):
                         continue
+
+                    # 3. Relevance verification (if required keywords provided)
+                    if required_keywords:
+                        # At least one core subject keyword must appear in video title or channel name
+                        has_relevance = any(kw.lower() in combined_meta for kw in required_keywords if len(kw) >= 3)
+                        if not has_relevance:
+                            continue
 
                     videos.append({
                         "video_id": v_id,
@@ -97,6 +119,9 @@ class CampaignFootageResolver:
                         "channel": v_channel,
                         "view_count": data.get("view_count")
                     })
+
+                    if len(videos) >= max_items:
+                        break
                 except Exception as parse_err:
                     print(f"[FootageResolver] Parse error for line: {parse_err}")
             return videos
@@ -181,17 +206,53 @@ class CampaignFootageResolver:
                         channel_detected = f"https://www.youtube.com/@{clean_handle}"
                         break
 
-        # Priority D: Clean search based on campaign title / keywords
-        if not resolved_videos and not drive_links:
-            clean_title = campaign.title
-            # Strip pool amounts and boilerplate
-            clean_title = re.sub(r'[\$,\d]+(?:k)?\s*(?:pool|campaign)?', '', clean_title, flags=re.IGNORECASE).strip()
-            clean_title = re.sub(r'\(.*?\)', '', clean_title).strip()
-            if len(clean_title) > 4:
-                search_query = f"ytsearch4:{clean_title} stream highlights"
-                resolved_videos = self._run_ytdlp_flat(search_query, max_items=4)
+        # Priority D: Targeted smart search based on campaign type and subject
+        if not resolved_videos:
+            title_raw = campaign.title
+            # Strip dollar amounts ($25,000, $8,000+, ,000)
+            clean_title = re.sub(r'\$\s*[\d,]+[kKmMbB]?\+?', '', title_raw)
+            clean_title = re.sub(r'^\s*,[\d,]+\s*', '', clean_title)
+            # Strip brackets [ROBLOX], (Content Rewards)
+            clean_title = re.sub(r'\[.*?\]|\(.*?\)', '', clean_title)
+            # Strip marketing buzzwords
+            clean_title = re.sub(r'\b(?:\d+\s+)?(?:live\s+)?music\s+campaigns?\b', '', clean_title, flags=re.IGNORECASE)
+            clean_title = re.sub(r'\bclipping\s+campaigns?\b|\bpool\s+campaigns?\b|\bclipping\b|\bcampaigns?\b', '', clean_title, flags=re.IGNORECASE)
+            clean_title = re.sub(r'\b(?:mv\s+)?edits\b', '', clean_title, flags=re.IGNORECASE)
+            clean_title = re.sub(r'[\s\|\-\:\_]+$', '', clean_title).strip(" |-:_")
+
+            # Extract subject words for relevance checking
+            subject_words = [w for w in re.split(r'[\s\-_|/]+', clean_title) if len(w) >= 3 and w.lower() not in ("the", "and", "for", "with", "from", "stream", "live")]
+
+            # Determine content category
+            brief_lower = combined_text.lower()
+            is_music = any(m in brief_lower or m in title_raw.lower() for m in ["sound campaign", "music", "song", "track", "audio", "single", "album", "mv"])
+            is_podcast = any(p in brief_lower or p in title_raw.lower() for p in ["podcast", "interview", "episode"])
+            is_trailer = any(t in brief_lower or t in title_raw.lower() for t in ["trailer", "teaser", "announcement"])
+
+            if is_music:
+                # Look for specific track names in quotes in the brief
+                quoted_tracks = re.findall(r'[\"“\']([^\"”\']{3,30})[\"”\']', brief)
+                valid_tracks = [t for t in quoted_tracks if not any(w in t.lower() for w in ["content", "http", "view", "cpm", "rule", "guideline"])]
+                if valid_tracks:
+                    # Search for artist + official video/audio
+                    search_query = f"ytsearch10:{clean_title} official"
+                    subject_words.extend([w for t in valid_tracks for w in t.split() if len(w) >= 3])
+                else:
+                    search_query = f"ytsearch10:{clean_title} official music video"
+            elif is_podcast:
+                search_query = f"ytsearch10:{clean_title} podcast full episode"
+            elif is_trailer:
+                search_query = f"ytsearch10:{clean_title} official trailer"
+            else:
+                search_query = f"ytsearch10:{clean_title}"
+
+            if len(clean_title) >= 3:
+                resolved_videos = self._run_ytdlp_flat(search_query, max_items=4, required_keywords=subject_words)
                 if resolved_videos:
                     source_type = "search_matches"
+
+        # Check for Content Bank / Asset Pack mention
+        has_content_bank = bool(re.search(r'\b(?:content\s+bank|asset\s+pack|google\s+drive|drive\s+folder|assets?\s+folder)\b', combined_text, flags=re.IGNORECASE))
 
         result = {
             "campaign_id": campaign.campaign_id,
@@ -200,6 +261,8 @@ class CampaignFootageResolver:
             "channel_url": channel_detected,
             "videos": resolved_videos,
             "drive_links": [{"url": d, "label": "Google Drive Footage Folder"} for d in drive_links],
+            "has_content_bank": has_content_bank,
+            "content_bank_note": "Official content bank / asset folder referenced in campaign brief." if has_content_bank else None,
             "total_videos_found": len(resolved_videos)
         }
 
