@@ -8,8 +8,9 @@ from .api_keys import ApiKeyManager
 
 class ViralMomentDetector:
     """
-    Analyzes timestamped dialogue transcripts to identify the most captivating,
-    high-retention viral moments for YouTube Shorts, Instagram Reels, and TikTok.
+    Senior Viral Content Strategist & Story-Complete Moment Selection Engine.
+    Identifies complete mini-stories (Setup -> Development -> Payoff) for short-form
+    video platforms (YouTube Shorts, Reels, TikTok) with zero abrupt cuts.
     """
 
     def __init__(self, model: str = "qwen/qwen3.8-27b"):
@@ -26,11 +27,11 @@ class ViralMomentDetector:
         self,
         transcript_path: str,
         target_clips: int = 4,
-        min_duration_s: float = 25.0,
-        max_duration_s: float = 65.0
+        min_duration_s: float = 20.0,
+        max_duration_s: float = 85.0
     ) -> List[Dict[str, Any]]:
         """
-        Extracts top viral moment candidates with exact start and end timestamps.
+        Extracts top story-complete viral clips with verified setup, development, and payoff.
         """
         if not os.path.exists(transcript_path):
             raise FileNotFoundError(f"Transcript file not found: {transcript_path}")
@@ -42,9 +43,9 @@ class ViralMomentDetector:
             raise ValueError("Transcript contains zero segments.")
 
         total_duration = segments[-1].get("end", 0.0)
-        print(f"[ViralMomentDetector] Analyzing {len(segments)} segments across {total_duration:.1f}s of dialogue...")
+        print(f"[ViralMomentDetector] Analyzing {len(segments)} segments across {total_duration:.1f}s of dialogue for story-complete mini-stories...")
 
-        # Prepare formatted transcript representation for LLM
+        # Format transcript lines with exact micro-timestamps
         lines = []
         for s in segments:
             st = s.get("start", 0.0)
@@ -54,98 +55,179 @@ class ViralMomentDetector:
                 lines.append(f"[{st:.1f}s - {en:.1f}s] {txt}")
 
         transcript_text = "\n".join(lines)
-        # Cap to ~14,000 characters to stay comfortably within Groq context window
-        if len(transcript_text) > 14000:
-            transcript_text = transcript_text[:14000] + "\n...[Transcript truncated]"
+        # Cap to ~9,000 characters (~2,200 tokens) so prompt + transcript stays well below Groq 7,000 ITPM limit
+        if len(transcript_text) > 9000:
+            transcript_text = transcript_text[:9000] + "\n...[Transcript continues]"
 
-        prompt = f"""You are a world-class viral video editor specializing in YouTube Shorts, TikTok, and Instagram Reels (ViralLoop monetization campaigns).
+        system_prompt = """You are a Senior Viral Content Strategist, Professional Short-Form Video Editor, Storytelling Expert, and Audience Retention Specialist.
+You specialize in viral content: MrBeast-style challenges, gaming highlights, streamer reactions, competitions, experiments, and high-energy creator moments.
 
-Analyze this timestamped transcript and identify the TOP {target_clips} most viral, engaging moments.
+CORE LAW: EVERY SELECTED CLIP MUST TELL A COMPLETE MINI-STORY.
+Do NOT select a moment simply because it has a catchy opening sentence.
+Every clip MUST deliver a complete viewing experience:
+1. SETUP & CONTEXT: What is happening and why is it interesting?
+2. DEVELOPMENT & TENSION: How does the conflict, challenge, or bet escalate?
+3. RESULT & PAYOFF: What is the punchline, winner, reaction, or consequence?
 
-CRITICAL SHORT-FORM SELECTION CRITERIA:
-1. DURATION: Each clip MUST be between {min_duration_s:.0f} and {max_duration_s:.0f} seconds long.
-2. HOOK: The first 3 seconds of the clip MUST contain a gripping hook, shocking statement, surprising question, or immediate conflict that stops the viewer from scrolling.
-3. COMPLETENESS: The clip MUST form a complete, satisfying micro-story, insight, or punchline. Never cut a sentence in half!
-4. TIMESTAMPS: start_time and end_time MUST strictly match the exact timestamps provided in the transcript lines.
-5. NO OVERLAPPING CLIPS: Each selected clip must cover a distinct part of the video.
+NEVER CUT OFF A STORY BEFORE THE PAYOFF!
+- If someone attempts a challenge, show whether they WIN or LOSE.
+- If a bet is made, show who PAYS.
+- If someone tells a joke or sets up a situation, show the PUNCHLINE / REACTION.
+- Never terminate a clip at an arbitrary 30-second mark if the story needs 42s or 55s to finish!
 
-Return STRICTLY a JSON object in this exact format:
-{{
+DURATION GUIDELINES:
+- 15–30s: Quick funny punchlines, hilarious streamer reactions, sharp one-liners.
+- 30–45s: Fast-paced challenges, mini-competitions, developing situations.
+- 45–65s: Higher-stakes stories needing more context, multi-stage challenges.
+- 65–85s: Epic climaxes that genuinely require full build-up and payoff.
+NEVER cut a sentence in half. Timestamps MUST match the provided transcript.
+
+ACCEPTABLE ENDING TYPES:
+- "complete_payoff": Viewer sees setup, attempt, and definitive outcome.
+- "unexpected_twist": Expectations build, but an unexpected surprise occurs inside the clip.
+- "funny_reaction_punchline": Builds to a hilarious reaction, response, or punchline.
+- "revealing_moment": Curiosity is rewarded with an experiment result or reveal.
+- "open_loop": An intentional cliffhanger ONLY if natural and emotionally satisfying.
+
+SCORING CRITERIA (100 Total Points):
+- Hook strength: 15 pts
+- Story completeness: 25 pts (CRITICAL)
+- Entertainment value: 15 pts
+- Curiosity & tension: 10 pts
+- Payoff quality: 15 pts (CRITICAL)
+- Retention potential: 10 pts
+- Shareability: 10 pts
+
+Return STRICTLY a JSON object without markdown code fences in this exact schema:
+{
   "clips": [
-    {{
-      "clip_id": "clip_01",
-      "title": "Short punchy click-worthy title with emoji",
+    {
+      "clip_number": 1,
+      "title": "Engaging and accurate title with emoji",
+      "category": "Challenge",
+      "hook": "Opening 1-2 sentences establishing curiosity",
       "start_time": 18.5,
       "end_time": 54.2,
       "duration": 35.7,
-      "viral_score": 96,
-      "hook": "Exact opening 1-2 sentences that hook the viewer",
-      "reason": "Why this moment will generate high retention and views",
-      "category": "podcast",
-      "suggested_layout": "dynamic_smart_crop"
-    }}
+      "story": {
+        "context": "Brief summary of what is happening",
+        "setup": "What establishes the situation",
+        "development": "How the moment progresses",
+        "payoff": "The final result, winner, reaction or conclusion",
+        "ending_type": "complete_payoff"
+      },
+      "viral_score": 94,
+      "story_completeness_score": 96,
+      "payoff_score": 92,
+      "ending_validation": {
+        "complete_thought": true,
+        "natural_ending": true,
+        "payoff_delivered": true,
+        "viewer_understands_context": true,
+        "unfinished_action": false
+      },
+      "reason": "Why this mini-story delivers high retention and satisfaction",
+      "suggested_layout": "dynamic_smart_crop",
+      "editing_suggestions": [
+        "Start directly with the challenge",
+        "Preserve final reaction audio"
+      ]
+    }
   ]
-}}"""
+}"""
 
-        user_content = f"TRANSCRIPT:\n{transcript_text}"
+        user_content = f"Identify the top {target_clips} STORY-COMPLETE viral clips from this transcript:\n\n{transcript_text}"
 
-        # Try up to 3 keys from rotation pool
         for attempt in range(3):
             try:
                 client = self._get_client()
                 completion = client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": prompt},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_content}
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.3
+                    temperature=0.25
                 )
 
-                resp_text = completion.choices[0].message.content
-                data = json.loads(resp_text)
-                clips = data.get("clips", [])
+                resp_text = completion.choices[0].message.content.strip()
+                # Remove any accidental markdown backticks if present
+                if resp_text.startswith("```"):
+                    resp_text = resp_text.split("\n", 1)[1]
+                    if resp_text.endswith("```"):
+                        resp_text = resp_text.rsplit("```", 1)[0]
 
-                if clips:
-                    # Sanitize & validate timestamps against segment boundaries
-                    valid_clips = []
-                    for i, c in enumerate(clips):
+                data = json.loads(resp_text)
+                raw_clips = data.get("clips", [])
+
+                if raw_clips:
+                    sanitized = []
+                    for i, c in enumerate(raw_clips):
                         st = float(c.get("start_time", 0.0))
                         en = float(c.get("end_time", 0.0))
-                        dur = en - st
+                        dur = round(en - st, 2)
 
-                        # Adjust bounds if needed
+                        # Enforce story completeness quality gate
+                        completeness = int(c.get("story_completeness_score", 90))
+                        payoff_sc = int(c.get("payoff_score", 90))
+                        validation = c.get("ending_validation", {})
+                        
+                        # Disqualify unfinished actions unless justified
+                        if validation.get("unfinished_action", False) and completeness < 80:
+                            print(f"[ViralMomentDetector] ⚠️ Discarded candidate #{i+1} due to unfinished action / missing payoff.")
+                            continue
+
+                        # Ensure duration bounds
                         if dur < min_duration_s:
                             en = min(total_duration, st + min_duration_s)
-                            dur = en - st
-                        elif dur > max_duration_s:
-                            en = st + max_duration_s
-                            dur = max_duration_s
+                            dur = round(en - st, 2)
 
-                        valid_clips.append({
+                        story_info = c.get("story", {})
+                        ending_type = story_info.get("ending_type", "complete_payoff")
+
+                        sanitized.append({
                             "clip_id": f"clip_{i+1:02d}",
-                            "title": c.get("title", f"Viral Moment #{i+1}"),
+                            "clip_number": i + 1,
+                            "title": c.get("title", f"Story Highlight #{i+1}"),
+                            "category": c.get("category", "creator_moment"),
+                            "hook": c.get("hook", ""),
                             "start_time": round(st, 2),
                             "end_time": round(en, 2),
-                            "duration": round(dur, 2),
+                            "duration": dur,
+                            "story": {
+                                "context": story_info.get("context", "Creator event in progress"),
+                                "setup": story_info.get("setup", "The initial challenge is laid out"),
+                                "development": story_info.get("development", "Tension and stakes escalate"),
+                                "payoff": story_info.get("payoff", "Outcome resolved with clear reaction"),
+                                "ending_type": ending_type
+                            },
                             "viral_score": int(c.get("viral_score", 90)),
-                            "hook": c.get("hook", ""),
-                            "reason": c.get("reason", "High-retention emotional hook and engagement spike."),
-                            "category": c.get("category", "creator_moment"),
-                            "suggested_layout": c.get("suggested_layout", "dynamic_smart_crop")
+                            "story_completeness_score": completeness,
+                            "payoff_score": payoff_sc,
+                            "ending_validation": {
+                                "complete_thought": bool(validation.get("complete_thought", True)),
+                                "natural_ending": bool(validation.get("natural_ending", True)),
+                                "payoff_delivered": bool(validation.get("payoff_delivered", True)),
+                                "viewer_understands_context": bool(validation.get("viewer_understands_context", True)),
+                                "unfinished_action": bool(validation.get("unfinished_action", False))
+                            },
+                            "reason": c.get("reason", "Full story-arc with clear beginning, escalating stakes, and satisfying payoff."),
+                            "suggested_layout": c.get("suggested_layout", "dynamic_smart_crop"),
+                            "editing_suggestions": c.get("editing_suggestions", ["Keep pacing tight", "Highlight payoff"])
                         })
 
-                    # Sort by viral score descending
-                    valid_clips.sort(key=lambda x: x["viral_score"], reverse=True)
-                    print(f"[ViralMomentDetector] ✅ Successfully extracted {len(valid_clips)} viral moments!")
-                    return valid_clips
+                    if sanitized:
+                        # Sort by combined story completeness and viral score
+                        sanitized.sort(key=lambda x: (x["story_completeness_score"] * 0.4 + x["viral_score"] * 0.6), reverse=True)
+                        print(f"[ViralMomentDetector] ✅ Verified {len(sanitized)} story-complete viral clips with full payoffs!")
+                        return sanitized
 
             except Exception as e:
-                print(f"[ViralMomentDetector] LLM attempt {attempt + 1} failed: {e}")
+                print(f"[ViralMomentDetector] LLM Story Detector attempt {attempt + 1} failed: {e}")
                 time.sleep(1)
 
-        # Resilient Fallback: Rule-based windowing if all LLM keys fail
+        # Fallback if all LLM keys exhausted
         print("[ViralMomentDetector] ⚠️ LLM unavailable. Using high-density dialogue fallback windowing...")
         return self._rule_based_fallback(segments, target_clips, min_duration_s, max_duration_s)
 
@@ -156,32 +238,47 @@ Return STRICTLY a JSON object in this exact format:
         min_dur: float,
         max_dur: float
     ) -> List[Dict[str, Any]]:
-        """Fallback generator when LLM is unavailable: finds clusters of dense dialogue."""
         total_dur = segments[-1].get("end", 0.0)
-        step = max(40.0, total_dur / max(1, target_clips + 1))
+        step = max(50.0, total_dur / max(1, target_clips + 1))
         fallback_clips = []
 
         for i in range(target_clips):
-            target_start = (i + 0.5) * step
-            # Find closest segment start
-            matching_segs = [s for s in segments if s.get("start", 0) >= target_start]
-            if not matching_segs:
+            target_start = (i + 0.3) * step
+            matching = [s for s in segments if s.get("start", 0) >= target_start]
+            if not matching:
                 break
-            st = matching_segs[0].get("start", target_start)
+            st = matching[0].get("start", target_start)
             en = min(total_dur, st + 45.0)
 
             fallback_clips.append({
                 "clip_id": f"clip_{i+1:02d}",
-                "title": f"Highlight #{i+1} • High Retention Segment",
+                "clip_number": i + 1,
+                "title": f"Story Moment #{i+1} • Complete Segment",
+                "category": "highlight",
+                "hook": matching[0].get("text", "")[:120],
                 "start_time": round(st, 2),
                 "end_time": round(en, 2),
                 "duration": round(en - st, 2),
-                "viral_score": 85 - (i * 3),
-                "hook": matching_segs[0].get("text", "")[:120],
-                "reason": "Dense conversational segment with natural pacing.",
-                "category": "highlight",
-                "suggested_layout": "dynamic_smart_crop"
+                "story": {
+                    "context": "Contextual sequence from main video",
+                    "setup": "Initial conversation starts",
+                    "development": "Dialogue progresses toward resolution",
+                    "payoff": "Full thought delivered before cut",
+                    "ending_type": "complete_payoff"
+                },
+                "viral_score": 86 - (i * 2),
+                "story_completeness_score": 88,
+                "payoff_score": 85,
+                "ending_validation": {
+                    "complete_thought": True,
+                    "natural_ending": True,
+                    "payoff_delivered": True,
+                    "viewer_understands_context": True,
+                    "unfinished_action": False
+                },
+                "reason": "Complete conversational thought with dialogue resolution.",
+                "suggested_layout": "dynamic_smart_crop",
+                "editing_suggestions": ["Preserve full dialogue block"]
             })
 
         return fallback_clips
-

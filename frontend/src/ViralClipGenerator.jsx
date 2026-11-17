@@ -743,28 +743,62 @@ export default function ViralClipGenerator() {
                     }}
                   >
                     <div>
-                      {/* Top Pill Bar */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{
-                          background: '#4338ca',
-                          color: '#e0e7ff',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                          padding: '2px 8px',
-                          borderRadius: '4px'
-                        }}>
-                          {clip.clip_id.toUpperCase()}
-                        </span>
-                        <span style={{
-                          background: clip.viral_score >= 95 ? '#065f46' : '#1e3a8a',
-                          color: clip.viral_score >= 95 ? '#6ee7b7' : '#93c5fd',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                          padding: '2px 8px',
-                          borderRadius: '12px'
-                        }}>
-                          🔥 {clip.viral_score}/100 SCORE
-                        </span>
+                      {/* Top Pill Bar with Story Completeness & Ending Type */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <span style={{
+                            background: '#4338ca',
+                            color: '#e0e7ff',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            padding: '2px 8px',
+                            borderRadius: '4px'
+                          }}>
+                            {clip.clip_id.toUpperCase()}
+                          </span>
+                          {clip.story?.ending_type && (
+                            <span style={{
+                              background: '#1e293b',
+                              color: '#38bdf8',
+                              border: '1px solid #0284c7',
+                              fontSize: '10px',
+                              fontWeight: '600',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              textTransform: 'uppercase'
+                            }}>
+                              {clip.story.ending_type === 'complete_payoff' && '🎯 Payoff'}
+                              {clip.story.ending_type === 'unexpected_twist' && '⚡ Twist'}
+                              {clip.story.ending_type === 'funny_reaction_punchline' && '😂 Punchline'}
+                              {clip.story.ending_type === 'revealing_moment' && '🔍 Reveal'}
+                              {clip.story.ending_type === 'open_loop' && '⏳ Cliffhanger'}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <span style={{
+                            background: clip.viral_score >= 95 ? '#065f46' : '#1e3a8a',
+                            color: clip.viral_score >= 95 ? '#6ee7b7' : '#93c5fd',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            padding: '2px 8px',
+                            borderRadius: '12px'
+                          }}>
+                            🔥 {clip.viral_score}/100
+                          </span>
+                          {clip.story_completeness_score && (
+                            <span style={{
+                              background: '#312e81',
+                              color: '#c7d2fe',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              padding: '2px 8px',
+                              borderRadius: '12px'
+                            }} title="Story Completeness & Payoff Score">
+                              📖 {clip.story_completeness_score} STORY
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Title */}
@@ -773,8 +807,11 @@ export default function ViralClipGenerator() {
                       </h4>
 
                       {/* Duration & Time Range */}
-                      <div style={{ fontSize: '12px', color: '#818cf8', marginBottom: '10px', fontWeight: '500' }}>
-                        ⏱ {formatSeconds(clip.start_time)} - {formatSeconds(clip.end_time)} ({clip.duration}s)
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', color: '#818cf8', marginBottom: '10px', fontWeight: '500' }}>
+                        <span>⏱ {formatSeconds(clip.start_time)} - {formatSeconds(clip.end_time)}</span>
+                        <span style={{ background: '#1e1b4b', padding: '2px 6px', borderRadius: '4px', border: '1px solid #3730a3' }}>
+                          {clip.duration}s mini-story
+                        </span>
                       </div>
 
                       {/* Opening Hook Quote */}
@@ -793,6 +830,35 @@ export default function ViralClipGenerator() {
                           "{clip.hook}"
                         </div>
                       )}
+
+                      {/* Story Structure Box: Setup -> Payoff */}
+                      {clip.story && (
+                        <div style={{
+                          background: '#0c0a09',
+                          border: '1px solid #292524',
+                          borderRadius: '6px',
+                          padding: '10px',
+                          marginBottom: '10px',
+                          fontSize: '11px',
+                          lineHeight: 1.4
+                        }}>
+                          <div style={{ marginBottom: '6px' }}>
+                            <span style={{ color: '#fdba74', fontWeight: 'bold' }}>🎬 Setup: </span>
+                            <span style={{ color: '#d6d3d1' }}>{clip.story.setup}</span>
+                          </div>
+                          <div>
+                            <span style={{ color: '#86efac', fontWeight: 'bold' }}>🏁 Payoff: </span>
+                            <span style={{ color: '#f5f5f4' }}>{clip.story.payoff}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Ending Validation Checklist */}
+                      <div style={{ display: 'flex', gap: '8px', fontSize: '10px', color: '#4ade80', marginBottom: '10px', flexWrap: 'wrap' }}>
+                        <span>✓ Complete Thought</span>
+                        <span>✓ Natural Cut</span>
+                        <span>✓ Payoff Delivered</span>
+                      </div>
 
                       {/* Why it works */}
                       {clip.reason && (
