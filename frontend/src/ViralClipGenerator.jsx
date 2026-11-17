@@ -74,6 +74,88 @@ export default function ViralClipGenerator() {
 
   const selectedCampaign = approvedCampaigns.find(c => c.campaign_id === selectedCampaignId)
 
+  // YouTube Publishing State
+  const [uploadModalClip, setUploadModalClip] = useState(null)
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploadDesc, setUploadDesc] = useState('')
+  const [uploadTags, setUploadTags] = useState('')
+  const [uploadPrivacy, setUploadPrivacy] = useState('unlisted')
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
+  const [youtubeAuthStatus, setYoutubeAuthStatus] = useState(null)
+
+  const checkYouTubeStatus = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/publishing/youtube/status')
+      if (res.ok) {
+        const data = await res.json()
+        setYoutubeAuthStatus(data.auth)
+      }
+    } catch (e) {
+      console.error('Failed to check YouTube status:', e)
+    }
+  }
+
+  const openUploadModal = (clip) => {
+    setUploadModalClip(clip)
+    setUploadResult(null)
+    setUploadError(null)
+    const baseTitle = clip.title || 'Viral Clip'
+    setUploadTitle(baseTitle.toLowerCase().includes('#shorts') ? baseTitle : `${baseTitle} #Shorts`)
+
+    const tags = (selectedCampaign?.posting_metadata?.hashtags || ['#Shorts', '#Viral', '#Trending']).join(' ')
+    const mentions = (selectedCampaign?.posting_metadata?.required_mentions || []).join(' ')
+    const cta = selectedCampaign?.posting_metadata?.cta || 'Subscribe for more clips!'
+    setUploadDesc(`${baseTitle}\n\n${cta}\n\n${tags} ${mentions}`.trim())
+
+    const cleanTags = (selectedCampaign?.posting_metadata?.hashtags || ['Shorts', 'Viral']).map(t => t.replace('#', '')).join(', ')
+    setUploadTags(cleanTags)
+    checkYouTubeStatus()
+  }
+
+  const handleExecuteUpload = async () => {
+    if (!uploadModalClip || !videoMeta?.video_id) return
+    setIsUploading(true)
+    setUploadError(null)
+    setUploadResult(null)
+
+    try {
+      const tagList = uploadTags.split(',').map(t => t.trim()).filter(Boolean)
+      const res = await fetch('http://localhost:8000/api/publishing/youtube/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: videoMeta.video_id,
+          clip_id: uploadModalClip.clip_id,
+          title: uploadTitle,
+          description: uploadDesc,
+          tags: tagList,
+          privacy_status: uploadPrivacy
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || 'Failed to upload video to YouTube')
+      }
+      setUploadResult(data.result)
+    } catch (err) {
+      setUploadError(err.message || 'Error uploading video')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const formatPayout = (comm) => {
+    if (comm?.cpm_max && comm.cpm_max > 0) return `$${comm.cpm_max} CPM`
+    if (comm?.cpm_rate && comm.cpm_rate > 0) return `$${comm.cpm_rate} CPM`
+    if (comm?.maximum_budget && comm.maximum_budget > 0) {
+      return `$${Number(comm.maximum_budget).toLocaleString()} Pool`
+    }
+    return 'Reward Pool'
+  }
+
   const copyPostingCaption = (clip) => {
     if (!selectedCampaign) return
     const tags = (selectedCampaign.posting_metadata?.hashtags || []).join(' ')
@@ -521,7 +603,7 @@ export default function ViralClipGenerator() {
             <option value="">-- None (Independent Viral Clip) --</option>
             {approvedCampaigns.map(ac => (
               <option key={ac.campaign_id} value={ac.campaign_id}>
-                {ac.title} ({ac.source_platform} • ${ac.commercial_details?.cpm_max || 0} CPM)
+                {ac.title} ({ac.source_platform} • {formatPayout(ac.commercial_details)})
               </option>
             ))}
           </select>
@@ -851,6 +933,26 @@ export default function ViralClipGenerator() {
               </span>
             )}
           </div>
+
+          {videoMeta.language_warning && (
+            <div style={{
+              marginBottom: '16px',
+              padding: '12px 16px',
+              background: '#451a03',
+              border: '1px solid #d97706',
+              borderRadius: '8px',
+              color: '#fef3c7',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <span style={{ fontSize: '18px' }}>⚠️</span>
+              <div>
+                <strong>Tier-1 Content Warning:</strong> {videoMeta.language_warning}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
             <div style={{ position: 'relative', width: '280px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', background: '#000' }}>
@@ -1654,46 +1756,46 @@ export default function ViralClipGenerator() {
 
                       {/* Action Button */}
                       {clip.rendered ? (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setActivePreviewClip(clip)}
-                            style={{
-                              flex: 1,
-                              background: '#22c55e',
-                              color: '#052e16',
-                              padding: '8px',
-                              borderRadius: '6px',
-                              border: 'none',
-                              fontSize: '12px',
-                              fontWeight: 'bold',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            ▶ Play 9:16 Video
-                          </button>
-                          <a
-                            href={`http://localhost:8000${clip.video_url}`}
-                            download={`${clip.clip_id}_vertical.mp4`}
-                            style={{
-                              background: '#374151',
-                              color: '#fff',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center'
-                            }}
-                          >
-                            📥
-                          </a>
-                          {selectedCampaign && (
+                        <>
+                          <div style={{ display: 'flex', gap: '8px' }}>
                             <button
                               type="button"
-                              onClick={() => copyPostingCaption(clip)}
+                              onClick={() => setActivePreviewClip(clip)}
                               style={{
-                                background: copiedCaptionClipId === clip.clip_id ? '#15803d' : '#0284c7',
+                                flex: 1,
+                                background: '#22c55e',
+                                color: '#052e16',
+                                padding: '8px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              ▶ Play 9:16 Video
+                            </button>
+                            <a
+                              href={`http://localhost:8000${clip.video_url}`}
+                              download={`${clip.clip_id}_vertical.mp4`}
+                              style={{
+                                background: '#374151',
+                                color: '#fff',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center'
+                              }}
+                            >
+                              📥
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => openUploadModal(clip)}
+                              style={{
+                                background: '#dc2626',
                                 color: '#fff',
                                 padding: '8px 12px',
                                 borderRadius: '6px',
@@ -1705,12 +1807,70 @@ export default function ViralClipGenerator() {
                                 alignItems: 'center',
                                 gap: '4px'
                               }}
-                              title="Copy title, hashtags, CTA, and mentions formatted for this campaign"
+                              title="Publish this clip directly to YouTube Shorts"
                             >
-                              {copiedCaptionClipId === clip.clip_id ? '✅ Copied!' : '📋 Caption'}
+                              🚀 Publish
                             </button>
+                            {selectedCampaign && (
+                              <button
+                                type="button"
+                                onClick={() => copyPostingCaption(clip)}
+                                style={{
+                                  background: copiedCaptionClipId === clip.clip_id ? '#15803d' : '#0284c7',
+                                  color: '#fff',
+                                  padding: '8px 12px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title="Copy title, hashtags, CTA, and mentions formatted for this campaign"
+                              >
+                                {copiedCaptionClipId === clip.clip_id ? '✅ Copied!' : '📋 Caption'}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Campaign Posting Instructions */}
+                          {selectedCampaign && (
+                            <div style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              background: '#09090b',
+                              border: '1px solid #27272a',
+                              borderRadius: '8px',
+                              fontSize: '11px',
+                              color: '#cbd5e1'
+                            }}>
+                              <div style={{ fontWeight: 'bold', color: '#38bdf8', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>📌</span> Campaign Instructions ({selectedCampaign.title}):
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {selectedCampaign.posting_metadata?.hashtags?.length > 0 && (
+                                  <div><strong>🏷️ Tags:</strong> <span style={{ color: '#86efac' }}>{selectedCampaign.posting_metadata.hashtags.join(' ')}</span></div>
+                                )}
+                                {selectedCampaign.posting_metadata?.required_mentions?.length > 0 && (
+                                  <div><strong>👤 Mentions:</strong> <span style={{ color: '#93c5fd' }}>{selectedCampaign.posting_metadata.required_mentions.join(' ')}</span></div>
+                                )}
+                                {selectedCampaign.posting_metadata?.cta && (
+                                  <div><strong>💬 Call-to-Action:</strong> <span style={{ color: '#fef08a' }}>{selectedCampaign.posting_metadata.cta}</span></div>
+                                )}
+                                {selectedCampaign.posting_metadata?.pinned_comment && (
+                                  <div><strong>📌 Pinned:</strong> <span style={{ color: '#fef08a' }}>{selectedCampaign.posting_metadata.pinned_comment}</span></div>
+                                )}
+                                {selectedCampaign.posting_metadata?.other_posting_instructions?.length > 0 && (
+                                  <div style={{ color: '#94a3b8' }}>
+                                    <strong>ℹ️ Rules:</strong> {selectedCampaign.posting_metadata.other_posting_instructions.join(' • ')}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           )}
-                        </div>
+                        </>
                       ) : (
                         <button
                           type="button"
@@ -1811,6 +1971,366 @@ export default function ViralClipGenerator() {
                 border: '1px solid #27272a'
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* YouTube & Social Publishing Modal */}
+      {uploadModalClip && (
+        <div
+          onClick={() => {
+            if (!isUploading) setUploadModalClip(null)
+          }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#18181b',
+              border: '1px solid #3f3f46',
+              borderRadius: '14px',
+              padding: '24px',
+              maxWidth: '560px',
+              width: '100%',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+              color: '#f4f4f5',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              maxHeight: '90vh',
+              overflowY: 'auto'
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '20px' }}>🚀</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff' }}>
+                  Publish to YouTube Shorts
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => setUploadModalClip(null)}
+                style={{
+                  background: '#27272a',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  cursor: isUploading ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Platform Selector */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #27272a', paddingBottom: '12px' }}>
+              <button
+                type="button"
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid #dc2626',
+                  background: '#7f1d1d',
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>▶️</span> YouTube Shorts (Active)
+              </button>
+              <button
+                type="button"
+                disabled
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid #3f3f46',
+                  background: '#27272a',
+                  color: '#71717a',
+                  fontSize: '12px',
+                  cursor: 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>📸</span> Instagram Reels (Coming Soon)
+              </button>
+            </div>
+
+            {/* Channel Connection Banner */}
+            {youtubeAuthStatus?.connected ? (
+              <div style={{
+                padding: '10px 14px',
+                background: '#064e3b',
+                borderRadius: '8px',
+                border: '1px solid #059669',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}>
+                <span style={{ fontSize: '18px' }}>🟢</span>
+                <div style={{ fontSize: '12px', color: '#a7f3d0' }}>
+                  <strong>Channel Connected:</strong> {youtubeAuthStatus.channel_title || 'Authorized Channel'}
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                padding: '12px 14px',
+                background: '#1e1b4b',
+                borderRadius: '8px',
+                border: '1px solid #4338ca',
+                fontSize: '11px',
+                color: '#c7d2fe',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div>
+                  ℹ️ <strong>Connect YouTube Channel:</strong> Place your Google OAuth <code>client_secrets.json</code> file into <code>backend/data/</code> to authorize direct channel uploads.
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('http://localhost:8000/api/publishing/youtube/connect', { method: 'POST' })
+                      const data = await res.json()
+                      if (data.auth?.connected) {
+                        setYoutubeAuthStatus(data.auth)
+                      } else {
+                        alert(data.detail || data.auth?.message || 'Please place client_secrets.json in backend/data/')
+                      }
+                    } catch (e) {
+                      alert('Could not start OAuth flow: ' + e.message)
+                    }
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    padding: '6px 12px',
+                    borderRadius: '5px',
+                    border: 'none',
+                    background: '#6366f1',
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔗 Authorize / Connect Channel
+                </button>
+              </div>
+            )}
+
+            {/* Video Title */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#a1a1aa', marginBottom: '6px' }}>
+                Shorts Title (Max 100 chars):
+              </label>
+              <input
+                type="text"
+                value={uploadTitle}
+                maxLength={100}
+                onChange={(e) => setUploadTitle(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#09090b',
+                  border: '1px solid #3f3f46',
+                  color: '#fff',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <span style={{ fontSize: '10px', color: '#71717a', display: 'block', marginTop: '4px', textAlign: 'right' }}>
+                {uploadTitle.length}/100
+              </span>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#a1a1aa', marginBottom: '6px' }}>
+                Description (Pre-formatted with Campaign CTA & Tags):
+              </label>
+              <textarea
+                rows={4}
+                value={uploadDesc}
+                onChange={(e) => setUploadDesc(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#09090b',
+                  border: '1px solid #3f3f46',
+                  color: '#fff',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            {/* Tags & Privacy */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#a1a1aa', marginBottom: '6px' }}>
+                  Tags (comma separated):
+                </label>
+                <input
+                  type="text"
+                  value={uploadTags}
+                  onChange={(e) => setUploadTags(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#09090b',
+                    border: '1px solid #3f3f46',
+                    color: '#fff',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#a1a1aa', marginBottom: '6px' }}>
+                  Privacy Status:
+                </label>
+                <select
+                  value={uploadPrivacy}
+                  onChange={(e) => setUploadPrivacy(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#09090b',
+                    border: '1px solid #3f3f46',
+                    color: '#fff',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <option value="unlisted">Unlisted (Link only - Recommended)</option>
+                  <option value="private">Private (Only you)</option>
+                  <option value="public">Public (Immediate Live)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Results or Errors */}
+            {uploadResult && (
+              <div style={{
+                padding: '12px 14px',
+                background: uploadResult.success ? '#064e3b' : '#1e1b4b',
+                border: uploadResult.success ? '1px solid #059669' : '1px solid #4338ca',
+                borderRadius: '8px',
+                fontSize: '12px'
+              }}>
+                {uploadResult.success ? (
+                  <div>
+                    <span style={{ fontWeight: 'bold', color: '#6ee7b7' }}>🎉 Successfully Uploaded to YouTube!</span>
+                    <div style={{ marginTop: '6px' }}>
+                      <a
+                        href={uploadResult.shorts_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#38bdf8', fontWeight: 'bold', textDecoration: 'underline' }}
+                      >
+                        Watch on YouTube Shorts ↗
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <span style={{ fontWeight: 'bold', color: '#a5b4fc' }}>📋 Pipeline Ready & Validated</span>
+                    <p style={{ margin: '4px 0 0', color: '#c7d2fe', fontSize: '11px' }}>
+                      {uploadResult.message}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {uploadError && (
+              <div style={{
+                padding: '10px 14px',
+                background: '#450a0a',
+                border: '1px solid #b91c1c',
+                borderRadius: '8px',
+                color: '#fca5a5',
+                fontSize: '12px'
+              }}>
+                ❌ {uploadError}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => setUploadModalClip(null)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #3f3f46',
+                  background: '#27272a',
+                  color: '#e4e4e7',
+                  fontSize: '12px',
+                  cursor: isUploading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={handleExecuteUpload}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: isUploading ? '#7f1d1d' : '#dc2626',
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  cursor: isUploading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>{isUploading ? '⏳' : '🚀'}</span>
+                <span>{isUploading ? 'Uploading to YouTube...' : 'Publish to YouTube'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

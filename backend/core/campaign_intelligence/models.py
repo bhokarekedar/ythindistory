@@ -15,8 +15,10 @@ class ChannelProfile(BaseModel):
     account_age_days: int = 1
     previous_viral_videos_count: int = 0
     historical_views_total: int = 0
-    audience_geography: List[str] = Field(default_factory=list)  # Empty/Unknown initially
-    tier1_audience_percentage: Optional[float] = None  # None = Unknown
+    primary_language: str = "en"
+    target_tier1: bool = True
+    audience_geography: List[str] = Field(default_factory=lambda: ["US", "GB", "CA", "AU", "NZ"])
+    tier1_audience_percentage: Optional[float] = 100.0
     face_camera_available: bool = False  # Faceless production workflow
     content_niches: List[str] = Field(
         default_factory=lambda: [

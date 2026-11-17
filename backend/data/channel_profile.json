@@ -8,8 +8,16 @@
   "account_age_days": 1,
   "previous_viral_videos_count": 0,
   "historical_views_total": 0,
-  "audience_geography": [],
-  "tier1_audience_percentage": null,
+  "primary_language": "en",
+  "target_tier1": true,
+  "audience_geography": [
+    "US",
+    "GB",
+    "CA",
+    "AU",
+    "NZ"
+  ],
+  "tier1_audience_percentage": 100.0,
   "face_camera_available": false,
   "content_niches": [
     "gaming",

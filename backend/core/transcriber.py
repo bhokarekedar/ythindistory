@@ -1,5 +1,9 @@
 import os
 import json
+import time
+import re
+import subprocess
+import glob
 from groq import Groq
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
@@ -155,14 +159,17 @@ class Transcriber:
         temporary timedtext rate-limiting/signature throttling.
         """
         import time
+        import re
         from urllib.parse import urlparse, parse_qs
-        # Extract video ID
-        parsed_url = urlparse(url)
+        
+        # Robust video ID extraction
         video_id = ""
-        if parsed_url.hostname in ['www.youtube.com', 'youtube.com']:
-            video_id = parse_qs(parsed_url.query).get('v', [None])[0]
-        elif parsed_url.hostname in ['youtu.be']:
-            video_id = parsed_url.path[1:]
+        if url:
+            m = re.search(r'(?:v=|\/shorts\/|\/embed\/|\/v\/|youtu\.be\/|\/)([a-zA-Z0-9_-]{11})', url)
+            if m:
+                video_id = m.group(1)
+            elif re.match(r'^[a-zA-Z0-9_-]{11}$', url.strip()):
+                video_id = url.strip()
             
         if not video_id:
             return None
@@ -177,9 +184,13 @@ class Transcriber:
                 
                 try:
                     transcript = transcript_list.find_transcript(['en', 'hi', 'en-US', 'hi-IN'])
-                except NoTranscriptFound:
-                    # If neither english nor hindi exists, get whatever is available
-                    transcript = transcript_list.find_transcript([t.language_code for t in transcript_list])
+                except Exception:
+                    # If preferred language doesn't match, grab whatever caption track is present
+                    all_codes = [t.language_code for t in transcript_list]
+                    if all_codes:
+                        transcript = transcript_list.find_transcript(all_codes)
+                    else:
+                        raise NoTranscriptFound(video_id, ['en', 'hi'])
                     
                 fetched_data = transcript.fetch()
                 
@@ -192,24 +203,178 @@ class Transcriber:
                     
                     segments.append({
                         "id": i + 1,
-                        "start": start,
-                        "end": start + duration,
+                        "start": round(start, 2),
+                        "end": round(start + duration, 2),
                         "text": text.strip()
                     })
                 
-                return segments
+                if segments:
+                    return segments
 
             except Exception as e:
                 err_str = str(e)
-                print(f"  [Transcriber] YouTube timedtext attempt {attempt + 1} throttled: {err_str[:120]}...")
+                print(f"  [Transcriber] YouTube timedtext attempt {attempt + 1} issue: {err_str[:120]}...")
                 if attempt < 2:
-                    wait_time = (attempt + 1) * 2.5
-                    print(f"  [Transcriber] Waiting {wait_time}s before retrying YouTube transcript...")
+                    wait_time = (attempt + 1) * 2.0
                     time.sleep(wait_time)
                 else:
                     print(f"YouTube Transcript Fetch Failed after 3 attempts: {e}")
                     return None
         return None
+
+    def fetch_ytdlp_subtitles(self, url: str) -> list:
+        """
+        Fallback Tier 2: Downloads auto-generated or manual VTT subtitles via yt-dlp.
+        Bypasses web scraping blocks by using yt-dlp's client tokens.
+        """
+        import subprocess
+        import glob
+        import re
+        import shutil
+
+        if not url:
+            return None
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        venv_ytdlp = os.path.join(base_dir, "venv", "bin", "yt-dlp")
+        ytdlp_bin = venv_ytdlp if os.path.exists(venv_ytdlp) else (shutil.which("yt-dlp") or "yt-dlp")
+
+        print(f"[Transcriber] Attempting Tier 2: yt-dlp subtitle extraction using {ytdlp_bin} for {url}...")
+        sub_prefix = os.path.join(self.output_dir, f"ytdlp_sub_{int(time.time())}")
+        cmd = [
+            ytdlp_bin,
+            "--write-auto-sub",
+            "--write-sub",
+            "--sub-lang", "en,en-US,en-orig,hi",
+            "--skip-download",
+            "--sub-format", "vtt",
+            "-o", f"{sub_prefix}.%(ext)s",
+            url
+        ]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=25)
+            # Find matching vtt file
+            vtt_files = glob.glob(f"{sub_prefix}*.vtt")
+            if not vtt_files:
+                return None
+
+            vtt_file = vtt_files[0]
+            with open(vtt_file, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+
+            # Clean up temporary vtt files
+            for vf in vtt_files:
+                try:
+                    os.remove(vf)
+                except Exception:
+                    pass
+
+            # Parse VTT
+            blocks = content.strip().split("\n\n")
+            time_regex = re.compile(r'((?:(\d{2}):)?(\d{2}):(\d{2})[\.,](\d{3}))\s*-->\s*((?:(\d{2}):)?(\d{2}):(\d{2})[\.,](\d{3}))')
+
+            def to_sec(time_str):
+                parts = time_str.replace(",", ".").split(":")
+                if len(parts) == 3:
+                    return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                elif len(parts) == 2:
+                    return float(parts[0]) * 60 + float(parts[1])
+                return 0.0
+
+            segments = []
+            idx = 1
+            for block in blocks:
+                lines = [l.strip() for l in block.split("\n") if l.strip()]
+                for i, line in enumerate(lines):
+                    match = time_regex.search(line)
+                    if match:
+                        start_sec = to_sec(match.group(1))
+                        end_sec = to_sec(match.group(6))
+                        text_lines = [l for l in lines[i+1:] if not l.startswith("NOTE") and "-->" not in l]
+                        raw_text = " ".join(text_lines)
+                        clean_text = re.sub(r'<[^>]+>', '', raw_text).strip()
+                        if clean_text:
+                            segments.append({
+                                "id": idx,
+                                "start": round(start_sec, 2),
+                                "end": round(end_sec, 2),
+                                "text": clean_text
+                            })
+                            idx += 1
+                        break
+            if segments:
+                print(f"[Transcriber] Successfully extracted {len(segments)} segments via yt-dlp subtitles.")
+                return segments
+            return None
+        except Exception as e:
+            print(f"[Transcriber] yt-dlp subtitle extraction error: {e}")
+            return None
+
+    def transcribe_audio_groq(self, audio_path: str) -> list:
+        """
+        Fallback Tier 3: Transcribes extracted audio using Groq Whisper AI.
+        Guarantees timestamped transcription even if no YouTube captions exist at all.
+        """
+        if not audio_path or not os.path.exists(audio_path):
+            return None
+
+        print(f"[Transcriber] Attempting Tier 3: Groq Whisper AI audio transcription on {audio_path}...")
+        try:
+            client = self.client
+            if not client:
+                if self.api_key:
+                    client = Groq(api_key=self.api_key)
+                else:
+                    return None
+
+            with open(audio_path, "rb") as f:
+                transcription = client.audio.transcriptions.create(
+                    file=(os.path.basename(audio_path), f.read()),
+                    model="whisper-large-v3-turbo",
+                    response_format="verbose_json"
+                )
+
+            segments = []
+            raw_segs = getattr(transcription, "segments", []) or []
+            for i, seg in enumerate(raw_segs):
+                s_dict = seg if isinstance(seg, dict) else getattr(seg, "__dict__", {})
+                start = float(s_dict.get("start", 0.0))
+                end = float(s_dict.get("end", 0.0))
+                text = (s_dict.get("text") or "").strip()
+                if text:
+                    segments.append({
+                        "id": i + 1,
+                        "start": round(start, 2),
+                        "end": round(end, 2),
+                        "text": text
+                    })
+
+            if segments:
+                print(f"[Transcriber] Groq Whisper successfully generated {len(segments)} speech segments.")
+                return segments
+            return None
+        except Exception as e:
+            print(f"[Transcriber] Groq Whisper error: {e}")
+            return None
+
+    def fetch_or_transcribe(self, url: str = None, audio_path: str = None) -> list:
+        """
+        Multi-tier robust transcript retrieval:
+        1. Official YouTube timedtext captions
+        2. yt-dlp auto-subtitles
+        3. Groq Whisper AI audio transcription
+        """
+        segments = None
+        if url:
+            segments = self.fetch_youtube_transcript(url)
+
+        if not segments and url:
+            segments = self.fetch_ytdlp_subtitles(url)
+
+        if not segments and audio_path and os.path.exists(audio_path):
+            segments = self.transcribe_audio_groq(audio_path)
+
+        return segments
 
     def _llm_merge_segments(self, segments: list, batch_size: int = 50) -> list:
         """
@@ -315,26 +480,24 @@ Rules:
 
     def transcribe(self, audio_path: str, language: str = None, youtube_url: str = None) -> str:
         """
-        Transcribes the video by fetching official/auto subtitles directly from YouTube.
+        Transcribes the video using the robust 3-tier pipeline (YouTube timedtext -> yt-dlp -> Groq Whisper).
         Saves a timestamped JSON file.
         """
         base_name = os.path.splitext(os.path.basename(audio_path))[0]
         output_path = os.path.join(self.output_dir, f"{base_name}_transcript.json")
 
-        segments = None
-        if youtube_url:
-            segments = self.fetch_youtube_transcript(youtube_url)
+        segments = self.fetch_or_transcribe(url=youtube_url, audio_path=audio_path)
             
         if not segments:
             raise RuntimeError(
-                f"Could not retrieve YouTube transcript for '{youtube_url}'. "
-                "Please verify that the YouTube video has closed captions / subtitles available."
+                f"Could not retrieve transcript for '{youtube_url or audio_path}'. "
+                "Please verify that the video contains audible speech."
             )
         
         # Merge fragments into complete sentences via high-speed linguistic merger
         print(f"Original subtitle fragments: {len(segments)}")
         segments = self._smart_rule_based_merge(segments)
-        print(f"Linguistically merged into {len(segments)} complete sentence groups (0 Groq tokens used).")
+        print(f"Linguistically merged into {len(segments)} complete sentence groups.")
             
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(segments, f, indent=4, ensure_ascii=False)

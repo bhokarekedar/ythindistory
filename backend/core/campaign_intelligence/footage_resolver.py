@@ -73,14 +73,28 @@ class CampaignFootageResolver:
                     if not thumb and len(v_id) == 11:
                         thumb = f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
 
+                    v_title = data.get("title") or "Untitled Video"
+                    v_channel = data.get("uploader") or data.get("channel") or ""
+
+                    # Filter out non-Tier-1 / Hindi creator content to protect English channel strategy
+                    if re.search(r'[\u0900-\u097F]', f"{v_title} {v_channel}"):
+                        continue
+                    hindi_signals = [
+                        "carryminati", "fukra insaan", "triggered insaan", "round2hell",
+                        "bb ki vines", "ashish chanchlani", "mortal", "scout", "techno gamerz",
+                        "total gaming", "sourav joshi", "mythpat", "hindi"
+                    ]
+                    if any(h in f"{v_title} {v_channel}".lower() for h in hindi_signals):
+                        continue
+
                     videos.append({
                         "video_id": v_id,
                         "url": video_url,
-                        "title": data.get("title") or "Untitled Video",
+                        "title": v_title,
                         "duration": duration_sec,
                         "duration_formatted": self._format_duration(duration_sec),
                         "thumbnail": thumb,
-                        "channel": data.get("uploader") or data.get("channel") or "",
+                        "channel": v_channel,
                         "view_count": data.get("view_count")
                     })
                 except Exception as parse_err:

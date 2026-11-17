@@ -1507,6 +1507,26 @@ def get_viral_video_info(request: ViralVideoInfoRequest):
         job_dir = os.path.join("temp", f"viral_{meta['video_id']}")
         transcript_file = os.path.join(job_dir, f"{meta['video_id']}_transcript.json")
         meta["has_transcript_cached"] = os.path.exists(transcript_file)
+
+        # Detect Hindi / non-Tier-1 content
+        v_title = meta.get("title", "")
+        v_uploader = meta.get("uploader", "") or meta.get("channel", "")
+        v_tags = " ".join(meta.get("tags", []) or [])
+        v_combined = f"{v_title} {v_uploader} {v_tags}".lower()
+
+        is_hindi = bool(re.search(r'[\u0900-\u097F]', f"{v_title} {v_uploader}"))
+        hindi_signals = [
+            "carryminati", "fukra insaan", "triggered insaan", "round2hell",
+            "bb ki vines", "ashish chanchlani", "mortal", "scout", "techno gamerz",
+            "total gaming", "sourav joshi", "mythpat", "hindi", "pranking your favourite youtubers"
+        ]
+        if any(h in v_combined for h in hindi_signals):
+            is_hindi = True
+
+        if is_hindi:
+            meta["language_warning"] = "⚠️ Hindi / Non-Tier-1 Content Detected: This video appears to be from a South Asian/Hindi creator. Your channel profile is set to English Tier-1 content (US, UK, CA, AU). Clips from this video may not match your Tier-1 English strategy."
+        else:
+            meta["language_warning"] = None
         
         return {
             "status": "success",
@@ -1557,9 +1577,9 @@ def execute_viral_pipeline(job_id: str, url: str, video_id: str):
         groq_api_key = key_mgr.get_next_key() or os.environ.get("GROQ_API_KEY")
         transcriber = Transcriber(output_dir=job_dir, api_key=groq_api_key)
         
-        segments = transcriber.fetch_youtube_transcript(url)
+        segments = transcriber.fetch_or_transcribe(url=url, audio_path=raw_audio_path)
         if not segments:
-            raise Exception("Unable to retrieve YouTube subtitles. Please make sure the video has closed captions / subtitles enabled.")
+            raise Exception("Unable to retrieve speech transcript. Neither YouTube subtitles nor AI audio transcription could detect dialogue.")
             
         merged_segments = transcriber._smart_rule_based_merge(segments)
         with open(transcript_path, "w", encoding="utf-8") as f:
@@ -1935,10 +1955,12 @@ from core.campaign_intelligence import (
     CampaignRecord
 )
 from core.campaign_intelligence.footage_resolver import CampaignFootageResolver
+from publishing.youtube_publisher import YouTubePublisher
 
 campaign_repo = CampaignRepository()
 campaign_analyzer = CampaignAnalyzer()
 campaign_footage_resolver = CampaignFootageResolver()
+youtube_publisher = YouTubePublisher()
 
 class CampaignAnalyzeRequest(BaseModel):
     brief: str
@@ -2087,6 +2109,63 @@ def get_campaign_footage_endpoint(campaign_id: str):
         return {"status": "success", "footage": footage_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to resolve campaign footage: {str(e)}")
+
+
+# -------------------------------------------------------------
+# PUBLISHING & YOUTUBE SHORTS UPLOAD ENDPOINTS
+# -------------------------------------------------------------
+class YouTubeUploadRequest(BaseModel):
+    video_id: str
+    clip_id: str
+    title: str
+    description: Optional[str] = ""
+    tags: Optional[List[str]] = []
+    privacy_status: Optional[str] = "unlisted"
+
+@app.get("/api/publishing/youtube/status")
+def get_youtube_publishing_status():
+    status = youtube_publisher.get_auth_status()
+    return {"status": "success", "auth": status}
+
+@app.post("/api/publishing/youtube/connect")
+def connect_youtube_channel_endpoint():
+    res = youtube_publisher.authenticate_local()
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return {"status": "success", "auth": res}
+
+@app.post("/api/publishing/youtube/upload")
+def upload_clip_to_youtube(request: YouTubeUploadRequest):
+    candidate_paths = [
+        os.path.join("temp", f"viral_{request.video_id}", f"rendered_{request.clip_id}.mp4"),
+        os.path.join("temp", f"viral_{request.video_id}", f"{request.clip_id}.mp4"),
+        os.path.join("output", request.video_id, f"rendered_{request.clip_id}.mp4"),
+        os.path.join("output", request.video_id, f"{request.clip_id}.mp4")
+    ]
+    video_path = None
+    for p in candidate_paths:
+        if os.path.exists(p) and os.path.getsize(p) > 1024:
+            video_path = p
+            break
+            
+    if not video_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Rendered video for clip '{request.clip_id}' not found. Please render the clip first."
+        )
+        
+    try:
+        result = youtube_publisher.upload_video(
+            video_path=video_path,
+            title=request.title,
+            description=request.description or "",
+            tags=request.tags or [],
+            privacy_status=request.privacy_status or "unlisted"
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
