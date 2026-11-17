@@ -20,6 +20,12 @@ export default function ViralClipGenerator() {
   const [renderingClipId, setRenderingClipId] = useState(null)
   const [activePreviewClip, setActivePreviewClip] = useState(null)
 
+  // Editorial Quality Review State
+  const [reviewingClipId, setReviewingClipId] = useState(null)
+  const [isReviewingAll, setIsReviewingAll] = useState(false)
+  const [expandedReviews, setExpandedReviews] = useState({})
+  const [activeKeyframeModal, setActiveKeyframeModal] = useState(null)
+
   // Real-time client-side URL validation
   useEffect(() => {
     const trimmed = url.trim()
@@ -28,6 +34,10 @@ export default function ViralClipGenerator() {
     const valid = ytRegex.test(trimmed) || directIdRegex.test(trimmed)
     setIsValidUrl(valid)
     if (!trimmed) {
+      setErrorMsg('')
+    } else if (trimmed.includes('/results') || trimmed.includes('search_query=')) {
+      setErrorMsg("⚠️ You entered a YouTube search link. Please click on any specific video and copy its watch link (e.g. https://www.youtube.com/watch?v=...).")
+    } else if (!valid) {
       setErrorMsg('')
     }
   }, [url])
@@ -229,6 +239,97 @@ export default function ViralClipGenerator() {
       setErrorMsg(`Error rendering ${clip.clip_id}: ${err.message}`)
     } finally {
       setRenderingClipId(null)
+    }
+  }
+
+  // Run Editorial Quality Review for a single clip
+  const handleReviewClip = async (clipId) => {
+    const videoId = videoMeta?.video_id || jobData?.video_id
+    if (!videoId) return
+    setReviewingClipId(clipId)
+    setErrorMsg('')
+
+    try {
+      const res = await fetch('http://localhost:8000/api/viral-clips/review-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId, clip_id: clipId })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to review clip')
+
+      setViralMoments(prev => prev.map(c => {
+        if (c.clip_id === clipId) {
+          return { ...c, editorial_review: data.review }
+        }
+        return c
+      }))
+      setExpandedReviews(prev => ({ ...prev, [clipId]: true }))
+    } catch (err) {
+      setErrorMsg(`Editorial review error: ${err.message}`)
+    } finally {
+      setReviewingClipId(null)
+    }
+  }
+
+  // Audit all clips in batch
+  const handleReviewAllClips = async () => {
+    const videoId = videoMeta?.video_id || jobData?.video_id
+    if (!videoId) return
+    setIsReviewingAll(true)
+    setErrorMsg('')
+
+    try {
+      const res = await fetch('http://localhost:8000/api/viral-clips/review-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to review all clips')
+
+      const reviews = data.reviews || {}
+      setViralMoments(prev => prev.map(c => ({
+        ...c,
+        editorial_review: reviews[c.clip_id] || c.editorial_review
+      })))
+      const newExpanded = {}
+      viralMoments.forEach(c => { newExpanded[c.clip_id] = true })
+      setExpandedReviews(newExpanded)
+    } catch (err) {
+      setErrorMsg(`Batch review error: ${err.message}`)
+    } finally {
+      setIsReviewingAll(false)
+    }
+  }
+
+  // Manual Editorial Override: Approve, Reject, or Reset
+  const handleManualVerdict = async (clipId, verdict) => {
+    const videoId = videoMeta?.video_id || jobData?.video_id
+    if (!videoId) return
+    try {
+      const res = await fetch('http://localhost:8000/api/viral-clips/manual-verdict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId, clip_id: clipId, verdict })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to update editorial verdict')
+
+      setViralMoments(prev => prev.map(c => {
+        if (c.clip_id === clipId) {
+          return {
+            ...c,
+            editorial_review: {
+              ...(c.editorial_review || {}),
+              user_verdict: data.review.user_verdict
+            }
+          }
+        }
+        return c
+      }))
+    } catch (err) {
+      setErrorMsg(`Failed to save verdict: ${err.message}`)
     }
   }
 
@@ -629,27 +730,53 @@ export default function ViralClipGenerator() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleDetectViralMoments}
-              disabled={loadingMoments}
-              style={{
-                background: loadingMoments ? '#312e81' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                cursor: loadingMoments ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
-              }}
-            >
-              {loadingMoments ? '🤖 Analyzing 300+ Sentences...' : '⚡ Find Top Viral Clips (Groq AI)'}
-            </button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleDetectViralMoments}
+                disabled={loadingMoments || isReviewingAll}
+                style={{
+                  background: loadingMoments ? '#312e81' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '12px 20px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: (loadingMoments || isReviewingAll) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                }}
+              >
+                {loadingMoments ? '🤖 Analyzing 300+ Sentences...' : '⚡ Find Top Viral Clips (Groq AI)'}
+              </button>
+
+              {viralMoments.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleReviewAllClips}
+                  disabled={isReviewingAll || loadingMoments}
+                  style={{
+                    background: isReviewingAll ? '#1e293b' : 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '12px 20px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: (isReviewingAll || loadingMoments) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)'
+                  }}
+                >
+                  {isReviewingAll ? '🔍 Auditing Quality & Keyframes...' : '📋 Audit All Clips (Editorial Review)'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Active Preview Player if a clip is rendered */}
@@ -862,10 +989,319 @@ export default function ViralClipGenerator() {
 
                       {/* Why it works */}
                       {clip.reason && (
-                        <p style={{ margin: '0 0 14px 0', fontSize: '11px', color: '#71717a', lineHeight: 1.35 }}>
+                        <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: '#71717a', lineHeight: 1.35 }}>
                           💡 {clip.reason}
                         </p>
                       )}
+
+                      {/* Editorial Quality Review Section */}
+                      <div style={{
+                        background: '#121215',
+                        border: '1px solid #27272a',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        marginBottom: '12px'
+                      }}>
+                        {clip.editorial_review ? (
+                          <div>
+                            {/* Review Header Banner */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <span style={{
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  background: clip.editorial_review.status === 'APPROVED' ? '#052e16' : (clip.editorial_review.status === 'NEEDS_REVIEW' ? '#451a03' : '#450a0a'),
+                                  color: clip.editorial_review.status === 'APPROVED' ? '#4ade80' : (clip.editorial_review.status === 'NEEDS_REVIEW' ? '#fbbf24' : '#f87171'),
+                                  border: `1px solid ${clip.editorial_review.status === 'APPROVED' ? '#15803d' : (clip.editorial_review.status === 'NEEDS_REVIEW' ? '#b45309' : '#b91c1c')}`
+                                }}>
+                                  {clip.editorial_review.status === 'APPROVED' && '✅ EDITORIAL APPROVED'}
+                                  {clip.editorial_review.status === 'NEEDS_REVIEW' && '⚠️ NEEDS REVIEW'}
+                                  {clip.editorial_review.status === 'REJECTED' && '❌ REJECTED'}
+                                </span>
+                                <span style={{
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  background: '#1e1b4b',
+                                  color: '#a5b4fc',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px'
+                                }}>
+                                  {clip.editorial_review.overall_score}/100
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setExpandedReviews({
+                                  ...expandedReviews,
+                                  [clip.clip_id]: !expandedReviews[clip.clip_id]
+                                })}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#38bdf8',
+                                  fontSize: '11px',
+                                  cursor: 'pointer',
+                                  fontWeight: '600'
+                                }}
+                              >
+                                {expandedReviews[clip.clip_id] ? 'Hide Audit ▲' : 'View Audit Details ▼'}
+                              </button>
+                            </div>
+
+                            {/* User Manual Verdict Badge if present */}
+                            {clip.editorial_review.user_verdict && (
+                              <div style={{ marginTop: '6px', fontSize: '10px', color: clip.editorial_review.user_verdict === 'APPROVED' ? '#86efac' : '#fca5a5' }}>
+                                👤 Editor Override: <strong>{clip.editorial_review.user_verdict}</strong>
+                              </div>
+                            )}
+
+                            {/* Expanded Review Details */}
+                            {expandedReviews[clip.clip_id] && (
+                              <div style={{ marginTop: '10px' }}>
+                                {/* Editorial Summary */}
+                                {clip.editorial_review.editorial_summary && (
+                                  <div style={{
+                                    background: '#1c1917',
+                                    borderLeft: '3px solid #f59e0b',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    color: '#e7e5e4',
+                                    marginBottom: '8px',
+                                    lineHeight: 1.4
+                                  }}>
+                                    "{clip.editorial_review.editorial_summary}"
+                                  </div>
+                                )}
+
+                                {/* Critical Issues */}
+                                {clip.editorial_review.critical_issues && clip.editorial_review.critical_issues.length > 0 && (
+                                  <div style={{
+                                    background: '#450a0a',
+                                    border: '1px solid #dc2626',
+                                    borderRadius: '6px',
+                                    padding: '8px',
+                                    marginBottom: '8px',
+                                    fontSize: '11px',
+                                    color: '#fca5a5'
+                                  }}>
+                                    <strong style={{ color: '#ef4444' }}>⛔ Critical Editorial Flaws:</strong>
+                                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                                      {clip.editorial_review.critical_issues.map((iss, idx) => (
+                                        <li key={idx}>{iss}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {/* Suggestions */}
+                                {clip.editorial_review.improvement_suggestions && clip.editorial_review.improvement_suggestions.length > 0 && (
+                                  <div style={{
+                                    background: '#1e293b',
+                                    border: '1px solid #334155',
+                                    borderRadius: '6px',
+                                    padding: '8px',
+                                    marginBottom: '8px',
+                                    fontSize: '11px',
+                                    color: '#94a3b8'
+                                  }}>
+                                    <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>💡 Editor Tips: </span>
+                                    {clip.editorial_review.improvement_suggestions.join('; ')}
+                                  </div>
+                                )}
+
+                                {/* 6 Criteria Rubric Table */}
+                                <div style={{
+                                  background: '#09090b',
+                                  border: '1px solid #27272a',
+                                  borderRadius: '6px',
+                                  padding: '8px',
+                                  marginBottom: '8px'
+                                }}>
+                                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#93c5fd', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>6-Criteria Editorial Breakdown</span>
+                                    <span>Score / 10</span>
+                                  </div>
+                                  {Object.entries(clip.editorial_review.criteria || {}).map(([cKey, cVal]) => (
+                                    <div key={cKey} style={{ borderTop: '1px solid #18181b', paddingTop: '4px', marginTop: '4px', fontSize: '11px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: '600', color: '#e5e7eb', textTransform: 'capitalize' }}>
+                                          {cKey.replace('_', ' ')} <span style={{ color: '#71717a', fontSize: '10px' }}>({cVal.weight_pct}%)</span>
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                          <span style={{
+                                            fontSize: '9px',
+                                            padding: '1px 5px',
+                                            borderRadius: '3px',
+                                            fontWeight: 'bold',
+                                            background: cVal.status === 'PASSED' ? '#065f46' : (cVal.status === 'NEEDS_REVIEW' ? '#78350f' : '#7f1d1d'),
+                                            color: cVal.status === 'PASSED' ? '#6ee7b7' : (cVal.status === 'NEEDS_REVIEW' ? '#fde68a' : '#fca5a5')
+                                          }}>
+                                            {cVal.status}
+                                          </span>
+                                          <span style={{ fontWeight: 'bold', color: '#fff' }}>{cVal.score}/10</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px', lineHeight: 1.3 }}>
+                                        {cVal.reason}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Visual Verification & Keyframe Thumbnails */}
+                                {clip.editorial_review.visual_verification && (
+                                  <div style={{
+                                    background: '#09090b',
+                                    border: '1px solid #27272a',
+                                    borderRadius: '6px',
+                                    padding: '8px',
+                                    marginBottom: '8px'
+                                  }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                      <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#cbd5e1' }}>
+                                        👁 Visual Verification (Keyframes)
+                                      </span>
+                                      <span style={{
+                                        fontSize: '10px',
+                                        fontWeight: 'bold',
+                                        color: clip.editorial_review.visual_verification.status === 'VERIFIED' ? '#4ade80' : '#f87171'
+                                      }}>
+                                        {clip.editorial_review.visual_verification.status}
+                                      </span>
+                                    </div>
+
+                                    {clip.editorial_review.visual_verification.keyframes && clip.editorial_review.visual_verification.keyframes.length > 0 && (
+                                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '6px' }}>
+                                        {clip.editorial_review.visual_verification.keyframes.map((kf, kfIdx) => (
+                                          <div
+                                            key={kfIdx}
+                                            onClick={() => setActiveKeyframeModal(kf)}
+                                            style={{ cursor: 'pointer', textAlign: 'center' }}
+                                            title="Click to enlarge keyframe"
+                                          >
+                                            <img
+                                              src={`http://localhost:8000${kf.url}`}
+                                              alt={kf.label}
+                                              style={{ width: '100%', height: '52px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #3f3f46' }}
+                                            />
+                                            <div style={{ fontSize: '9px', color: '#a1a1aa', textTransform: 'capitalize', marginTop: '2px' }}>
+                                              {kf.label} ({kf.timestamp}s)
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {clip.editorial_review.visual_verification.observations?.map((obs, oIdx) => (
+                                      <div key={oIdx} style={{ fontSize: '10px', color: '#94a3b8' }}>• {obs}</div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Manual Override Controls */}
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleManualVerdict(clip.clip_id, 'APPROVED')}
+                                    style={{
+                                      flex: 1,
+                                      background: clip.editorial_review.user_verdict === 'APPROVED' ? '#15803d' : '#1f2937',
+                                      border: '1px solid #16a34a',
+                                      color: '#86efac',
+                                      padding: '5px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 'bold',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    ✅ Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleManualVerdict(clip.clip_id, 'REJECTED')}
+                                    style={{
+                                      flex: 1,
+                                      background: clip.editorial_review.user_verdict === 'REJECTED' ? '#991b1b' : '#1f2937',
+                                      border: '1px solid #dc2626',
+                                      color: '#fca5a5',
+                                      padding: '5px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 'bold',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    ❌ Reject
+                                  </button>
+                                  {clip.editorial_review.user_verdict && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleManualVerdict(clip.clip_id, 'RESET')}
+                                      style={{
+                                        background: 'transparent',
+                                        border: '1px solid #4b5563',
+                                        color: '#9ca3af',
+                                        padding: '5px 8px',
+                                        borderRadius: '4px',
+                                        fontSize: '10px',
+                                        cursor: 'pointer'
+                                      }}
+                                      title="Reset to AI verdict"
+                                    >
+                                      ↺ Reset
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReviewClip(clip.clip_id)}
+                                    disabled={reviewingClipId === clip.clip_id}
+                                    style={{
+                                      background: '#374151',
+                                      border: 'none',
+                                      color: '#e5e7eb',
+                                      padding: '5px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      cursor: reviewingClipId === clip.clip_id ? 'not-allowed' : 'pointer'
+                                    }}
+                                    title="Re-run AI editorial evaluation"
+                                  >
+                                    {reviewingClipId === clip.clip_id ? 'Auditing...' : '🔄 Re-audit'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                              Editorial Quality Review: <span style={{ color: '#fbbf24' }}>Pending</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleReviewClip(clip.clip_id)}
+                              disabled={reviewingClipId === clip.clip_id}
+                              style={{
+                                background: reviewingClipId === clip.clip_id ? '#312e81' : '#4f46e5',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '5px 10px',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                cursor: reviewingClipId === clip.clip_id ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              {reviewingClipId === clip.clip_id ? '🔍 Auditing...' : '📋 Run Quality Review'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Bottom Controls */}
@@ -967,6 +1403,77 @@ export default function ViralClipGenerator() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Lightbox Modal for Keyframe Visual Inspection */}
+      {activeKeyframeModal && (
+        <div
+          onClick={() => setActiveKeyframeModal(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#18181b',
+              border: '1px solid #3f3f46',
+              borderRadius: '12px',
+              padding: '16px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.8)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#f4f4f5', textTransform: 'capitalize' }}>
+                📸 Keyframe: {activeKeyframeModal.label} ({activeKeyframeModal.timestamp}s)
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveKeyframeModal(null)}
+                style={{
+                  background: '#27272a',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <img
+              src={`http://localhost:8000${activeKeyframeModal.url}`}
+              alt={activeKeyframeModal.label}
+              style={{
+                maxWidth: '800px',
+                maxHeight: '70vh',
+                width: '100%',
+                height: 'auto',
+                borderRadius: '8px',
+                objectFit: 'contain',
+                border: '1px solid #27272a'
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

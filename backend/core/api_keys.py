@@ -1,4 +1,12 @@
 import os
+from dotenv import load_dotenv
+
+# Load backend/.env if available
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+if os.path.exists(_env_path):
+    load_dotenv(_env_path)
+else:
+    load_dotenv()
 
 class ApiKeyManager:
     """Manages rotation of GROQ API keys across application restarts."""

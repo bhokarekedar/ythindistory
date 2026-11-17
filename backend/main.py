@@ -1488,10 +1488,16 @@ def get_viral_video_info(request: ViralVideoInfoRequest):
     url = (request.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="Please enter a YouTube video URL.")
-        
+
+    if "results?" in url or "search_query=" in url:
+        raise HTTPException(
+            status_code=400,
+            detail="You entered a YouTube search results link. Please open any specific video from the search results, then copy and paste its watch link (e.g. https://www.youtube.com/watch?v=...)."
+        )
+
     vid_id = extract_video_id(url)
     if not vid_id:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL. Please provide a valid watch, share, or shorts link.")
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL. Please provide a valid watch, share, or shorts link (e.g. https://www.youtube.com/watch?v=...).")
 
     try:
         downloader = YouTubeDownloader(output_dir="temp/videos")
@@ -1609,6 +1615,7 @@ def get_viral_clip_status(job_id: str):
 
 from core.viral_moment_detector import ViralMomentDetector
 from core.smart_crop import SmartCropEngine, SmartCropConfig
+from core.editorial_reviewer import EditorialReviewer
 
 def _get_base_dirs():
     """Returns absolute paths for temp and output directories regardless of cwd."""
@@ -1618,6 +1625,14 @@ def _get_base_dirs():
     os.makedirs(temp_dir, exist_ok=True)
     os.makedirs(out_dir, exist_ok=True)
     return temp_dir, out_dir
+
+def _find_source_video(temp_dir: str, video_id: str) -> Optional[str]:
+    for base in [os.path.join(temp_dir, "videos"), "temp/videos", "backend/temp/videos"]:
+        for ext in ["mp4", "webm", "mkv"]:
+            p = os.path.join(base, f"{video_id}.{ext}")
+            if os.path.exists(p) and os.path.getsize(p) >= 1024 * 1024:
+                return os.path.abspath(p)
+    return None
 
 class ViralDetectRequest(BaseModel):
     video_id: str
@@ -1629,6 +1644,18 @@ class ViralRenderRequest(BaseModel):
     start_time: float
     end_time: float
     layout: Optional[str] = "dynamic_smart_crop"
+
+class ViralReviewRequest(BaseModel):
+    video_id: str
+    clip_id: str
+
+class ViralReviewAllRequest(BaseModel):
+    video_id: str
+
+class ViralManualVerdictRequest(BaseModel):
+    video_id: str
+    clip_id: str
+    verdict: str  # "APPROVED" or "REJECTED"
 
 @app.post("/api/viral-clips/detect-moments")
 def detect_viral_moments_endpoint(request: ViralDetectRequest):
@@ -1669,12 +1696,23 @@ def get_viral_moments_endpoint(video_id: str):
         with open(moments_file, "r", encoding="utf-8") as f:
             clips = json.load(f)
 
+        # Load editorial reviews if available
+        reviews_file = os.path.join(temp_dir, f"viral_{video_id}", "editorial_reviews.json")
+        editorial_reviews = {}
+        if os.path.exists(reviews_file):
+            try:
+                with open(reviews_file, "r", encoding="utf-8") as rf:
+                    editorial_reviews = json.load(rf)
+            except Exception:
+                editorial_reviews = {}
+
         clip_dir = os.path.join(out_dir, "viral_clips", video_id)
         for c in clips:
             cid = c.get("clip_id")
             mp4_path = os.path.join(clip_dir, f"{cid}.mp4")
             c["rendered"] = os.path.exists(mp4_path) and os.path.getsize(mp4_path) > 1024
             c["video_url"] = f"/output/viral_clips/{video_id}/{cid}.mp4" if c["rendered"] else None
+            c["editorial_review"] = editorial_reviews.get(cid, None)
 
         return {"video_id": video_id, "clips": clips}
     except Exception as e:
@@ -1685,17 +1723,7 @@ def render_viral_clip_endpoint(request: ViralRenderRequest):
     video_id = request.video_id.strip()
     temp_dir, out_dir = _get_base_dirs()
     
-    # Locate source video across candidate directories
-    src_video = None
-    for base in [os.path.join(temp_dir, "videos"), "temp/videos", "backend/temp/videos"]:
-        for ext in ["mp4", "webm", "mkv"]:
-            p = os.path.join(base, f"{video_id}.{ext}")
-            if os.path.exists(p) and os.path.getsize(p) >= 1024 * 1024:
-                src_video = os.path.abspath(p)
-                break
-        if src_video:
-            break
-            
+    src_video = _find_source_video(temp_dir, video_id)
     if not src_video:
         raise HTTPException(status_code=404, detail=f"Source video for {video_id} not found in temp/videos.")
 
@@ -1728,6 +1756,173 @@ def render_viral_clip_endpoint(request: ViralRenderRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Render error: {str(e)}")
+
+@app.post("/api/viral-clips/review-clip")
+def review_viral_clip_endpoint(request: ViralReviewRequest):
+    video_id = request.video_id.strip()
+    clip_id = request.clip_id.strip()
+    temp_dir, _ = _get_base_dirs()
+
+    # 1. Load moments to get target clip metadata
+    moments_file = os.path.join(temp_dir, f"viral_{video_id}", "viral_moments.json")
+    if not os.path.exists(moments_file):
+        raise HTTPException(status_code=404, detail=f"No moments found for video {video_id}. Run moment detection first.")
+
+    with open(moments_file, "r", encoding="utf-8") as f:
+        clips = json.load(f)
+
+    target_clip = next((c for c in clips if c.get("clip_id") == clip_id), None)
+    if not target_clip:
+        raise HTTPException(status_code=404, detail=f"Clip {clip_id} not found in moments.")
+
+    # 2. Extract transcript excerpt for context
+    transcript_path = os.path.join(temp_dir, f"viral_{video_id}", f"{video_id}_transcript.json")
+    transcript_text = ""
+    if os.path.exists(transcript_path):
+        try:
+            with open(transcript_path, "r", encoding="utf-8") as tf:
+                segs = json.load(tf)
+                st = target_clip.get("start_time", 0.0) - 15.0
+                en = target_clip.get("end_time", 0.0) + 15.0
+                context_segs = [s.get("text", "") for s in segs if not (s.get("end", 0) < st or s.get("start", 0) > en)]
+                transcript_text = " ".join(context_segs)
+        except Exception as e:
+            print(f"[Review] Could not load transcript context: {e}")
+
+    if not transcript_text:
+        transcript_text = target_clip.get("reason", "") + " " + target_clip.get("hook", "")
+
+    # 3. Visual Keyframe verification
+    src_video = _find_source_video(temp_dir, video_id)
+    keyframe_dir = os.path.join(temp_dir, f"viral_{video_id}", "keyframes", clip_id)
+    os.makedirs(keyframe_dir, exist_ok=True)
+
+    # 4. Run Review
+    reviewer = EditorialReviewer()
+    review = reviewer.review_clip(
+        clip=target_clip,
+        transcript_context=transcript_text,
+        source_video_path=src_video,
+        keyframe_dir=keyframe_dir
+    )
+
+    # 5. Save in editorial_reviews.json
+    reviews_file = os.path.join(temp_dir, f"viral_{video_id}", "editorial_reviews.json")
+    existing_reviews = {}
+    if os.path.exists(reviews_file):
+        try:
+            with open(reviews_file, "r", encoding="utf-8") as rf:
+                existing_reviews = json.load(rf)
+        except Exception:
+            existing_reviews = {}
+
+    # Preserve existing user_verdict if present
+    if clip_id in existing_reviews and existing_reviews[clip_id].get("user_verdict"):
+        review["user_verdict"] = existing_reviews[clip_id]["user_verdict"]
+
+    existing_reviews[clip_id] = review
+    with open(reviews_file, "w", encoding="utf-8") as rf:
+        json.dump(existing_reviews, rf, indent=2)
+
+    return {
+        "status": "success",
+        "video_id": video_id,
+        "clip_id": clip_id,
+        "review": review
+    }
+
+@app.post("/api/viral-clips/review-all")
+def review_all_viral_clips_endpoint(request: ViralReviewAllRequest):
+    video_id = request.video_id.strip()
+    temp_dir, _ = _get_base_dirs()
+
+    moments_file = os.path.join(temp_dir, f"viral_{video_id}", "viral_moments.json")
+    if not os.path.exists(moments_file):
+        raise HTTPException(status_code=404, detail=f"No moments found for video {video_id}.")
+
+    with open(moments_file, "r", encoding="utf-8") as f:
+        clips = json.load(f)
+
+    transcript_path = os.path.join(temp_dir, f"viral_{video_id}", f"{video_id}_transcript.json")
+    segs = []
+    if os.path.exists(transcript_path):
+        try:
+            with open(transcript_path, "r", encoding="utf-8") as tf:
+                segs = json.load(tf)
+        except Exception:
+            pass
+
+    src_video = _find_source_video(temp_dir, video_id)
+    reviewer = EditorialReviewer()
+
+    reviews_file = os.path.join(temp_dir, f"viral_{video_id}", "editorial_reviews.json")
+    existing_reviews = {}
+    if os.path.exists(reviews_file):
+        try:
+            with open(reviews_file, "r", encoding="utf-8") as rf:
+                existing_reviews = json.load(rf)
+        except Exception:
+            existing_reviews = {}
+
+    for c in clips:
+        cid = c.get("clip_id")
+        st = c.get("start_time", 0.0) - 15.0
+        en = c.get("end_time", 0.0) + 15.0
+        context_segs = [s.get("text", "") for s in segs if not (s.get("end", 0) < st or s.get("start", 0) > en)]
+        transcript_text = " ".join(context_segs) or (c.get("reason", "") + " " + c.get("hook", ""))
+
+        keyframe_dir = os.path.join(temp_dir, f"viral_{video_id}", "keyframes", cid)
+        rev = reviewer.review_clip(c, transcript_text, source_video_path=src_video, keyframe_dir=keyframe_dir)
+        if cid in existing_reviews and existing_reviews[cid].get("user_verdict"):
+            rev["user_verdict"] = existing_reviews[cid]["user_verdict"]
+        existing_reviews[cid] = rev
+
+    with open(reviews_file, "w", encoding="utf-8") as rf:
+        json.dump(existing_reviews, rf, indent=2)
+
+    return {
+        "status": "success",
+        "video_id": video_id,
+        "reviews": existing_reviews
+    }
+
+@app.post("/api/viral-clips/manual-verdict")
+def set_manual_editorial_verdict(request: ViralManualVerdictRequest):
+    video_id = request.video_id.strip()
+    clip_id = request.clip_id.strip()
+    verdict = request.verdict.strip().upper()
+    if verdict not in ["APPROVED", "REJECTED", "RESET"]:
+        raise HTTPException(status_code=400, detail="Verdict must be APPROVED, REJECTED, or RESET")
+
+    temp_dir, _ = _get_base_dirs()
+    reviews_file = os.path.join(temp_dir, f"viral_{video_id}", "editorial_reviews.json")
+    existing_reviews = {}
+    if os.path.exists(reviews_file):
+        try:
+            with open(reviews_file, "r", encoding="utf-8") as rf:
+                existing_reviews = json.load(rf)
+        except Exception:
+            existing_reviews = {}
+
+    if clip_id not in existing_reviews:
+        existing_reviews[clip_id] = {
+            "clip_id": clip_id,
+            "status": verdict if verdict != "RESET" else "NEEDS_REVIEW",
+            "overall_score": 80 if verdict == "APPROVED" else 40,
+            "user_verdict": None if verdict == "RESET" else verdict
+        }
+    else:
+        existing_reviews[clip_id]["user_verdict"] = None if verdict == "RESET" else verdict
+
+    with open(reviews_file, "w", encoding="utf-8") as rf:
+        json.dump(existing_reviews, rf, indent=2)
+
+    return {
+        "status": "success",
+        "video_id": video_id,
+        "clip_id": clip_id,
+        "review": existing_reviews[clip_id]
+    }
 
 
 

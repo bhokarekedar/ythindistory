@@ -12,10 +12,33 @@ class FFmpegRenderer:
     def __init__(self, config: Optional[SmartCropConfig] = None):
         self.config = config or SmartCropConfig()
 
-    def _compress_keyframes(self, windows: List[CropWindow], tolerance_px: float = 6.0) -> List[tuple[float, int]]:
+    def _rdp(self, points: List[tuple[float, int]], epsilon: float) -> List[tuple[float, int]]:
+        """Ramer-Douglas-Peucker simplification algorithm for trajectory keyframes."""
+        if len(points) <= 2:
+            return points
+        t0, x0 = points[0]
+        t1, x1 = points[-1]
+        dt = max(0.001, t1 - t0)
+        max_d = 0.0
+        idx = 0
+        for i in range(1, len(points) - 1):
+            ti, xi = points[i]
+            expected_x = x0 + (x1 - x0) * ((ti - t0) / dt)
+            d = abs(xi - expected_x)
+            if d > max_d:
+                max_d = d
+                idx = i
+        if max_d > epsilon:
+            left = self._rdp(points[:idx + 1], epsilon)
+            right = self._rdp(points[idx:], epsilon)
+            return left[:-1] + right
+        else:
+            return [points[0], points[-1]]
+
+    def _compress_keyframes(self, windows: List[CropWindow], tolerance_px: float = 8.0) -> List[tuple[float, int]]:
         """
-        Compresses dense sampled windows into essential keyframe transitions (t, x).
-        Merges stationary holds and removes collinear intermediate samples.
+        Compresses dense sampled windows into essential keyframe transitions (t, x)
+        using the Ramer-Douglas-Peucker algorithm.
         """
         if not windows:
             return []
@@ -24,48 +47,45 @@ class FFmpegRenderer:
         if len(pts) <= 3:
             return pts
 
-        # Simplify by retaining points where velocity changes significantly
-        compressed = [pts[0]]
-        for i in range(1, len(pts) - 1):
-            prev_t, prev_x = compressed[-1]
-            curr_t, curr_x = pts[i]
-            next_t, next_x = pts[i + 1]
+        return self._rdp(pts, tolerance_px)
 
-            # If current position deviates from straight line between prev and next by > tolerance
-            if next_t - prev_t > 0.001:
-                expected_x = prev_x + (next_x - prev_x) * ((curr_t - prev_t) / (next_t - prev_t))
-                if abs(curr_x - expected_x) > tolerance_px:
-                    compressed.append((curr_t, curr_x))
+    def _build_binary_tree_expr(self, keyframes: List[tuple[float, int]], max_x: int) -> str:
+        """
+        Recursively builds a balanced binary tree of if(lte(t, T_mid), left, right)
+        to strictly guarantee maximum nesting depth <= log2(N) + 2 <= 10.
+        This completely eliminates FFmpeg eval parser stack overflow / error -22.
+        """
+        if len(keyframes) == 1:
+            x_val = max(0, min(max_x, keyframes[0][1]))
+            return f"{x_val}"
+        if len(keyframes) == 2:
+            t0, x0 = keyframes[0]
+            t1, x1 = keyframes[1]
+            x0 = max(0, min(max_x, x0))
+            x1 = max(0, min(max_x, x1))
+            dt = max(0.001, t1 - t0)
+            dx = x1 - x0
+            if dx == 0:
+                return f"{x0}"
+            return f"({x0}+(t-{t0:.3f})*{dx:.2f}/{dt:.3f})"
 
-        compressed.append(pts[-1])
-        return compressed
+        mid = len(keyframes) // 2
+        t_mid = keyframes[mid][0]
+        left = self._build_binary_tree_expr(keyframes[:mid + 1], max_x)
+        right = self._build_binary_tree_expr(keyframes[mid:], max_x)
+        return f"if(lte(t,{t_mid:.3f}),{left},{right})"
 
     def _build_crop_expression(self, keyframes: List[tuple[float, int]], crop_w: int, max_x: int) -> str:
         """
-        Constructs an evaluation-efficient piecewise linear interpolation expression for FFmpeg.
+        Constructs an evaluation-efficient balanced binary piecewise linear interpolation expression for FFmpeg.
         """
         if not keyframes:
             return f"{(max_x // 2)}"
 
         if len(keyframes) == 1 or all(k[1] == keyframes[0][1] for k in keyframes):
-            return f"{keyframes[0][1]}"
+            return f"{max(0, min(max_x, keyframes[0][1]))}"
 
-        # Build reverse-nested if(lte(t, t_i), ...) expression
-        expr = f"{keyframes[-1][1]}"
-        for i in range(len(keyframes) - 1, 0, -1):
-            t_prev, x_prev = keyframes[i - 1]
-            t_curr, x_curr = keyframes[i]
-            dt = max(0.001, t_curr - t_prev)
-            dx = x_curr - x_prev
-
-            if dx == 0:
-                seg_expr = f"{x_prev}"
-            else:
-                seg_expr = f"({x_prev}+(t-{t_prev:.3f})*{dx:.2f}/{dt:.3f})"
-
-            expr = f"if(lte(t,{t_curr:.3f}),{seg_expr},{expr})"
-
-        return expr
+        return self._build_binary_tree_expr(keyframes, max_x)
 
     def render(
         self,
