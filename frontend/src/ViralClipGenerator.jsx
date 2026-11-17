@@ -643,33 +643,27 @@ export default function ViralClipGenerator() {
                   Ensure you are signed in and have clicked "Join Campaign" so your posted clips qualify for payouts.
                 </div>
               </div>
-              {selectedCampaign.campaign_url ? (
-                <a
-                  href={selectedCampaign.campaign_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
-                    color: '#fff',
-                    padding: '8px 14px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 'bold',
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap',
-                    boxShadow: '0 2px 8px rgba(79, 70, 229, 0.4)'
-                  }}
-                >
-                  <span>🔗</span> Open Campaign Page to Join ↗
-                </a>
-              ) : (
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  (Direct portal link)
-                </span>
-              )}
+              <a
+                href={selectedCampaign.campaign_url || 'https://contentrewards.com/c/campaigns'}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                  color: '#fff',
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 8px rgba(79, 70, 229, 0.4)'
+                }}
+              >
+                <span>🔗</span> {selectedCampaign.campaign_url ? 'Open Campaign Page to Join ↗' : 'Open Content Rewards Portal ↗'}
+              </a>
             </div>
           )}
 
@@ -2354,31 +2348,25 @@ export default function ViralClipGenerator() {
                         <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: '#cbd5e1' }}>
                           Submit this live Shorts link on {selectedCampaign.source_platform} so their system begins tracking your views for payouts.
                         </p>
-                        {selectedCampaign.campaign_url ? (
-                          <a
-                            href={selectedCampaign.campaign_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              background: '#2563eb',
-                              color: '#fff',
-                              padding: '6px 14px',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: 'bold',
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            <span>🚀</span> Open {selectedCampaign.source_platform} & Paste Link ↗
-                          </a>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            Paste copied link into the campaign submission portal.
-                          </span>
-                        )}
+                        <a
+                          href={selectedCampaign.campaign_url || 'https://contentrewards.com/c/campaigns'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            background: '#2563eb',
+                            color: '#fff',
+                            padding: '6px 14px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>🚀</span> Open {selectedCampaign.source_platform} & Paste Link ↗
+                        </a>
                       </div>
                     )}
                   </div>
