@@ -757,5 +757,426 @@
       "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
       "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 91/100). Niche Fit: 98%, Production Feasibility: 85%, Eligibility: 95%."
     }
+  },
+  "camp_26ce636e": {
+    "campaign_id": "camp_26ce636e",
+    "title": "Minecraft Speedrun",
+    "source_platform": "Content Rewards",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: Minecraft Speedrun Highlights\nPLATFORM: Content Rewards\nDESCRIPTION: We pay clippers for viral shorts from authorized Minecraft streamer VODs.\nSource footage drive: https://drive.google.com/drive/folders/minecraft_authorized\nELIGIBILITY: Open to all creators! No minimum subscriber count required.\nFORMAT: 9:16 vertical video with captions.\nPAYOUT: .00 CPM up to  per video.\nHASHTAGS: #Minecraft #GamingClips",
+    "status": "APPROVED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794904379.4754229,
+    "updated_at": 1794904387.910878,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Open to all creators",
+        "No minimum subscriber count required"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming"
+      ],
+      "allowed_source_urls": [
+        "https://drive.google.com/drive/folders/minecraft_authorized"
+      ],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": true,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Use footage from authorized Minecraft streamer VODs"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#Minecraft",
+        "#GamingClips"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "APPROVED",
+      "overall_score": 87,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 95,
+      "production_feasibility_score": 85,
+      "commercial_score": 60,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [
+        "Specific CPM rate is missing (listed as '.00')",
+        "Maximum payout per video amount is missing (listed as 'up to per video')"
+      ],
+      "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 87/100). Niche Fit: 95%, Production Feasibility: 85%, Eligibility: 95%."
+    }
+  },
+  "camp_a773cbe7": {
+    "campaign_id": "camp_a773cbe7",
+    "title": "Pro League Valorant",
+    "source_platform": "Marketplace",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: Pro League Valorant\nREQUIREMENTS: Creators must have at least 50,000 subscribers.\nPAYOUT: .00 CPM.",
+    "status": "REJECTED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794904380.910593,
+    "updated_at": 1794904387.913271,
+    "eligibility": {
+      "platforms_targeted": [],
+      "minimum_subscribers": 50000,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Creators must have at least 50,000 subscribers."
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "gaming",
+        "valorant"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": false,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [],
+      "caption_template": null,
+      "hashtags": [],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 0.0,
+      "cpm_max": 0.0,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "REJECTED",
+      "overall_score": 48,
+      "eligibility_score": 15,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 60,
+      "commercial_score": 60,
+      "mandatory_requirements": [
+        "Requires at least 50,000 YouTube subscribers."
+      ],
+      "satisfied_requirements": [
+        "Niche aligns strongly with ViralLoop audience: gaming.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [
+        "Campaign requires 50,000 subscribers, but ViralLoop is a NEW channel with 0 subscribers."
+      ],
+      "unverified_requirements": [
+        "Campaign does not explicitly provide authorized footage or usage permissions."
+      ],
+      "rejection_reasons": [
+        "Campaign requires 50,000 subscribers, but ViralLoop is a NEW channel with 0 subscribers."
+      ],
+      "risks": [
+        "CPM is listed as .00, which implies no payout or a data error."
+      ],
+      "missing_information": [
+        "Authorized creator footage links or usage license",
+        "Target platforms not specified.",
+        "Content requirements (footage, duration, etc.) not specified.",
+        "Posting metadata (hashtags, captions) not specified."
+      ],
+      "recommendation": "REJECT: Disqualifying conditions detected (1 failed criteria). Revisit when channel statistics meet the mandatory criteria or when suitable footage is provided.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: REJECTED (Compatibility Score: 48/100). Niche Fit: 85%, Production Feasibility: 60%, Eligibility: 15%."
+    }
+  },
+  "camp_84f6e432": {
+    "campaign_id": "camp_84f6e432",
+    "title": "US Geo Challenge",
+    "source_platform": "Marketplace",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: US Geo Streamers Challenge\nDESCRIPTION: Minecraft gaming highlights. Footage provided: https://drive.google.com/drive/folders/foot_auth\nELIGIBILITY: Minimum 60% US / UK audience required. No subscriber minimum.\nFORMAT: 9:16 vertical.\nPAYOUT: .50 CPM.",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794904387.910228,
+    "updated_at": 1794904387.915073,
+    "eligibility": {
+      "platforms_targeted": [],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [
+        "US",
+        "UK"
+      ],
+      "minimum_tier1_audience_percentage": 60.0,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Minimum 60% US / UK audience required",
+        "No subscriber minimum"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming"
+      ],
+      "allowed_source_urls": [
+        "https://drive.google.com/drive/folders/foot_auth"
+      ],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [],
+      "caption_template": null,
+      "hashtags": [],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 0.5,
+      "cpm_max": 0.5,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 71,
+      "eligibility_score": 55,
+      "niche_compatibility_score": 98,
+      "production_feasibility_score": 85,
+      "commercial_score": 45,
+      "mandatory_requirements": [
+        "Requires at least 60.0% Tier 1 audience.",
+        "Requires audience from: US, UK"
+      ],
+      "satisfied_requirements": [
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft, challenge.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Requires 60.0% Tier 1 audience; ViralLoop audience demographics are currently unknown.",
+        "Requires audience from US, UK; channel audience breakdown is currently unknown."
+      ],
+      "rejection_reasons": [],
+      "risks": [
+        "Requires 60% audience from US or UK"
+      ],
+      "missing_information": [
+        "Verified audience analytics / country demographics",
+        "Audience country verification",
+        "Target platforms not specified",
+        "Posting instructions (hashtags, captions, CTAs) not provided",
+        "Video duration limits not specified"
+      ],
+      "recommendation": "HOLD (NEEDS INFO): The campaign concept is promising, but 2 requirement(s) cannot be confirmed without additional channel analytics or explicit footage permissions.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: NEEDS_INFO (Compatibility Score: 71/100). Niche Fit: 98%, Production Feasibility: 85%, Eligibility: 55%."
+    }
+  },
+  "camp_7194fc32": {
+    "campaign_id": "camp_7194fc32",
+    "title": ",000 Jason Pool Campaign",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/c/campaigns/0b178e3c-fbd3-4294-8ded-394e3da9c62f",
+    "raw_brief": "Skip to content Discover Solutions Resources Sign in Create Account Open menu Discover Solutions Resources Back Join Campaign Reach $9,000 Jason Pool Campaign Get paid to clip JasonTheWeen's content!\n\nhttps://www.youtube.com/@JasonTheWeenie\ntwitch.tv/jasontheween\ntiktok.com/@jasontheween\ninstagram.com/jasontheween Show more Accepting clips Launched 2 weeks ago Entertainment 2593 $9K pool Join Campaign Pool Pool $9,000.00 Split by Views Paid When the pool ends Reference materials 4 files Visible once you join Join to unlock 4 files Join Campaign Views Join to see how this campaign is performing. Join to see views More from  Reach View profile $9,000 Jason Pool Campaign by Reach | Content Rewards",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794904445.406736,
+    "updated_at": 1794904445.4077282,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "Entertainment",
+        "Creator Highlight",
+        "Streamer"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": true,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 72,
+      "eligibility_score": 85,
+      "niche_compatibility_score": 90,
+      "production_feasibility_score": 65,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Reference materials 4 files locked behind Join requirement."
+      ],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [],
+      "recommendation": "Join campaign on Content Rewards to unlock reference material guidelines.",
+      "summary": ",000 Jason Pool Campaign by Reach for JasonTheWeen clipping."
+    }
   }
 }

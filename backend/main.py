@@ -1496,7 +1496,7 @@ def get_viral_video_info(request: ViralVideoInfoRequest):
         )
 
     vid_id = extract_video_id(url)
-    if not vid_id:
+    if not vid_id or len(vid_id) != 11:
         raise HTTPException(status_code=400, detail="Invalid YouTube URL. Please provide a valid watch, share, or shorts link (e.g. https://www.youtube.com/watch?v=...).")
 
     try:

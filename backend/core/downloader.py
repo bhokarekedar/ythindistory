@@ -80,6 +80,42 @@ class YouTubeDownloader:
                 with yt_dlp.YoutubeDL(cookie_opts) as ydl:
                     info = ydl.extract_info(canonical_url, download=False)
             except Exception:
+                # Fallback: check if video is already cached on disk
+                if vid_id:
+                    import subprocess
+                    import json
+                    candidates = [
+                        os.path.join(self.output_dir, f"{vid_id}.mp4"),
+                        os.path.join(self.output_dir, f"{vid_id}.webm"),
+                        os.path.join(self.output_dir, f"{vid_id}.mkv"),
+                        os.path.join("backend", self.output_dir, f"{vid_id}.mp4"),
+                        os.path.join(os.path.dirname(self.output_dir), "videos", f"{vid_id}.mp4")
+                    ]
+                    for p in candidates:
+                        if os.path.exists(p) and os.path.getsize(p) >= 1024 * 1024:
+                            try:
+                                probe_cmd = ["ffprobe", "-v", "error", "-show_format", "-of", "json", p]
+                                p_data = json.loads(subprocess.check_output(probe_cmd).decode())
+                                dur = int(float(p_data.get("format", {}).get("duration", 0)))
+                                mins, secs = divmod(dur, 60)
+                                hrs, mins = divmod(mins, 60)
+                                dur_fmt = f"{hrs:d}:{mins:02d}:{secs:02d}" if hrs else f"{mins:02d}:{secs:02d}"
+                                return {
+                                    "video_id": vid_id,
+                                    "title": f"Cached Creator Footage ({vid_id})",
+                                    "uploader": "Authorized Footage Cache",
+                                    "uploader_url": canonical_url,
+                                    "duration": dur,
+                                    "duration_formatted": dur_fmt,
+                                    "thumbnail": None,
+                                    "view_count": 0,
+                                    "webpage_url": canonical_url,
+                                    "description": f"Locally cached video file ({os.path.basename(p)})",
+                                    "is_cached": True,
+                                    "cached_path": p
+                                }
+                            except Exception:
+                                pass
                 raise Exception(f"Unable to extract video information from YouTube: {str(e_nocookies)}")
 
         if not info:
