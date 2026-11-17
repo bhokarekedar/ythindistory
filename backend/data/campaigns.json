@@ -1,0 +1,761 @@
+{
+  "camp_aa8ccfa7": {
+    "campaign_id": "camp_aa8ccfa7",
+    "title": "Minecraft Speedrun Highlights S4",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/campaign/minecraft-s4",
+    "raw_brief": "CAMPAIGN: Minecraft Speedrun Highlights Season 4\nPLATFORM: Content Rewards\nDESCRIPTION: Paying clippers to make vertical shorts from authorized Minecraft streamer VODs!\nSource footage drive: https://drive.google.com/drive/folders/minecraft_authorized\nELIGIBILITY: Open to all creators! No minimum subscriber count required.\nPAYOUT: $2.50 CPM up to $500 per video.\nHASHTAGS: #Minecraft #GamingClips #Speedrun\nMENTION: @MinecraftClippers",
+    "status": "APPROVED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794901463.491714,
+    "updated_at": 1794901463.4918232,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Open to all creators",
+        "No minimum subscriber count required"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming",
+        "speedrun"
+      ],
+      "allowed_source_urls": [
+        "https://drive.google.com/drive/folders/minecraft_authorized"
+      ],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Make vertical shorts from authorized Minecraft streamer VODs"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#Minecraft",
+        "#GamingClips",
+        "#Speedrun"
+      ],
+      "required_mentions": [
+        "@MinecraftClippers"
+      ],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 2.5,
+      "cpm_max": 2.5,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": 500.0,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "APPROVED",
+      "overall_score": 90,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 95,
+      "production_feasibility_score": 85,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [
+        "Specific posting platforms not explicitly listed (inferred as short-form platforms based on 'vertical shorts')",
+        "No specific deadline or submission window mentioned",
+        "No specific caption template or CTA provided"
+      ],
+      "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 90/100). Niche Fit: 95%, Production Feasibility: 85%, Eligibility: 95%."
+    }
+  },
+  "camp_df3a93dc": {
+    "campaign_id": "camp_df3a93dc",
+    "title": "Top Tier Valorant Clips",
+    "source_platform": "Whop",
+    "campaign_url": "https://whop.com/terminal/valorant-tier1",
+    "raw_brief": "CAMPAIGN: Top Tier Valorant Clips\nPLATFORM: Whop\nREQUIREMENTS: Channels must have at least 2,000 subscribers on YouTube to qualify for monetization.\nPayout: $4.00 CPM.\nFootage: Provided in portal.",
+    "status": "REJECTED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794901464.9857652,
+    "updated_at": 1794901464.9859169,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts"
+      ],
+      "minimum_subscribers": 2000,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Channels must have at least 2,000 subscribers on YouTube to qualify for monetization."
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "gaming",
+        "valorant"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts"
+      ],
+      "caption_template": null,
+      "hashtags": [],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 4.0,
+      "cpm_max": 4.0,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "REJECTED",
+      "overall_score": 48,
+      "eligibility_score": 15,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 85,
+      "commercial_score": 80,
+      "mandatory_requirements": [
+        "Requires at least 2,000 YouTube subscribers."
+      ],
+      "satisfied_requirements": [
+        "Niche aligns strongly with ViralLoop audience: gaming.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [
+        "Campaign requires 2,000 subscribers, but ViralLoop is a NEW channel with 0 subscribers."
+      ],
+      "unverified_requirements": [],
+      "rejection_reasons": [
+        "Campaign requires 2,000 subscribers, but ViralLoop is a NEW channel with 0 subscribers."
+      ],
+      "risks": [
+        "Requires 2,000 YouTube subscribers"
+      ],
+      "missing_information": [
+        "Specific footage link or portal access details not provided in text",
+        "No posting deadline specified",
+        "No specific caption or hashtag requirements listed"
+      ],
+      "recommendation": "REJECT: Disqualifying conditions detected (1 failed criteria). Revisit when channel statistics meet the mandatory criteria or when suitable footage is provided.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: REJECTED (Compatibility Score: 48/100). Niche Fit: 85%, Production Feasibility: 85%, Eligibility: 15%."
+    }
+  },
+  "camp_6db6781a": {
+    "campaign_id": "camp_6db6781a",
+    "title": "Internet Drama Shorts",
+    "source_platform": "Vyro",
+    "campaign_url": "https://app.vyro.com/campaigns/drama",
+    "raw_brief": "CAMPAIGN: Internet Drama Clips\nPLATFORM: Vyro\nDESCRIPTION: Create short videos about recent internet drama.\nPAYMENT: $1.50 CPM.\nNote: You find your own footage across Twitter and YouTube. We do not provide licenses.\nMust tag #InternetDrama.",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794901466.4214568,
+    "updated_at": 1794901466.421747,
+    "eligibility": {
+      "platforms_targeted": [],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "internet_drama"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": false,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Find your own footage across Twitter and YouTube",
+        "We do not provide licenses"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [],
+      "caption_template": null,
+      "hashtags": [
+        "#InternetDrama"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 1.5,
+      "cpm_max": 1.5,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 74,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 65,
+      "production_feasibility_score": 60,
+      "commercial_score": 65,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Moderate niche fit: ai.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Campaign does not explicitly provide authorized footage or usage permissions."
+      ],
+      "rejection_reasons": [],
+      "risks": [
+        "Creator must source their own footage and manage licensing risks as no licenses are provided by the campaign."
+      ],
+      "missing_information": [
+        "Authorized creator footage links or usage license",
+        "Target platforms not explicitly listed (implied short-form but not specified)",
+        "No minimum subscriber or follower requirements stated",
+        "No specific duration limits provided"
+      ],
+      "recommendation": "HOLD (NEEDS INFO): The campaign concept is promising, but 1 requirement(s) cannot be confirmed without additional channel analytics or explicit footage permissions.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: NEEDS_INFO (Compatibility Score: 74/100). Niche Fit: 65%, Production Feasibility: 60%, Eligibility: 95%."
+    }
+  },
+  "camp_297188c2": {
+    "campaign_id": "camp_297188c2",
+    "title": "Extreme Streamer Challenge 2026",
+    "source_platform": "Content Rewards",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: Extreme Streamer Challenge 2026\n    PLATFORM: Content Rewards\n    DESCRIPTION: Create viral short-form clips (YouTube Shorts & TikTok) from our official Minecraft & challenge streams.\n    ELIGIBILITY: Open to all creators! No minimum subscriber count required.\n    FORMAT: 9:16 vertical video with animated captions.\n    PAYOUT: $3.00 CPM up to $600 per video.\n    HASHTAGS: #Minecraft #GamingClips #ViralChallenge",
+    "status": "APPROVED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794901963.5936892,
+    "updated_at": 1794901969.219132,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Open to all creators",
+        "No minimum subscriber count required"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming",
+        "challenges"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": true,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Use animated captions",
+        "Source clips from official Minecraft & challenge streams"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#Minecraft",
+        "#GamingClips",
+        "#ViralChallenge"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 3.0,
+      "cpm_max": 3.0,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": 600.0,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "APPROVED",
+      "overall_score": 91,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 98,
+      "production_feasibility_score": 85,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft, challenge.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [
+        "Specific source links for the official streams are not provided",
+        "No deadline or submission window specified"
+      ],
+      "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 91/100). Niche Fit: 98%, Production Feasibility: 85%, Eligibility: 95%."
+    }
+  },
+  "camp_1408bbbb": {
+    "campaign_id": "camp_1408bbbb",
+    "title": "Extreme Streamer Challenge 2026",
+    "source_platform": "Content Rewards",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: Extreme Streamer Challenge 2026\n    PLATFORM: Content Rewards\n    DESCRIPTION: Create viral short-form clips (YouTube Shorts & TikTok) from our official Minecraft & challenge streams.\n    ELIGIBILITY: Open to all creators! No minimum subscriber count required.\n    FORMAT: 9:16 vertical video with animated captions.\n    PAYOUT: $3.00 CPM up to $600 per video.\n    HASHTAGS: #Minecraft #GamingClips #ViralChallenge",
+    "status": "APPROVED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794901986.340849,
+    "updated_at": 1794902007.9220889,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "minimum_subscribers": 0,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Open to all creators",
+        "No minimum subscriber count required"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming",
+        "challenges"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": true,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Use animated captions",
+        "Source clips from official Minecraft & challenge streams"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#Minecraft",
+        "#GamingClips",
+        "#ViralChallenge"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 3.0,
+      "cpm_max": 3.0,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": 600.0,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "APPROVED",
+      "overall_score": 91,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 98,
+      "production_feasibility_score": 85,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft, challenge.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [
+        "Specific source URLs for the official streams are not provided",
+        "No deadline or submission window specified"
+      ],
+      "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 91/100). Niche Fit: 98%, Production Feasibility: 85%, Eligibility: 95%."
+    }
+  },
+  "camp_6323bc6c": {
+    "campaign_id": "camp_6323bc6c",
+    "title": "Extreme Streamer Challenge 2026",
+    "source_platform": "Content Rewards",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: Extreme Streamer Challenge 2026\n    PLATFORM: Content Rewards\n    DESCRIPTION: Create viral short-form clips (YouTube Shorts & TikTok) from our official Minecraft & challenge streams.\n    ELIGIBILITY: Open to all creators! No minimum subscriber count required.\n    FORMAT: 9:16 vertical video with animated captions.\n    PAYOUT: $3.00 CPM up to $600 per video.\n    HASHTAGS: #Minecraft #GamingClips #ViralChallenge",
+    "status": "APPROVED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794902044.209534,
+    "updated_at": 1794902046.3951948,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Open to all creators",
+        "No minimum subscriber count required"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming",
+        "challenges"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": true,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Use animated captions",
+        "Source clips from official Minecraft & challenge streams"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#Minecraft",
+        "#GamingClips",
+        "#ViralChallenge"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 3.0,
+      "cpm_max": 3.0,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": 600.0,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "APPROVED",
+      "overall_score": 91,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 98,
+      "production_feasibility_score": 85,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft, challenge.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [
+        "Specific URL or link to the official streams/footage is not provided",
+        "No specific deadline or posting frequency mentioned"
+      ],
+      "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 91/100). Niche Fit: 98%, Production Feasibility: 85%, Eligibility: 95%."
+    }
+  },
+  "camp_df980f24": {
+    "campaign_id": "camp_df980f24",
+    "title": "Extreme Streamer Challenge 2026",
+    "source_platform": "Content Rewards",
+    "campaign_url": null,
+    "raw_brief": "CAMPAIGN: Extreme Streamer Challenge 2026\n    PLATFORM: Content Rewards\n    DESCRIPTION: Create viral short-form clips (YouTube Shorts & TikTok) from our official Minecraft & challenge streams.\n    ELIGIBILITY: Open to all creators! No minimum subscriber count required.\n    FORMAT: 9:16 vertical video with animated captions.\n    PAYOUT: $3.00 CPM up to $600 per video.\n    HASHTAGS: #Minecraft #GamingClips #ViralChallenge",
+    "status": "APPROVED",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1794902134.540138,
+    "updated_at": 1794902136.121433,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": [
+        "Open to all creators",
+        "No minimum subscriber count required"
+      ]
+    },
+    "content_requirements": {
+      "niche": [
+        "minecraft",
+        "gaming",
+        "challenges"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": null,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": true,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": [
+        "Use animated captions",
+        "Source clips from official Minecraft & challenge streams"
+      ]
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#Minecraft",
+        "#GamingClips",
+        "#ViralChallenge"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": 3.0,
+      "cpm_max": 3.0,
+      "minimum_payable_views": null,
+      "maximum_budget": null,
+      "maximum_payout_per_video": 600.0,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "analysis": {
+      "decision": "APPROVED",
+      "overall_score": 91,
+      "eligibility_score": 95,
+      "niche_compatibility_score": 98,
+      "production_feasibility_score": 85,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [
+        "No restrictive subscriber, follower, or portfolio barriers.",
+        "Niche aligns strongly with ViralLoop audience: gaming, streamer, minecraft, challenge.",
+        "Vertical 9:16 format perfectly matches AI Smart Crop engine."
+      ],
+      "failed_requirements": [],
+      "unverified_requirements": [],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [
+        "Specific source URLs for the official streams are not provided",
+        "No deadline or submission window specified"
+      ],
+      "recommendation": "APPROVE: Strong niche alignment with gaming/challenge strategy, zero disqualifying barriers, and production requirements fully achievable with ViralLoop's faceless 9:16 workflow.",
+      "summary": "Campaign evaluated for ViralLoop. Verdict: APPROVED (Compatibility Score: 91/100). Niche Fit: 98%, Production Feasibility: 85%, Eligibility: 95%."
+    }
+  }
+}

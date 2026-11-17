@@ -1,0 +1,33 @@
+{
+  "channel_name": "ViralLoop",
+  "tagline": "The Best Moments. All in One Loop.",
+  "channel_status": "NEW",
+  "youtube_subscribers": 0,
+  "instagram_followers": 0,
+  "tiktok_followers": 0,
+  "account_age_days": 1,
+  "previous_viral_videos_count": 0,
+  "historical_views_total": 0,
+  "audience_geography": [],
+  "tier1_audience_percentage": null,
+  "face_camera_available": false,
+  "content_niches": [
+    "gaming",
+    "streamers",
+    "minecraft",
+    "roblox",
+    "fortnite",
+    "mrbeast_challenges",
+    "extreme_competitions",
+    "unexpected_events",
+    "crazy_experiments",
+    "funny_moments",
+    "viral_entertainment"
+  ],
+  "supported_aspect_ratios": [
+    "9:16"
+  ],
+  "captions_supported": true,
+  "ai_clip_detection_supported": true,
+  "last_updated": 1794901186.1119502
+}

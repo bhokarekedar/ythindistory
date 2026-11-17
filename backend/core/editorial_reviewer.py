@@ -252,7 +252,8 @@ TRANSCRIPT EXCERPT AROUND THIS MOMENT:
                         {"role": "user", "content": candidate_info}
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.2
+                    temperature=0.2,
+                    max_tokens=800
                 )
                 resp_text = completion.choices[0].message.content.strip()
                 if resp_text.startswith("```"):

@@ -26,6 +26,40 @@ export default function ViralClipGenerator() {
   const [expandedReviews, setExpandedReviews] = useState({})
   const [activeKeyframeModal, setActiveKeyframeModal] = useState(null)
 
+  // Campaign Intelligence Linkage State
+  const [approvedCampaigns, setApprovedCampaigns] = useState([])
+  const [selectedCampaignId, setSelectedCampaignId] = useState('')
+  const [copiedCaptionClipId, setCopiedCaptionClipId] = useState(null)
+
+  // Fetch approved campaigns for monetization linkage
+  useEffect(() => {
+    fetchApprovedCampaigns()
+  }, [])
+
+  const fetchApprovedCampaigns = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/campaigns?status=APPROVED')
+      if (!res.ok) return
+      const data = await res.json()
+      setApprovedCampaigns(data.campaigns || [])
+    } catch (e) {
+      console.error('Failed to fetch approved campaigns:', e)
+    }
+  }
+
+  const selectedCampaign = approvedCampaigns.find(c => c.campaign_id === selectedCampaignId)
+
+  const copyPostingCaption = (clip) => {
+    if (!selectedCampaign) return
+    const tags = (selectedCampaign.posting_metadata?.hashtags || []).join(' ')
+    const mentions = (selectedCampaign.posting_metadata?.required_mentions || []).join(' ')
+    const cta = selectedCampaign.posting_metadata?.cta || ''
+    const text = `${clip.title}\n\n${cta}\n\n${tags} ${mentions}`.trim()
+    navigator.clipboard.writeText(text)
+    setCopiedCaptionClipId(clip.clip_id)
+    setTimeout(() => setCopiedCaptionClipId(null), 2500)
+  }
+
   // Real-time client-side URL validation
   useEffect(() => {
     const trimmed = url.trim()
@@ -423,6 +457,58 @@ export default function ViralClipGenerator() {
         <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#a1a1aa' }}>
           Paste any authorized YouTube video or creator footage URL to inspect metadata and extract viral moments.
         </p>
+
+        {/* Link to Approved Campaign (Monetization Integration) */}
+        <div style={{
+          background: '#09090b',
+          border: '1px solid #27272a',
+          borderRadius: '8px',
+          padding: '12px 14px',
+          marginBottom: '16px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🎯</span> Link to Approved Campaign (Optional):
+            </span>
+            <span style={{ fontSize: '11px', color: '#a1a1aa' }}>
+              {approvedCampaigns.length} Approved in Library
+            </span>
+          </div>
+
+          <select
+            value={selectedCampaignId}
+            onChange={(e) => setSelectedCampaignId(e.target.value)}
+            style={{
+              width: '100%',
+              background: '#18181b',
+              border: '1px solid #3f3f46',
+              color: '#fff',
+              padding: '8px 10px',
+              borderRadius: '6px',
+              fontSize: '13px',
+              outline: 'none'
+            }}
+          >
+            <option value="">-- None (Independent Viral Clip) --</option>
+            {approvedCampaigns.map(ac => (
+              <option key={ac.campaign_id} value={ac.campaign_id}>
+                {ac.title} ({ac.source_platform} • ${ac.commercial_details?.cpm_max || 0} CPM)
+              </option>
+            ))}
+          </select>
+
+          {selectedCampaign && (
+            <div style={{ marginTop: '8px', fontSize: '11px', color: '#86efac', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <span>✅ Requirements: 9:16 vertical shorts</span>
+              {selectedCampaign.posting_metadata?.hashtags?.length > 0 && (
+                <span>🏷️ Tags: {selectedCampaign.posting_metadata.hashtags.join(' ')}</span>
+              )}
+              {selectedCampaign.posting_metadata?.required_mentions?.length > 0 && (
+                <span>👤 Mentions: {selectedCampaign.posting_metadata.required_mentions.join(' ')}</span>
+              )}
+            </div>
+          )}
+        </div>
 
         <form onSubmit={handleFetchInfo} style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
           <div style={{ position: 'relative', flex: 1 }}>
@@ -1372,6 +1458,28 @@ export default function ViralClipGenerator() {
                           >
                             📥
                           </a>
+                          {selectedCampaign && (
+                            <button
+                              type="button"
+                              onClick={() => copyPostingCaption(clip)}
+                              style={{
+                                background: copiedCaptionClipId === clip.clip_id ? '#15803d' : '#0284c7',
+                                color: '#fff',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Copy title, hashtags, CTA, and mentions formatted for this campaign"
+                            >
+                              {copiedCaptionClipId === clip.clip_id ? '✅ Copied!' : '📋 Caption'}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <button

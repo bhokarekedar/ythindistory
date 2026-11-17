@@ -46,7 +46,7 @@ app.mount("/output", StaticFiles(directory="output"), name="output")
 os.makedirs("temp", exist_ok=True)
 app.mount("/temp", StaticFiles(directory="temp"), name="temp")
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 class WatermarkCorner(BaseModel):
     enabled: bool = False
@@ -1923,6 +1923,157 @@ def set_manual_editorial_verdict(request: ViralManualVerdictRequest):
         "clip_id": clip_id,
         "review": existing_reviews[clip_id]
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# CAMPAIGN INTELLIGENCE: MODELS & SERVICES
+# ─────────────────────────────────────────────────────────────
+from core.campaign_intelligence import (
+    CampaignAnalyzer,
+    CampaignRepository,
+    ChannelProfile,
+    CampaignRecord
+)
+
+campaign_repo = CampaignRepository()
+campaign_analyzer = CampaignAnalyzer()
+
+class CampaignAnalyzeRequest(BaseModel):
+    brief: str
+    title: Optional[str] = None
+    source_platform: Optional[str] = "Content Rewards"
+    campaign_url: Optional[str] = None
+
+class CampaignSaveRequest(BaseModel):
+    campaign: Dict[str, Any]
+
+class CampaignVerdictRequest(BaseModel):
+    verdict: str  # APPROVED, REJECTED, RESET
+    reason: Optional[str] = None
+
+class CampaignMetadataUpdateRequest(BaseModel):
+    posting_metadata: Dict[str, Any]
+
+
+@app.get("/api/campaigns/channel-profile")
+def get_channel_profile_endpoint():
+    profile = campaign_repo.get_channel_profile()
+    return {"status": "success", "profile": profile.model_dump()}
+
+@app.put("/api/campaigns/channel-profile")
+def update_channel_profile_endpoint(profile_data: Dict[str, Any]):
+    try:
+        profile = ChannelProfile(**profile_data)
+        saved = campaign_repo.save_channel_profile(profile)
+        return {"status": "success", "profile": saved.model_dump()}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid profile data: {str(e)}")
+
+@app.post("/api/campaigns/analyze")
+def analyze_campaign_endpoint(request: CampaignAnalyzeRequest):
+    brief = request.brief.strip()
+    if not brief:
+        raise HTTPException(status_code=400, detail="Campaign brief cannot be empty.")
+
+    profile = campaign_repo.get_channel_profile()
+    try:
+        existing = campaign_repo.find_duplicate(
+            raw_brief=brief,
+            title=request.title,
+            campaign_url=request.campaign_url
+        )
+        is_dup = existing is not None
+
+        record = campaign_analyzer.analyze_campaign(
+            raw_brief=brief,
+            title=request.title,
+            source_platform=request.source_platform or "Content Rewards",
+            campaign_url=request.campaign_url,
+            channel_profile=profile
+        )
+
+        return {
+            "status": "success",
+            "campaign": record.model_dump(),
+            "is_duplicate": is_dup,
+            "existing_campaign": existing.model_dump() if existing else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Campaign analysis failed: {str(e)}")
+
+@app.post("/api/campaigns/save")
+def save_campaign_endpoint(request: CampaignSaveRequest):
+    try:
+        record = CampaignRecord(**request.campaign)
+        saved = campaign_repo.save(record)
+        return {"status": "success", "campaign": saved.model_dump()}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to save campaign: {str(e)}")
+
+@app.get("/api/campaigns")
+def list_campaigns_endpoint(
+    status: Optional[str] = "ALL",
+    platform: Optional[str] = None,
+    search: Optional[str] = None
+):
+    campaigns = campaign_repo.list(status=status, platform=platform, search=search)
+    return {
+        "status": "success",
+        "total": len(campaigns),
+        "campaigns": [c.model_dump() for c in campaigns]
+    }
+
+@app.get("/api/campaigns/{campaign_id}")
+def get_campaign_endpoint(campaign_id: str):
+    record = campaign_repo.get(campaign_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    return {"status": "success", "campaign": record.model_dump()}
+
+@app.post("/api/campaigns/{campaign_id}/verdict")
+def set_campaign_verdict_endpoint(campaign_id: str, request: CampaignVerdictRequest):
+    updated = campaign_repo.update_verdict(campaign_id, request.verdict, request.reason)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    return {"status": "success", "campaign": updated.model_dump()}
+
+@app.put("/api/campaigns/{campaign_id}/metadata")
+def update_campaign_metadata_endpoint(campaign_id: str, request: CampaignMetadataUpdateRequest):
+    updated = campaign_repo.update_metadata(campaign_id, request.posting_metadata)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    return {"status": "success", "campaign": updated.model_dump()}
+
+@app.post("/api/campaigns/{campaign_id}/reanalyze")
+def reanalyze_campaign_endpoint(campaign_id: str):
+    record = campaign_repo.get(campaign_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+
+    profile = campaign_repo.get_channel_profile()
+    reanalyzed = campaign_analyzer.analyze_campaign(
+        raw_brief=record.raw_brief,
+        title=record.title,
+        source_platform=record.source_platform,
+        campaign_url=record.campaign_url,
+        channel_profile=profile
+    )
+    reanalyzed.campaign_id = record.campaign_id
+    if record.manual_override:
+        reanalyzed.manual_override = True
+        reanalyzed.manual_verdict = record.manual_verdict
+        reanalyzed.manual_override_reason = record.manual_override_reason
+        reanalyzed.status = record.manual_verdict
+
+    saved = campaign_repo.save(reanalyzed)
+    return {"status": "success", "campaign": saved.model_dump()}
+
+@app.post("/api/campaigns/{campaign_id}/archive")
+def archive_campaign_endpoint(campaign_id: str):
+    success = campaign_repo.archive(campaign_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    return {"status": "success", "message": "Campaign archived."}
 
 
 

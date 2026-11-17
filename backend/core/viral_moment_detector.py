@@ -148,7 +148,8 @@ Return STRICTLY a JSON object without markdown code fences in this exact schema:
                         {"role": "user", "content": user_content}
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.25
+                    temperature=0.25,
+                    max_tokens=850
                 )
 
                 resp_text = completion.choices[0].message.content.strip()
