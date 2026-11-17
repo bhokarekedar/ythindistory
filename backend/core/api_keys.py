@@ -34,3 +34,8 @@ class ApiKeyManager:
             
         print(f"[API KEY] Using Groq Key #{next_idx + 1} of {len(keys)}")
         return keys[next_idx]
+
+    def get_active_key(self) -> str:
+        """Alias for get_next_key to get an active rotated key."""
+        return self.get_next_key()
+

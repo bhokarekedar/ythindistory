@@ -1468,5 +1468,140 @@ def test_generate_image(request: Optional[TestImageRequest] = None):
         return {"error": f"Failed to call Cloudflare API: {str(e)}"}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# VIRAL CLIP GENERATOR (ViralLoop Channel Pipeline)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from core.downloader import extract_video_id
+
+viral_jobs = {}
+
+class ViralVideoInfoRequest(BaseModel):
+    url: str
+
+class ViralProcessRequest(BaseModel):
+    url: str
+    target_clips: int = 5
+
+@app.post("/api/viral-clips/video-info")
+def get_viral_video_info(request: ViralVideoInfoRequest):
+    url = (request.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Please enter a YouTube video URL.")
+        
+    vid_id = extract_video_id(url)
+    if not vid_id:
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL. Please provide a valid watch, share, or shorts link.")
+
+    try:
+        downloader = YouTubeDownloader(output_dir="temp/videos")
+        meta = downloader.extract_metadata(url)
+        
+        # Check transcript cache
+        job_dir = os.path.join("temp", f"viral_{meta['video_id']}")
+        transcript_file = os.path.join(job_dir, f"{meta['video_id']}_transcript.json")
+        meta["has_transcript_cached"] = os.path.exists(transcript_file)
+        
+        return {
+            "status": "success",
+            "metadata": meta
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch video information: {str(e)}")
+
+def execute_viral_pipeline(job_id: str, url: str, video_id: str):
+    try:
+        job_dir = os.path.join("temp", f"viral_{video_id}")
+        os.makedirs(job_dir, exist_ok=True)
+        
+        # Step 1: Video Download
+        viral_jobs[job_id]["step"] = "downloading"
+        viral_jobs[job_id]["message"] = "Checking video cache and downloading YouTube video..."
+        video_path = f"temp/videos/{video_id}.mp4"
+        
+        if os.path.exists(video_path) and os.path.getsize(video_path) >= 1024 * 1024:
+            viral_jobs[job_id]["message"] = "Video found in cache. Skipping download."
+            print(f"[{job_id}] Video found in cache: {video_path}")
+        else:
+            downloader = YouTubeDownloader(output_dir="temp/videos")
+            video_path = downloader.download(url)
+            print(f"[{job_id}] Video downloaded to: {video_path}")
+            
+        viral_jobs[job_id]["video_path"] = video_path
+        
+        # Step 2: Extract Audio
+        viral_jobs[job_id]["step"] = "extracting_audio"
+        viral_jobs[job_id]["message"] = "Extracting high-clarity audio for analysis..."
+        raw_audio_path = os.path.join(job_dir, f"{video_id}_audio.mp3")
+        
+        if os.path.exists(raw_audio_path) and os.path.getsize(raw_audio_path) > 1024:
+            viral_jobs[job_id]["message"] = "Extracted audio found in cache. Skipping extraction."
+        else:
+            extractor = AudioExtractor(output_dir=job_dir)
+            raw_audio_path = extractor.extract_audio(video_path)
+            
+        viral_jobs[job_id]["audio_path"] = raw_audio_path
+        
+        # Step 3: Fetch & Merge Transcript
+        viral_jobs[job_id]["step"] = "transcribing"
+        viral_jobs[job_id]["message"] = "Fetching timestamped captions & grouping into complete thoughts..."
+        transcript_path = os.path.join(job_dir, f"{video_id}_transcript.json")
+        
+        key_mgr = ApiKeyManager()
+        groq_api_key = key_mgr.get_next_key() or os.environ.get("GROQ_API_KEY")
+        transcriber = Transcriber(output_dir=job_dir, api_key=groq_api_key)
+        
+        segments = transcriber.fetch_youtube_transcript(url)
+        if not segments:
+            raise Exception("Unable to retrieve YouTube subtitles. Please make sure the video has closed captions / subtitles enabled.")
+            
+        merged_segments = transcriber._smart_rule_based_merge(segments)
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            json.dump(merged_segments, f, indent=2, ensure_ascii=False)
+            
+        viral_jobs[job_id]["transcript_path"] = transcript_path
+        viral_jobs[job_id]["total_segments"] = len(merged_segments)
+        viral_jobs[job_id]["step"] = "ready_for_clipping"
+        viral_jobs[job_id]["message"] = f"Video and transcript ready! Extracted {len(merged_segments)} sentence segments."
+        viral_jobs[job_id]["status"] = "completed"
+        
+    except Exception as e:
+        print(f"[{job_id}] Pipeline error: {e}")
+        viral_jobs[job_id]["status"] = "error"
+        viral_jobs[job_id]["message"] = str(e)
+
+@app.post("/api/viral-clips/process")
+def process_viral_clips(request: ViralProcessRequest, background_tasks: BackgroundTasks):
+    url = (request.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Please enter a YouTube video URL.")
+        
+    vid_id = extract_video_id(url)
+    if not vid_id:
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL.")
+        
+    import uuid
+    job_id = f"viral_{vid_id}_{str(uuid.uuid4())[:6]}"
+    
+    viral_jobs[job_id] = {
+        "job_id": job_id,
+        "video_id": vid_id,
+        "url": url,
+        "status": "in_progress",
+        "step": "started",
+        "message": "Initializing viral clip extraction workflow...",
+        "created_at": time.time()
+    }
+    
+    background_tasks.add_task(execute_viral_pipeline, job_id, url, vid_id)
+    return {"status": "started", "job_id": job_id, "video_id": vid_id}
+
+@app.get("/api/viral-clips/status/{job_id}")
+def get_viral_clip_status(job_id: str):
+    if job_id not in viral_jobs:
+        raise HTTPException(status_code=404, detail=f"No viral clip job found with ID {job_id}")
+    return viral_jobs[job_id]
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

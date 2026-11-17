@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import ViralClipGenerator from './ViralClipGenerator'
 
 const RECAP_WEBHOOK_URL = 'http://localhost:5678/webhook/video-complete'
 const THRILLER_WEBHOOK_URL = 'http://localhost:5678/webhook/2a1c46d4-d081-420d-af06-7cc5d94ddaa6'
 
 function App() {
+  const [activeAppTab, setActiveAppTab] = useState('viral_clip') // 'viral_clip' or 'story_studio'
   const [url, setUrl] = useState('')
   const [webhookUrl, setWebhookUrl] = useState(RECAP_WEBHOOK_URL)
   const [jobId, setJobId] = useState(null)
@@ -446,7 +448,92 @@ function App() {
           </button>
         </div>
       </div>
+
+      {/* Top-Level Navigation Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '12px',
+        marginBottom: '24px',
+        background: '#18181b',
+        padding: '6px',
+        borderRadius: '12px',
+        border: '1px solid #27272a'
+      }}>
+        <button
+          type="button"
+          onClick={() => setActiveAppTab('viral_clip')}
+          style={{
+            flex: 1,
+            padding: '12px 18px',
+            borderRadius: '8px',
+            border: activeAppTab === 'viral_clip' ? '1.5px solid #6366f1' : '1px solid transparent',
+            background: activeAppTab === 'viral_clip' ? 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)' : 'transparent',
+            color: activeAppTab === 'viral_clip' ? '#ffffff' : '#a1a1aa',
+            fontWeight: activeAppTab === 'viral_clip' ? 'bold' : '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            fontSize: '15px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <span>🔥</span>
+          <span>Viral Clip Generator</span>
+          <span style={{
+            fontSize: '11px',
+            background: activeAppTab === 'viral_clip' ? '#4f46e5' : '#27272a',
+            color: '#c7d2fe',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            textTransform: 'uppercase',
+            fontWeight: 'bold'
+          }}>
+            ViralLoop
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveAppTab('story_studio')}
+          style={{
+            flex: 1,
+            padding: '12px 18px',
+            borderRadius: '8px',
+            border: activeAppTab === 'story_studio' ? '1.5px solid #059669' : '1px solid transparent',
+            background: activeAppTab === 'story_studio' ? 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)' : 'transparent',
+            color: activeAppTab === 'story_studio' ? '#ffffff' : '#a1a1aa',
+            fontWeight: activeAppTab === 'story_studio' ? 'bold' : '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            fontSize: '15px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <span>🎬</span>
+          <span>Story Studio</span>
+          <span style={{
+            fontSize: '11px',
+            background: activeAppTab === 'story_studio' ? '#047857' : '#27272a',
+            color: '#a7f3d0',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            textTransform: 'uppercase',
+            fontWeight: 'bold'
+          }}>
+            Movie Recaps & Stories
+          </span>
+        </button>
+      </div>
       
+      {activeAppTab === 'viral_clip' ? (
+        <ViralClipGenerator />
+      ) : (
+        <>
       <form className="input-form">
         {/* Channel Mode Switcher at Top */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '18px' }}>
@@ -1426,6 +1513,8 @@ function App() {
           <h3>Final Video Saved At:</h3>
           <code>{videoUrl}</code>
         </div>
+      )}
+        </>
       )}
     </div>
   )
