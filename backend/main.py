@@ -1934,9 +1934,11 @@ from core.campaign_intelligence import (
     ChannelProfile,
     CampaignRecord
 )
+from core.campaign_intelligence.footage_resolver import CampaignFootageResolver
 
 campaign_repo = CampaignRepository()
 campaign_analyzer = CampaignAnalyzer()
+campaign_footage_resolver = CampaignFootageResolver()
 
 class CampaignAnalyzeRequest(BaseModel):
     brief: str
@@ -2074,6 +2076,18 @@ def archive_campaign_endpoint(campaign_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Campaign not found.")
     return {"status": "success", "message": "Campaign archived."}
+
+@app.get("/api/campaigns/{campaign_id}/footage")
+def get_campaign_footage_endpoint(campaign_id: str):
+    record = campaign_repo.get(campaign_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    try:
+        footage_data = campaign_footage_resolver.resolve_footage(record)
+        return {"status": "success", "footage": footage_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to resolve campaign footage: {str(e)}")
+
 
 
 # -------------------------------------------------------------

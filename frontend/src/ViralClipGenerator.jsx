@@ -30,6 +30,8 @@ export default function ViralClipGenerator() {
   const [approvedCampaigns, setApprovedCampaigns] = useState([])
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
   const [copiedCaptionClipId, setCopiedCaptionClipId] = useState(null)
+  const [campaignFootage, setCampaignFootage] = useState(null)
+  const [loadingFootage, setLoadingFootage] = useState(false)
 
   // Fetch approved campaigns for monetization linkage
   useEffect(() => {
@@ -46,6 +48,29 @@ export default function ViralClipGenerator() {
       console.error('Failed to fetch approved campaigns:', e)
     }
   }
+
+  // Fetch source footage whenever selected campaign changes
+  useEffect(() => {
+    if (!selectedCampaignId) {
+      setCampaignFootage(null)
+      return
+    }
+    const loadFootage = async () => {
+      setLoadingFootage(true)
+      try {
+        const res = await fetch(`http://localhost:8000/api/campaigns/${selectedCampaignId}/footage`)
+        if (res.ok) {
+          const data = await res.json()
+          setCampaignFootage(data.footage)
+        }
+      } catch (err) {
+        console.error('Failed to load campaign footage:', err)
+      } finally {
+        setLoadingFootage(false)
+      }
+    }
+    loadFootage()
+  }, [selectedCampaignId])
 
   const selectedCampaign = approvedCampaigns.find(c => c.campaign_id === selectedCampaignId)
 
@@ -112,11 +137,15 @@ export default function ViralClipGenerator() {
   }, [jobId, isProcessing])
 
   // Fetch video metadata
-  const handleFetchInfo = async (e) => {
-    if (e) e.preventDefault()
-    if (!url.trim()) {
+  const handleFetchInfo = async (e, overrideUrl = null) => {
+    if (e && e.preventDefault) e.preventDefault()
+    const targetUrl = (overrideUrl || url).trim()
+    if (!targetUrl) {
       setErrorMsg('Please enter a YouTube video URL.')
       return
+    }
+    if (overrideUrl) {
+      setUrl(overrideUrl)
     }
 
     setLoadingInfo(true)
@@ -130,7 +159,7 @@ export default function ViralClipGenerator() {
       const res = await fetch('http://localhost:8000/api/viral-clips/video-info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() })
+        body: JSON.stringify({ url: targetUrl })
       })
 
       const data = await res.json()
@@ -508,6 +537,207 @@ export default function ViralClipGenerator() {
               )}
             </div>
           )}
+
+          {/* Footage Loader */}
+          {loadingFootage && (
+            <div style={{
+              marginTop: '12px',
+              padding: '12px',
+              background: '#18181b',
+              borderRadius: '8px',
+              border: '1px dashed #38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: '#93c5fd',
+              fontSize: '12px'
+            }}>
+              <span>⏳</span>
+              <span>Scanning campaign brief & fetching available creator footage...</span>
+            </div>
+          )}
+
+          {/* Campaign Footage Gallery */}
+          {campaignFootage && !loadingFootage && (
+            <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #27272a' }}>
+              {/* Google Drive Links */}
+              {campaignFootage.drive_links?.length > 0 && (
+                <div style={{
+                  marginBottom: '12px',
+                  padding: '10px 14px',
+                  background: '#1e1b4b',
+                  borderRadius: '6px',
+                  border: '1px solid #4338ca',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px'
+                }}>
+                  <span style={{ fontSize: '12px', color: '#c7d2fe' }}>
+                    📁 <strong>Official Footage Folder:</strong> Google Drive folder provided for this campaign.
+                  </span>
+                  <a
+                    href={campaignFootage.drive_links[0].url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: '5px 12px',
+                      background: '#4f46e5',
+                      color: '#fff',
+                      borderRadius: '5px',
+                      fontSize: '11px',
+                      textDecoration: 'none',
+                      fontWeight: 'bold',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Open Drive ↗
+                  </a>
+                </div>
+              )}
+
+              {/* Video Cards Grid */}
+              {campaignFootage.videos?.length > 0 ? (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>🎬</span> Available Source Videos ({campaignFootage.videos.length})
+                      {campaignFootage.channel_url && (
+                        <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 'normal' }}>
+                          • {campaignFootage.channel_url.replace('https://www.youtube.com/', '')}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                      Click any video to load & analyze
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                    gap: '10px'
+                  }}>
+                    {campaignFootage.videos.map((vid) => {
+                      const isSelected = url.trim() === vid.url.trim()
+                      return (
+                        <div
+                          key={vid.video_id || vid.url}
+                          onClick={() => handleFetchInfo(null, vid.url)}
+                          style={{
+                            background: isSelected ? '#1e1b4b' : '#18181b',
+                            border: isSelected ? '1.5px solid #818cf8' : '1px solid #3f3f46',
+                            borderRadius: '8px',
+                            padding: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}
+                        >
+                          <div style={{ position: 'relative', width: '100%', height: '115px', borderRadius: '6px', overflow: 'hidden', background: '#09090b' }}>
+                            {vid.thumbnail ? (
+                              <img
+                                src={vid.thumbnail}
+                                alt={vid.title}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a' }}>
+                                📹 Video
+                              </div>
+                            )}
+                            {vid.duration_formatted && (
+                              <span style={{
+                                position: 'absolute',
+                                bottom: '5px',
+                                right: '5px',
+                                background: 'rgba(0,0,0,0.85)',
+                                color: '#fff',
+                                fontSize: '10px',
+                                fontWeight: 'bold',
+                                padding: '2px 5px',
+                                borderRadius: '4px'
+                              }}>
+                                ⏱️ {vid.duration_formatted}
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span style={{
+                                position: 'absolute',
+                                top: '5px',
+                                left: '5px',
+                                background: '#10b981',
+                                color: '#fff',
+                                fontSize: '10px',
+                                fontWeight: 'bold',
+                                padding: '2px 6px',
+                                borderRadius: '4px'
+                              }}>
+                                ✓ Selected
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '6px' }}>
+                            <div style={{
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: isSelected ? '#c7d2fe' : '#f4f4f5',
+                              lineHeight: '1.3',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }} title={vid.title}>
+                              {vid.title}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleFetchInfo(null, vid.url)
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: isSelected ? '#4338ca' : '#27272a',
+                                color: isSelected ? '#fff' : '#e4e4e7',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <span>⚡</span> {isSelected ? 'Selected & Ready' : 'Clip This Video'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                !campaignFootage.drive_links?.length && (
+                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    ℹ️ No direct videos in brief. Paste any authorized video link from this creator below.
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Custom URL Input Header */}
+        <div style={{ marginBottom: '8px', fontSize: '12px', color: '#a1a1aa' }}>
+          {selectedCampaign ? '🔗 Or paste any custom YouTube video URL:' : 'Paste YouTube Video URL:'}
         </div>
 
         <form onSubmit={handleFetchInfo} style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
