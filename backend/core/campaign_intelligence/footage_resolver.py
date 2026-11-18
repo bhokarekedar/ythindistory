@@ -254,13 +254,27 @@ class CampaignFootageResolver:
         # Check for Content Bank / Asset Pack mention
         has_content_bank = bool(re.search(r'\b(?:content\s+bank|asset\s+pack|google\s+drive|drive\s+folder|assets?\s+folder)\b', combined_text, flags=re.IGNORECASE))
 
+        # Build clean labeled reference/drive links
+        labeled_links = []
+        if campaign.guidelines_metadata and campaign.guidelines_metadata.get("reference_links"):
+            for r in campaign.guidelines_metadata["reference_links"]:
+                if isinstance(r, dict) and r.get("url"):
+                    labeled_links.append({"url": r["url"], "label": r.get("label") or "Campaign Asset Folder"})
+        
+        existing_u = {l["url"] for l in labeled_links}
+        for idx, d in enumerate(drive_links):
+            if d not in existing_u:
+                lbl = "Google Drive Footage Folder" if ("folder" in d or idx > 0) else "Campaign Guidelines Document"
+                labeled_links.append({"url": d, "label": lbl})
+                existing_u.add(d)
+
         result = {
             "campaign_id": campaign.campaign_id,
             "campaign_title": campaign.title,
             "source_type": source_type,
             "channel_url": channel_detected,
             "videos": resolved_videos,
-            "drive_links": [{"url": d, "label": "Google Drive Footage Folder"} for d in drive_links],
+            "drive_links": labeled_links,
             "has_content_bank": has_content_bank,
             "content_bank_note": "Official content bank / asset folder referenced in campaign brief." if has_content_bank else None,
             "total_videos_found": len(resolved_videos)

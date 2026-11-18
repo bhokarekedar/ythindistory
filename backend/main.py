@@ -1955,11 +1955,13 @@ from core.campaign_intelligence import (
     CampaignRecord
 )
 from core.campaign_intelligence.footage_resolver import CampaignFootageResolver
+from core.campaign_intelligence.guidelines_parser import GuidelinesParser
 from publishing.youtube_publisher import YouTubePublisher
 
 campaign_repo = CampaignRepository()
 campaign_analyzer = CampaignAnalyzer()
 campaign_footage_resolver = CampaignFootageResolver()
+guidelines_parser = GuidelinesParser()
 youtube_publisher = YouTubePublisher()
 
 class CampaignAnalyzeRequest(BaseModel):
@@ -2109,6 +2111,74 @@ def get_campaign_footage_endpoint(campaign_id: str):
         return {"status": "success", "footage": footage_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to resolve campaign footage: {str(e)}")
+
+
+class CampaignGuidelinesIngestRequest(BaseModel):
+    guidelines_text: str
+    guidelines_urls: Optional[List[str]] = None
+    guidelines_url: Optional[str] = None
+
+
+@app.post("/api/campaigns/{campaign_id}/guidelines")
+def ingest_campaign_guidelines_endpoint(campaign_id: str, request: CampaignGuidelinesIngestRequest):
+    record = campaign_repo.get(campaign_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Campaign not found.")
+    
+    text = request.guidelines_text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Guidelines text cannot be empty.")
+        
+    try:
+        urls = list(request.guidelines_urls or [])
+        if request.guidelines_url and request.guidelines_url not in urls:
+            urls.append(request.guidelines_url)
+
+        parsed = guidelines_parser.parse_guidelines(text, urls)
+        if "error" in parsed:
+            raise HTTPException(status_code=400, detail=parsed["error"])
+
+        # Update posting metadata
+        mandatory_cap = parsed.get("mandatory_caption") or parsed.get("caption_template")
+        if mandatory_cap:
+            record.posting_metadata.caption_template = mandatory_cap
+        if parsed.get("required_hashtags") or parsed.get("hashtags"):
+            record.posting_metadata.hashtags = parsed.get("required_hashtags") or parsed.get("hashtags")
+        if parsed.get("required_mentions"):
+            record.posting_metadata.required_mentions = parsed["required_mentions"]
+        if parsed.get("critical_rule"):
+            record.posting_metadata.other_posting_instructions = [parsed["critical_rule"]]
+
+        # Update content requirements & footage URLs from all reference links
+        ref_urls = [r["url"] for r in parsed.get("reference_links", []) if isinstance(r, dict) and "url" in r]
+        all_source_urls = list(dict.fromkeys(
+            ref_urls +
+            urls +
+            record.content_requirements.allowed_source_urls
+        ))
+        record.content_requirements.allowed_source_urls = all_source_urls
+
+        if parsed.get("allowed_platforms"):
+            record.eligibility.platforms_targeted = parsed["allowed_platforms"]
+
+        # Store full guidelines metadata breakdown
+        record.guidelines_metadata = parsed
+        record.updated_at = time.time()
+
+        # Invalidate footage cache so resolver picks up new links immediately
+        if campaign_id in campaign_footage_resolver.cache:
+            del campaign_footage_resolver.cache[campaign_id]
+
+        saved = campaign_repo.save(record)
+        return {
+            "status": "success",
+            "parsed": parsed,
+            "campaign": saved.model_dump()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse guidelines: {str(e)}")
 
 
 # -------------------------------------------------------------

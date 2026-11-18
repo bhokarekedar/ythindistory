@@ -35,6 +35,13 @@ export default function ViralClipGenerator() {
   const [isSyncingCampaigns, setIsSyncingCampaigns] = useState(false)
   const [syncStatusMsg, setSyncStatusMsg] = useState('')
 
+  // Guidelines Ingestion State
+  const [showGuidelinesDrawer, setShowGuidelinesDrawer] = useState(false)
+  const [guidelinesText, setGuidelinesText] = useState('')
+  const [guidelinesDocUrl, setGuidelinesDocUrl] = useState('')
+  const [isIngestingGuidelines, setIsIngestingGuidelines] = useState(false)
+  const [guidelinesStatusMsg, setGuidelinesStatusMsg] = useState('')
+
   // Fetch approved campaigns for monetization linkage
   useEffect(() => {
     fetchApprovedCampaigns()
@@ -77,27 +84,68 @@ export default function ViralClipGenerator() {
     }
   }
 
-  // Fetch source footage whenever selected campaign changes
-  useEffect(() => {
-    if (!selectedCampaignId) {
+  const fetchCampaignFootage = async (campId) => {
+    if (!campId) {
       setCampaignFootage(null)
       return
     }
-    const loadFootage = async () => {
-      setLoadingFootage(true)
-      try {
-        const res = await fetch(`http://localhost:8000/api/campaigns/${selectedCampaignId}/footage`)
-        if (res.ok) {
-          const data = await res.json()
-          setCampaignFootage(data.footage)
-        }
-      } catch (err) {
-        console.error('Failed to load campaign footage:', err)
-      } finally {
-        setLoadingFootage(false)
+    setLoadingFootage(true)
+    try {
+      const res = await fetch(`http://localhost:8000/api/campaigns/${campId}/footage`)
+      if (res.ok) {
+        const data = await res.json()
+        setCampaignFootage(data.footage)
       }
+    } catch (err) {
+      console.error('Failed to load campaign footage:', err)
+    } finally {
+      setLoadingFootage(false)
     }
-    loadFootage()
+  }
+
+  // Ingest Campaign Guidelines text / Drive documents via AI
+  const handleIngestGuidelines = async () => {
+    if (!selectedCampaignId) return
+    if (!guidelinesText.trim()) {
+      setGuidelinesStatusMsg('Please paste guidelines or brief text.')
+      return
+    }
+    setIsIngestingGuidelines(true)
+    setGuidelinesStatusMsg('Analyzing guidelines & testing production feasibility with AI...')
+    try {
+      const urls = guidelinesDocUrl
+        .split(/[\n,]+/)
+        .map(u => u.trim())
+        .filter(u => u.startsWith('http'))
+
+      const res = await fetch(`http://localhost:8000/api/campaigns/${selectedCampaignId}/guidelines`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guidelines_text: guidelinesText.trim(),
+          guidelines_urls: urls.length > 0 ? urls : undefined,
+          guidelines_url: urls.length > 0 ? urls[0] : undefined
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setGuidelinesStatusMsg('✅ Guidelines ingested & feasibility analyzed!')
+        await fetchApprovedCampaigns()
+        await fetchCampaignFootage(selectedCampaignId)
+        setTimeout(() => setGuidelinesStatusMsg(''), 4000)
+      } else {
+        setGuidelinesStatusMsg('Error: ' + (data.detail || 'Failed to ingest guidelines.'))
+      }
+    } catch (e) {
+      setGuidelinesStatusMsg('Error: ' + e.message)
+    } finally {
+      setIsIngestingGuidelines(false)
+    }
+  }
+
+  // Fetch source footage whenever selected campaign changes
+  useEffect(() => {
+    fetchCampaignFootage(selectedCampaignId)
   }, [selectedCampaignId])
 
   const selectedCampaign = approvedCampaigns.find(c => c.campaign_id === selectedCampaignId)
@@ -133,10 +181,15 @@ export default function ViralClipGenerator() {
     const baseTitle = clip.title || 'Viral Clip'
     setUploadTitle(baseTitle.toLowerCase().includes('#shorts') ? baseTitle : `${baseTitle} #Shorts`)
 
+    const mandatoryCaption = selectedCampaign?.posting_metadata?.caption_template
     const tags = (selectedCampaign?.posting_metadata?.hashtags || ['#Shorts', '#Viral', '#Trending']).join(' ')
     const mentions = (selectedCampaign?.posting_metadata?.required_mentions || []).join(' ')
     const cta = selectedCampaign?.posting_metadata?.cta || 'Subscribe for more clips!'
-    setUploadDesc(`${baseTitle}\n\n${cta}\n\n${tags} ${mentions}`.trim())
+    if (mandatoryCaption) {
+      setUploadDesc(`${mandatoryCaption}\n\n${cta}\n\n${tags} ${mentions}`.trim())
+    } else {
+      setUploadDesc(`${baseTitle}\n\n${cta}\n\n${tags} ${mentions}`.trim())
+    }
 
     const cleanTags = (selectedCampaign?.posting_metadata?.hashtags || ['Shorts', 'Viral']).map(t => t.replace('#', '')).join(', ')
     setUploadTags(cleanTags)
@@ -737,6 +790,204 @@ export default function ViralClipGenerator() {
             </div>
           )}
 
+          {/* Step 2: Campaign Eligibility & Guidelines */}
+          {selectedCampaign && (() => {
+            const meta = selectedCampaign.guidelines_metadata
+            const isRejected = meta && (meta.status === 'REJECTED' || meta.feasibility_verdict === 'REJECTED')
+            const isApproved = meta && (meta.status === 'APPROVED' || meta.feasibility_verdict === 'APPROVED' || meta.feasibility_verdict === 'CAUTION')
+            const hasGuidelines = !!meta
+            const caption = selectedCampaign.posting_metadata?.caption_template || meta?.mandatory_caption
+
+            return (
+              <div style={{
+                marginTop: '10px',
+                padding: '12px 14px',
+                background: '#18181b',
+                border: isRejected ? '1.5px solid #ef4444' : isApproved ? '1.5px solid #10b981' : '1px solid #3f3f46',
+                borderRadius: '8px'
+              }}>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 'bold', color: isRejected ? '#f87171' : isApproved ? '#34d399' : '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{isRejected ? '❌' : isApproved ? '✅' : '📋'}</span>
+                    <span>Step 2: Campaign Eligibility Analysis</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuidelinesDrawer(!showGuidelinesDrawer)}
+                    style={{
+                      background: '#27272a',
+                      border: '1px solid #52525b',
+                      color: '#e4e4e7',
+                      padding: '4px 10px',
+                      borderRadius: '5px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {showGuidelinesDrawer ? '▲ Close Form' : hasGuidelines ? '✏️ Re-Analyze / Paste Links' : '📥 Paste Guidelines & Analyze'}
+                  </button>
+                </div>
+
+                {/* Input Form */}
+                {(showGuidelinesDrawer || !hasGuidelines) && (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <textarea
+                      rows={3}
+                      value={guidelinesText}
+                      onChange={(e) => setGuidelinesText(e.target.value)}
+                      placeholder="Paste Campaign Guidelines text or brief from Content Rewards / Google Doc..."
+                      style={{
+                        width: '100%',
+                        background: '#09090b',
+                        border: '1px solid #3f3f46',
+                        borderRadius: '6px',
+                        color: '#f4f4f5',
+                        padding: '8px 10px',
+                        fontSize: '12px',
+                        fontFamily: 'monospace',
+                        outline: 'none',
+                        resize: 'vertical',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <input
+                      type="text"
+                      value={guidelinesDocUrl}
+                      onChange={(e) => setGuidelinesDocUrl(e.target.value)}
+                      placeholder="Paste Drive / Asset URLs (comma or newline separated)..."
+                      style={{
+                        width: '100%',
+                        background: '#09090b',
+                        border: '1px solid #3f3f46',
+                        borderRadius: '6px',
+                        color: '#f4f4f5',
+                        padding: '6px 10px',
+                        fontSize: '12px',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={isIngestingGuidelines}
+                      onClick={handleIngestGuidelines}
+                      style={{
+                        alignSelf: 'flex-start',
+                        background: isIngestingGuidelines ? '#3f3f46' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        border: 'none',
+                        color: '#fff',
+                        padding: '6px 16px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: isIngestingGuidelines ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {isIngestingGuidelines ? '⏳ Evaluating Eligibility...' : '⚡ Analyze for Eligibility'}
+                    </button>
+                    {guidelinesStatusMsg && (
+                      <div style={{ fontSize: '12px', color: guidelinesStatusMsg.startsWith('Error') ? '#f87171' : '#34d399' }}>
+                        {guidelinesStatusMsg}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Case 1: REJECTED */}
+                {isRejected && (
+                  <div style={{ marginTop: '10px', padding: '12px', background: '#450a0a', border: '1px solid #ef4444', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>❌</span> REJECTED: Incompatible with Automated Faceless Clipping
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#fecaca', marginTop: '6px' }}>
+                      {meta.rejection_reason || 'This campaign strictly requires personal on-camera reactions or facecam, which is incompatible with our automated pipeline.'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Case 2: APPROVED */}
+                {isApproved && (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>✅</span> APPROVED FOR CLIPPING
+                      </div>
+                      {/* Allowed Platforms (YouTube Shorts, Instagram Reels, TikTok) */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {(meta.allowed_platforms || ['YouTube Shorts', 'Instagram Reels']).map((p, idx) => (
+                          <span key={idx} style={{ background: '#27272a', border: '1px solid #52525b', color: '#e4e4e7', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>
+                            📱 {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Mandatory Caption */}
+                    {caption && (
+                      <div style={{ background: '#09090b', padding: '8px 12px', borderRadius: '6px', border: '1px solid #27272a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                        <div>
+                          <div style={{ fontSize: '10px', textTransform: 'uppercase', color: '#fbbf24', fontWeight: 'bold' }}>
+                            📌 Mandatory Caption & Tags (Auto-Filled on Upload):
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#f8fafc', marginTop: '3px', fontFamily: 'monospace' }}>
+                            {caption}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(caption)
+                            setCopiedCaptionClipId('campaign_caption')
+                            setTimeout(() => setCopiedCaptionClipId(null), 2000)
+                          }}
+                          style={{ background: '#27272a', border: '1px solid #3f3f46', color: '#38bdf8', padding: '4px 10px', borderRadius: '5px', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          {copiedCaptionClipId === 'campaign_caption' ? '✅ Copied' : '📋 Copy'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Critical Disqualification Rule (Only 1 simple sentence) */}
+                    {meta.critical_rule && (
+                      <div style={{ fontSize: '11px', color: '#fca5a5', background: '#1c1917', border: '1px solid #44403c', borderRadius: '6px', padding: '6px 10px' }}>
+                        ⚠️ <strong>Key Rule:</strong> {meta.critical_rule}
+                      </div>
+                    )}
+
+                    {/* Reference Drive Folders (Clean pills) */}
+                    {meta.reference_links?.length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Drive Assets:</span>
+                        {meta.reference_links.map((ref, idx) => (
+                          <a
+                            key={idx}
+                            href={ref.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              background: '#1e1b4b',
+                              border: '1px solid #4338ca',
+                              color: '#c7d2fe',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              textDecoration: 'none',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            🔗 {ref.label || `Folder ${idx+1}`} ↗
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* Footage Loader */}
           {loadingFootage && (
             <div style={{
@@ -756,8 +1007,8 @@ export default function ViralClipGenerator() {
             </div>
           )}
 
-          {/* Campaign Footage Gallery */}
-          {campaignFootage && !loadingFootage && (
+          {/* Campaign Footage Gallery (Shown ONLY when NOT rejected) */}
+          {(!selectedCampaign?.guidelines_metadata || (selectedCampaign.guidelines_metadata.status !== 'REJECTED' && selectedCampaign.guidelines_metadata.feasibility_verdict !== 'REJECTED')) && campaignFootage && !loadingFootage && (
             <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #27272a' }}>
               {/* Google Drive Links */}
               {campaignFootage.drive_links?.length > 0 && (

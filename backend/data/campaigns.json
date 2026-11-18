@@ -2710,12 +2710,11 @@
     "manual_verdict": null,
     "manual_override_reason": null,
     "created_at": 1794909885.812332,
-    "updated_at": 1794909885.813034,
+    "updated_at": 1794923840.4965749,
     "eligibility": {
       "platforms_targeted": [
-        "youtube_shorts",
-        "instagram_reels",
-        "tiktok"
+        "TikTok",
+        "Instagram Reels"
       ],
       "minimum_subscribers": null,
       "minimum_followers": null,
@@ -2724,7 +2723,7 @@
       "viral_video_urls_required": false,
       "required_viral_video_count": null,
       "required_audience_countries": [],
-      "minimum_tier1_audience_percentage": null,
+      "minimum_tier1_audience_percentage": 60.0,
       "account_verification_required": false,
       "all_eligibility_requirements": []
     },
@@ -2732,7 +2731,10 @@
       "niche": [
         "Music"
       ],
-      "allowed_source_urls": [],
+      "allowed_source_urls": [
+        "https://drive.google.com/file/d/17sBxzoiSsP9pjJl4GmYrddj6PzCKWcik/view",
+        "https://drive.google.com/drive/folders/8lanco-content-bank"
+      ],
       "authorized_footage_provided": true,
       "original_footage_required": false,
       "face_camera_required": false,
@@ -2752,26 +2754,58 @@
         "instagram_reels",
         "tiktok"
       ],
-      "caption_template": null,
-      "hashtags": [],
-      "required_mentions": [],
+      "caption_template": "EVERY LITTLE THING BY 8LANCO. OUT NOW. #8lanco #everylittlething",
+      "hashtags": [
+        "#8lanco",
+        "#everylittlething"
+      ],
+      "required_mentions": [
+        "@8lanco",
+        "@ban8lanco"
+      ],
       "cta": null,
       "pinned_comment": null,
       "required_disclosures": [],
       "required_title_format": null,
       "posting_frequency_limit": null,
       "submission_deadline_minutes": null,
-      "other_posting_instructions": []
+      "other_posting_instructions": [
+        "8lanco must be on screen for at least 50% of the clip, the official sound must be at 1% volume, and the clip must always end on 8lanco."
+      ]
     },
     "commercial_details": {
       "payment_model": "CPM",
-      "cpm_min": null,
+      "cpm_min": 1.0,
       "cpm_max": null,
       "minimum_payable_views": null,
-      "maximum_budget": 1.0,
-      "maximum_payout_per_video": null,
+      "maximum_budget": 3000.0,
+      "maximum_payout_per_video": 200.0,
       "payment_schedule": null,
       "currency": "USD"
+    },
+    "guidelines_metadata": {
+      "status": "APPROVED",
+      "rejection_reason": null,
+      "mandatory_caption": "EVERY LITTLE THING BY 8LANCO. OUT NOW. #8lanco #everylittlething",
+      "required_hashtags": [
+        "#8lanco",
+        "#everylittlething"
+      ],
+      "required_mentions": [
+        "@8lanco",
+        "@ban8lanco"
+      ],
+      "critical_rule": "8lanco must be on screen for at least 50% of the clip, the official sound must be at 1% volume, and the clip must always end on 8lanco.",
+      "allowed_platforms": [
+        "TikTok",
+        "Instagram Reels"
+      ],
+      "reference_links": [
+        {
+          "label": "Official Content Bank",
+          "url": "https://drive.google.com/file/d/17sBxzoiSsP9pjJl4GmYrddj6PzCKWcik/view"
+        }
+      ]
     },
     "analysis": {
       "decision": "APPROVED",
@@ -2898,12 +2932,13 @@
     "manual_verdict": null,
     "manual_override_reason": null,
     "created_at": 1794909891.820077,
-    "updated_at": 1794909891.820808,
+    "updated_at": 1795007081.938993,
     "eligibility": {
       "platforms_targeted": [
-        "youtube_shorts",
-        "instagram_reels",
-        "tiktok"
+        "TikTok",
+        "Instagram Reels",
+        "YouTube Shorts",
+        "X"
       ],
       "minimum_subscribers": null,
       "minimum_followers": null,
@@ -2940,9 +2975,9 @@
         "instagram_reels",
         "tiktok"
       ],
-      "caption_template": null,
+      "caption_template": "#DoubleCoverage",
       "hashtags": [
-        "#reach"
+        "#DoubleCoverage"
       ],
       "required_mentions": [],
       "cta": null,
@@ -2951,7 +2986,9 @@
       "required_title_format": null,
       "posting_frequency_limit": null,
       "submission_deadline_minutes": null,
-      "other_posting_instructions": []
+      "other_posting_instructions": [
+        "Submissions must be posted from a dedicated Double Coverage-themed account and feature Double Coverage as the primary focus."
+      ]
     },
     "commercial_details": {
       "payment_model": "POOL",
@@ -2962,6 +2999,23 @@
       "maximum_payout_per_video": null,
       "payment_schedule": null,
       "currency": "USD"
+    },
+    "guidelines_metadata": {
+      "status": "APPROVED",
+      "rejection_reason": null,
+      "mandatory_caption": "#DoubleCoverage",
+      "required_hashtags": [
+        "#DoubleCoverage"
+      ],
+      "required_mentions": [],
+      "critical_rule": "Submissions must be posted from a dedicated Double Coverage-themed account and feature Double Coverage as the primary focus.",
+      "allowed_platforms": [
+        "TikTok",
+        "Instagram Reels",
+        "YouTube Shorts",
+        "X"
+      ],
+      "reference_links": []
     },
     "analysis": {
       "decision": "APPROVED",
@@ -4334,12 +4388,13 @@
     "manual_verdict": null,
     "manual_override_reason": null,
     "created_at": 1794919374.804209,
-    "updated_at": 1794919374.8099148,
+    "updated_at": 1795002539.669067,
     "eligibility": {
       "platforms_targeted": [
-        "youtube_shorts",
-        "instagram_reels",
-        "tiktok"
+        "TikTok",
+        "Instagram Reels",
+        "YouTube Shorts",
+        "X"
       ],
       "minimum_subscribers": null,
       "minimum_followers": null,
@@ -4376,8 +4431,10 @@
         "instagram_reels",
         "tiktok"
       ],
-      "caption_template": null,
-      "hashtags": [],
+      "caption_template": "#DoubleCoverage",
+      "hashtags": [
+        "#DoubleCoverage"
+      ],
       "required_mentions": [],
       "cta": null,
       "pinned_comment": null,
@@ -4385,7 +4442,9 @@
       "required_title_format": null,
       "posting_frequency_limit": null,
       "submission_deadline_minutes": null,
-      "other_posting_instructions": []
+      "other_posting_instructions": [
+        "Must have one clip featuring podcast host Mystic Zach and content must be from the Double Coverage x Skip Bayless Podcast or other Double Coverage content."
+      ]
     },
     "commercial_details": {
       "payment_model": "POOL",
@@ -4396,6 +4455,23 @@
       "maximum_payout_per_video": null,
       "payment_schedule": null,
       "currency": "USD"
+    },
+    "guidelines_metadata": {
+      "status": "APPROVED",
+      "rejection_reason": null,
+      "mandatory_caption": "#DoubleCoverage",
+      "required_hashtags": [
+        "#DoubleCoverage"
+      ],
+      "required_mentions": [],
+      "critical_rule": "Must have one clip featuring podcast host Mystic Zach and content must be from the Double Coverage x Skip Bayless Podcast or other Double Coverage content.",
+      "allowed_platforms": [
+        "TikTok",
+        "Instagram Reels",
+        "YouTube Shorts",
+        "X"
+      ],
+      "reference_links": []
     },
     "analysis": {
       "decision": "APPROVED",
@@ -4605,6 +4681,491 @@
       "missing_information": [],
       "recommendation": "Campaign concept successfully discovered and saved. Review reference files when authorized.",
       "summary": "Campus Drivers by TriplePlay 1 campaign launched on Content Rewards."
+    }
+  },
+  "camp_5944ed5a": {
+    "campaign_id": "camp_5944ed5a",
+    "title": "Mr. Pa Clipping",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/c/campaigns/5944ed5a-9ee0-47d1-8545-2bbf614ac18b",
+    "raw_brief": "Mr. Pa Clipping Get paid $1.75/ thousand views to clip for Mr. Pa. Goal is to drive awareness to Mr. Pa and get in-store purchases! Accepting clips Launched 1 month ago Entertainment 78 CPM Join Campaign TikTok Per 1K views $1.75 Min payout $1.75 Max payout $300.00 Instagram Per 1K views $1.75 Min payout $1.75 Max payout $300.00 YouTube Per 1K views $1.00 Min payout $1.00 Max payout $300.00 Budget $ 8,777 / $10,000 $1,223 still up for grabs, plenty of room to join. Reference materials 4 files Visible once you join Creator requirements 1 requirement Visible once you join Join to unlock 1 requirement and 4 files Join Campaign Top clippers 78 creators are earning here. Join to see who. Rank 1 Hidden until you join Rank 2 Hidden until you join Rank 3 Hidden until you join Views Join to see how this campaign is performing. Join to see views More from Clip Influence 30 campaigns launched View profile Mr. Pa Clipping by Clip Influence | Content Rewards",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1795002385.7776818,
+    "updated_at": 1795002385.779527,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "Entertainment"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": true,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#clipinfluence"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": 1.75,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "guidelines_metadata": null,
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 68,
+      "eligibility_score": 85,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 70,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Reference materials are locked behind Content Rewards 'Join Campaign' requirement."
+      ],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [],
+      "recommendation": "Campaign concept successfully discovered and saved. Review reference files when authorized.",
+      "summary": "Mr. Pa Clipping by Clip Influence on Content Rewards."
+    }
+  },
+  "camp_4c7d1ede": {
+    "campaign_id": "camp_4c7d1ede",
+    "title": "The Weeknd - Hong Kong Performance Clipping",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/c/campaigns/4c7d1ede-2fca-406a-971d-f651880168aa",
+    "raw_brief": "The Weeknd - Hong Kong Performance Clipping Get paid per view to clip The Weeknd's Hong Kong performance on TikTok + IG. Cut the best moments from the official performance video, hook in 2s. Must add the official sound (muted) + #TheWeeknd #fayewong. Multiple posts allowed. Read brief below. Max Pay $200+ Show more Accepting clips Launched 2 weeks ago Music 14 CPM Join Campaign TikTok Per 1K views $1.50 Min payout $1.50 Max payout $150.00 Instagram Per 1K views $1.50 Min payout $1.50 Max payout $150.00 Budget $ 287 / $1,500 $1,213 still up for grabs, plenty of room to join. Reference materials 2 files Visible once you join Creator requirements 1 requirement Visible once you join Join to unlock 1 requirement and 2 files Join Campaign Top clippers 14 creators are earning here. Join to see who. Rank 1 Hidden until you join Rank 2 Hidden until you join Rank 3 Hidden until you join Views Join to see how this campaign is performing. Join to see views More from Artist Influence 201 campaigns launched View profile The Weeknd - Hong Kong Performance Clipping by Artist Influence | Content Rewards",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1795002388.771793,
+    "updated_at": 1795002388.773004,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "Music"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": true,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#artistinfluence"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": 200.0,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "guidelines_metadata": null,
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 68,
+      "eligibility_score": 85,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 70,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Reference materials are locked behind Content Rewards 'Join Campaign' requirement."
+      ],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [],
+      "recommendation": "Campaign concept successfully discovered and saved. Review reference files when authorized.",
+      "summary": "The Weeknd - Hong Kong Performance Clipping by Artist Influence on Content Rewards."
+    }
+  },
+  "camp_0fdc26e3": {
+    "campaign_id": "camp_0fdc26e3",
+    "title": "LANY - 'Stuck'",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/c/campaigns/0fdc26e3-d379-4a7d-8be3-27b00d36c883",
+    "raw_brief": "LANY - 'Stuck' Clip the LANY videos in the approved folder, put one approved line of text on screen, and post. The feeling is heartbreak you can sing along to. Show more Accepting clips Launched 1 week ago Music 24 CPM Join Campaign TikTok Per 1K views $1.50 Min payout $3.00 Max payout $400.00 Instagram Per 1K views $1.50 Min payout $3.00 Max payout $400.00 YouTube Per 1K views $1.50 Min payout $3.00 Max payout $400.00 Budget $ 2,826 / $4,144 $1,318 still up for grabs, plenty of room to join. Reference materials 1 file Visible once you join Join to unlock 1 file Join Campaign Top clippers 24 creators are earning here. Join to see who. Rank 1 Hidden until you join Rank 2 Hidden until you join Rank 3 Hidden until you join Views Join to see how this campaign is performing. Join to see views More from The Clip Ship 229 campaigns launched View profile LANY - 'Stuck' by The Clip Ship | Content Rewards",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1795002391.889719,
+    "updated_at": 1795002391.890795,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "Music"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": true,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#theclipship"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": 1.5,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "guidelines_metadata": null,
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 68,
+      "eligibility_score": 85,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 70,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Reference materials are locked behind Content Rewards 'Join Campaign' requirement."
+      ],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [],
+      "recommendation": "Campaign concept successfully discovered and saved. Review reference files when authorized.",
+      "summary": "LANY - 'Stuck' by The Clip Ship on Content Rewards."
+    }
+  },
+  "camp_df6de26f": {
+    "campaign_id": "camp_df6de26f",
+    "title": "TOMO GTA VI Clipping",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/c/campaigns/df6de26f-86ec-4782-b818-1fc8053b99a4",
+    "raw_brief": "TOMO GTA VI Clipping Clip Tomo's best GTA VI moments and get as many new people as possible to discover and subscribe to his YouTube channel. Tomo streams GTA VI live on YouTube, so his YouTube livestreams are the main source for clips, along with his GTA VI videos. ➡️ https://www.youtube.com/@Tomovids Show more Accepting clips Launched today Streamer 0 CPM Join Campaign TikTok Per 1K views $2.00 Min payout $4.00 Max payout $150.00 Instagram Per 1K views $2.00 Min payout $4.00 Max payout $150.00 YouTube Per 1K views $2.00 Min payout $4.00 Max payout $150.00 Budget $ 0 / $1,000 $1,000 still up for grabs, plenty of room to join. Reference materials 2 files Visible once you join Join to unlock 2 files Join Campaign Views Join to see how this campaign is performing. Join to see views More from Clipping Nation 2 campaigns launched View profile TOMO GTA VI Clipping by Clipping Nation | Content Rewards",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1795002394.833355,
+    "updated_at": 1795002394.8349319,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "Entertainment"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": true,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#clippingnation"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": 2.0,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "guidelines_metadata": null,
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 68,
+      "eligibility_score": 85,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 70,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Reference materials are locked behind Content Rewards 'Join Campaign' requirement."
+      ],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [],
+      "recommendation": "Campaign concept successfully discovered and saved. Review reference files when authorized.",
+      "summary": "TOMO GTA VI Clipping by Clipping Nation on Content Rewards."
+    }
+  },
+  "camp_23022f84": {
+    "campaign_id": "camp_23022f84",
+    "title": "Open Road Clipping | $5.25K Budget | $1.25 CPM",
+    "source_platform": "Content Rewards",
+    "campaign_url": "https://contentrewards.com/c/campaigns/23022f84-5715-4ba5-a647-abc4baf4f0f8",
+    "raw_brief": "Open Road Clipping | $5.25K Budget | $1.25 CPM Open Road (@openroadapp) is a drive tracker for iOS and Android, like Strava for your car. Flood TikTok and Instagram with slideshows and clips made in the provided builder. Every post should push viewers to download Open Road, and all content should feel native to the platform, not an ad. Show more Accepting clips Launched 2 months ago Apps 44 CPM Join Campaign TikTok Per 1K views $1.25 Min payout $1.25 Max payout $300.00 Instagram Per 1K views $1.25 Min payout $1.25 Max payout $300.00 Budget $ 1,871 / $5,250 $3,379 still up for grabs, plenty of room to join. Reference materials 2 files Visible once you join Join to unlock 2 files Join Campaign Top clippers 44 creators are earning here. Join to see who. Rank 1 Hidden until you join Rank 2 Hidden until you join Rank 3 Hidden until you join Views Join to see how this campaign is performing. Join to see views More from Clipix 55 campaigns launched View profile Open Road Clipping | $5.25K Budget | $1.25 CPM by Clipix | Content Rewards",
+    "status": "NEEDS_INFO",
+    "manual_override": false,
+    "manual_verdict": null,
+    "manual_override_reason": null,
+    "created_at": 1795002397.823891,
+    "updated_at": 1795002397.825181,
+    "eligibility": {
+      "platforms_targeted": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "minimum_subscribers": null,
+      "minimum_followers": null,
+      "minimum_account_age_days": null,
+      "minimum_previous_views": null,
+      "viral_video_urls_required": false,
+      "required_viral_video_count": null,
+      "required_audience_countries": [],
+      "minimum_tier1_audience_percentage": null,
+      "account_verification_required": false,
+      "all_eligibility_requirements": []
+    },
+    "content_requirements": {
+      "niche": [
+        "Entertainment"
+      ],
+      "allowed_source_urls": [],
+      "authorized_footage_provided": true,
+      "original_footage_required": false,
+      "face_camera_required": false,
+      "voiceover_required": false,
+      "ai_content_allowed": true,
+      "minimum_duration_seconds": null,
+      "maximum_duration_seconds": null,
+      "aspect_ratio": "9:16",
+      "captions_required": false,
+      "logo_required": false,
+      "creator_credit_required": false,
+      "other_requirements": []
+    },
+    "posting_metadata": {
+      "platforms": [
+        "youtube_shorts",
+        "instagram_reels",
+        "tiktok"
+      ],
+      "caption_template": null,
+      "hashtags": [
+        "#clipix"
+      ],
+      "required_mentions": [],
+      "cta": null,
+      "pinned_comment": null,
+      "required_disclosures": [],
+      "required_title_format": null,
+      "posting_frequency_limit": null,
+      "submission_deadline_minutes": null,
+      "other_posting_instructions": []
+    },
+    "commercial_details": {
+      "payment_model": "CPM",
+      "cpm_min": null,
+      "cpm_max": null,
+      "minimum_payable_views": null,
+      "maximum_budget": 5.25,
+      "maximum_payout_per_video": null,
+      "payment_schedule": null,
+      "currency": "USD"
+    },
+    "guidelines_metadata": null,
+    "analysis": {
+      "decision": "NEEDS_INFO",
+      "overall_score": 68,
+      "eligibility_score": 85,
+      "niche_compatibility_score": 85,
+      "production_feasibility_score": 70,
+      "commercial_score": 80,
+      "mandatory_requirements": [],
+      "satisfied_requirements": [],
+      "failed_requirements": [],
+      "unverified_requirements": [
+        "Reference materials are locked behind Content Rewards 'Join Campaign' requirement."
+      ],
+      "rejection_reasons": [],
+      "risks": [],
+      "missing_information": [],
+      "recommendation": "Campaign concept successfully discovered and saved. Review reference files when authorized.",
+      "summary": "Open Road Clipping | $5.25K Budget | $1.25 CPM by Clipix on Content Rewards."
     }
   }
 }

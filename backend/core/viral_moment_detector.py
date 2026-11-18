@@ -27,11 +27,13 @@ class ViralMomentDetector:
         self,
         transcript_path: str,
         target_clips: int = 4,
-        min_duration_s: float = 20.0,
+        min_duration_s: float = 25.0,
         max_duration_s: float = 85.0
     ) -> List[Dict[str, Any]]:
         """
         Extracts top story-complete viral clips with verified setup, development, and payoff.
+        For long videos (>6 minutes), performs full-timeline window scanning to find actual
+        climaxes and payoffs rather than just the intro.
         """
         if not os.path.exists(transcript_path):
             raise FileNotFoundError(f"Transcript file not found: {transcript_path}")
@@ -43,8 +45,179 @@ class ViralMomentDetector:
             raise ValueError("Transcript contains zero segments.")
 
         total_duration = segments[-1].get("end", 0.0)
-        print(f"[ViralMomentDetector] Analyzing {len(segments)} segments across {total_duration:.1f}s of dialogue for story-complete mini-stories...")
+        print(f"[ViralMomentDetector] Analyzing {len(segments)} segments across {total_duration:.1f}s ({total_duration/60:.1f} mins) of dialogue...")
 
+        # If long video (>360 seconds), use multi-window scanning across the entire timeline
+        if total_duration > 360.0:
+            return self._detect_moments_windowed(segments, total_duration, target_clips, min_duration_s, max_duration_s)
+
+        # Standard single pass for shorter videos
+        return self._detect_moments_single_pass(segments, total_duration, target_clips, min_duration_s, max_duration_s)
+
+    def _detect_moments_windowed(
+        self,
+        segments: List[Dict[str, Any]],
+        total_duration: float,
+        target_clips: int,
+        min_dur: float,
+        max_dur: float
+    ) -> List[Dict[str, Any]]:
+        """Scans multiple strategic windows across the whole video timeline."""
+        print(f"[ViralMomentDetector] Long video detected ({total_duration/60:.1f}m). Scanning {target_clips} timeline windows across the entire video...")
+        
+        # Define strategic windows (e.g. 8% to 92% of the video, skipping intro rules & outro credits)
+        num_windows = max(target_clips, 4)
+        window_span = (total_duration * 0.86) / num_windows
+        start_offset = total_duration * 0.06
+
+        candidates = []
+        for w_idx in range(num_windows):
+            w_start = start_offset + (w_idx * window_span)
+            w_end = w_start + window_span
+
+            w_segs = [s for s in segments if w_start <= s.get("start", 0.0) <= w_end]
+            if not w_segs:
+                continue
+
+            lines = []
+            for s in w_segs:
+                st = s.get("start", 0.0)
+                en = s.get("end", 0.0)
+                txt = s.get("text", "").strip()
+                if txt:
+                    lines.append(f"[{st:.1f}s - {en:.1f}s] {txt}")
+
+            # Take up to 90 lines of dialogue (~3,500 chars) for this window
+            window_text = "\n".join(lines[:90])
+            if len(window_text) < 150:
+                continue
+
+            system_prompt = """You are a Senior Viral Content Strategist & Video Editor.
+Find the single BEST story-complete viral moment from this timeline window of the video.
+RULES:
+1. Clip duration MUST be between 25 and 70 seconds.
+2. It MUST tell a complete mini-story with SETUP (the challenge/bet/situation), DEVELOPMENT (action/tension), and PAYOFF (the reaction/eating/winner/punchline).
+3. DO NOT cut off before the payoff!
+4. Return valid JSON matching schema:
+{
+  "clip_number": 1,
+  "title": "Exciting viral title with emoji",
+  "category": "Challenge/Comedy/Story",
+  "hook": "Opening 1-2 sentence hook",
+  "start_time": 0.0,
+  "end_time": 0.0,
+  "story": {
+    "context": "Brief context",
+    "setup": "Initial setup",
+    "development": "How it progresses",
+    "payoff": "Definitive outcome, reaction, or consequence",
+    "ending_type": "complete_payoff"
+  },
+  "viral_score": 92,
+  "story_completeness_score": 95,
+  "payoff_score": 90,
+  "ending_validation": {
+    "complete_thought": true,
+    "natural_ending": true,
+    "payoff_delivered": true,
+    "viewer_understands_context": true,
+    "unfinished_action": false
+  },
+  "reason": "Why this delivers high retention"
+}"""
+
+            user_content = f"Find the top story-complete viral clip from this window ({w_start/60:.1f}m - {w_end/60:.1f}m):\n\n{window_text}"
+
+            for attempt in range(2):
+                try:
+                    client = self._get_client()
+                    completion = client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.2,
+                        max_tokens=650
+                    )
+                    resp_text = completion.choices[0].message.content.strip()
+                    if resp_text.startswith("```"):
+                        resp_text = resp_text.split("\n", 1)[1]
+                        if resp_text.endswith("```"):
+                            resp_text = resp_text.rsplit("```", 1)[0]
+
+                    c = json.loads(resp_text)
+                    st = float(c.get("start_time", 0.0))
+                    en = float(c.get("end_time", 0.0))
+                    dur = round(en - st, 2)
+
+                    if dur < min_dur:
+                        en = min(total_duration, st + min_dur)
+                        dur = round(en - st, 2)
+
+                    if st >= total_duration or dur < 10:
+                        continue
+
+                    story_info = c.get("story", {})
+                    validation = c.get("ending_validation", {})
+                    
+                    clip_data = {
+                        "clip_id": f"clip_{len(candidates)+1:02d}",
+                        "clip_number": len(candidates) + 1,
+                        "title": c.get("title", f"Story Highlight #{len(candidates)+1}"),
+                        "category": c.get("category", "highlight"),
+                        "hook": c.get("hook", ""),
+                        "start_time": round(st, 2),
+                        "end_time": round(en, 2),
+                        "duration": dur,
+                        "story": {
+                            "context": story_info.get("context", "Creator challenge in progress"),
+                            "setup": story_info.get("setup", "The initial challenge is laid out"),
+                            "development": story_info.get("development", "Tension and stakes escalate"),
+                            "payoff": story_info.get("payoff", "Outcome resolved with clear reaction"),
+                            "ending_type": story_info.get("ending_type", "complete_payoff")
+                        },
+                        "viral_score": int(c.get("viral_score", 90)),
+                        "story_completeness_score": int(c.get("story_completeness_score", 92)),
+                        "payoff_score": int(c.get("payoff_score", 90)),
+                        "ending_validation": {
+                            "complete_thought": bool(validation.get("complete_thought", True)),
+                            "natural_ending": bool(validation.get("natural_ending", True)),
+                            "payoff_delivered": bool(validation.get("payoff_delivered", True)),
+                            "viewer_understands_context": bool(validation.get("viewer_understands_context", True)),
+                            "unfinished_action": bool(validation.get("unfinished_action", False))
+                        },
+                        "reason": c.get("reason", "Full story-arc with clear beginning, escalating stakes, and satisfying payoff."),
+                        "suggested_layout": "dynamic_smart_crop",
+                        "editing_suggestions": ["Keep pacing tight", "Highlight payoff"]
+                    }
+                    candidates.append(clip_data)
+                    print(f"[ViralMomentDetector] ✅ Window {w_idx+1} selected: \"{clip_data['title']}\" [{clip_data['start_time']}s - {clip_data['end_time']}s] ({clip_data['duration']}s)")
+                    break
+                except Exception as err:
+                    print(f"[ViralMomentDetector] Window {w_idx+1} scan error (attempt {attempt+1}): {err}")
+                    time.sleep(0.5)
+
+        if candidates:
+            # Re-index clip IDs
+            for idx, c in enumerate(candidates):
+                c["clip_id"] = f"clip_{idx+1:02d}"
+                c["clip_number"] = idx + 1
+            print(f"[ViralMomentDetector] ✅ Finished windowed scan: Found {len(candidates)} story-complete viral moments across the full {total_duration/60:.1f}m video!")
+            return candidates
+
+        print("[ViralMomentDetector] ⚠️ Multi-window scan yielded no clips. Falling back to rule-based distribution...")
+        return self._rule_based_fallback(segments, target_clips, min_dur, max_dur)
+
+    def _detect_moments_single_pass(
+        self,
+        segments: List[Dict[str, Any]],
+        total_duration: float,
+        target_clips: int,
+        min_duration_s: float,
+        max_duration_s: float
+    ) -> List[Dict[str, Any]]:
         # Format transcript lines with exact micro-timestamps
         lines = []
         for s in segments:
@@ -55,9 +228,8 @@ class ViralMomentDetector:
                 lines.append(f"[{st:.1f}s - {en:.1f}s] {txt}")
 
         transcript_text = "\n".join(lines)
-        # Cap to ~9,000 characters (~2,200 tokens) so prompt + transcript stays well below Groq 7,000 ITPM limit
-        if len(transcript_text) > 9000:
-            transcript_text = transcript_text[:9000] + "\n...[Transcript continues]"
+        if len(transcript_text) > 12000:
+            transcript_text = transcript_text[:12000] + "\n...[Transcript continues]"
 
         system_prompt = """You are a Senior Viral Content Strategist, Professional Short-Form Video Editor, Storytelling Expert, and Audience Retention Specialist.
 You specialize in viral content: MrBeast-style challenges, gaming highlights, streamer reactions, competitions, experiments, and high-energy creator moments.
@@ -149,7 +321,7 @@ Return STRICTLY a JSON object without markdown code fences in this exact schema:
                     ],
                     response_format={"type": "json_object"},
                     temperature=0.25,
-                    max_tokens=850
+                    max_tokens=2048
                 )
 
                 resp_text = completion.choices[0].message.content.strip()

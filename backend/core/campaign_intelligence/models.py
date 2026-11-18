@@ -129,4 +129,5 @@ class CampaignRecord(BaseModel):
     content_requirements: ContentRequirements = Field(default_factory=ContentRequirements)
     posting_metadata: PostingMetadata = Field(default_factory=PostingMetadata)
     commercial_details: CommercialDetails = Field(default_factory=CommercialDetails)
+    guidelines_metadata: Optional[Dict[str, Any]] = None
     analysis: CampaignAnalysis
