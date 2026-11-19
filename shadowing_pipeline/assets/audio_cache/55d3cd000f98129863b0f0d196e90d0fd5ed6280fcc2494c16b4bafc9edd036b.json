@@ -1,0 +1,70 @@
+{
+  "word_timings": [
+    {
+      "word": "Every",
+      "start": 0.137,
+      "end": 0.472
+    },
+    {
+      "word": "time",
+      "start": 0.472,
+      "end": 0.74
+    },
+    {
+      "word": "I",
+      "start": 0.74,
+      "end": 0.874
+    },
+    {
+      "word": "speak",
+      "start": 0.874,
+      "end": 1.209
+    },
+    {
+      "word": "aloud,",
+      "start": 1.209,
+      "end": 1.678
+    },
+    {
+      "word": "I'm",
+      "start": 1.678,
+      "end": 1.812
+    },
+    {
+      "word": "making",
+      "start": 1.812,
+      "end": 2.214
+    },
+    {
+      "word": "English",
+      "start": 2.214,
+      "end": 2.683
+    },
+    {
+      "word": "easier",
+      "start": 2.683,
+      "end": 3.085
+    },
+    {
+      "word": "to",
+      "start": 3.085,
+      "end": 3.219
+    },
+    {
+      "word": "access",
+      "start": 3.219,
+      "end": 3.621
+    },
+    {
+      "word": "next",
+      "start": 3.621,
+      "end": 3.889
+    },
+    {
+      "word": "time.",
+      "start": 3.889,
+      "end": 4.425
+    }
+  ],
+  "duration": 4.55932
+}

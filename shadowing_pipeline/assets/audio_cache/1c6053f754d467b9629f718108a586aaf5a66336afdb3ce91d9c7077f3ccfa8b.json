@@ -1,0 +1,100 @@
+{
+  "word_timings": [
+    {
+      "word": "Hello",
+      "start": 0.202,
+      "end": 0.504
+    },
+    {
+      "word": "everyone,",
+      "start": 0.504,
+      "end": 1.108
+    },
+    {
+      "word": "and",
+      "start": 1.108,
+      "end": 1.289
+    },
+    {
+      "word": "welcome",
+      "start": 1.289,
+      "end": 1.711
+    },
+    {
+      "word": "back",
+      "start": 1.711,
+      "end": 1.952
+    },
+    {
+      "word": "to",
+      "start": 1.952,
+      "end": 2.073
+    },
+    {
+      "word": "English",
+      "start": 2.073,
+      "end": 2.495
+    },
+    {
+      "word": "Fluency",
+      "start": 2.495,
+      "end": 2.917
+    },
+    {
+      "word": "Teacher.",
+      "start": 2.917,
+      "end": 3.581
+    },
+    {
+      "word": "Today",
+      "start": 3.581,
+      "end": 3.883
+    },
+    {
+      "word": "we",
+      "start": 3.883,
+      "end": 4.004
+    },
+    {
+      "word": "are",
+      "start": 4.004,
+      "end": 4.185
+    },
+    {
+      "word": "going",
+      "start": 4.185,
+      "end": 4.487
+    },
+    {
+      "word": "to",
+      "start": 4.487,
+      "end": 4.608
+    },
+    {
+      "word": "do",
+      "start": 4.608,
+      "end": 4.729
+    },
+    {
+      "word": "an",
+      "start": 4.729,
+      "end": 4.85
+    },
+    {
+      "word": "English",
+      "start": 4.85,
+      "end": 5.272
+    },
+    {
+      "word": "shadowing",
+      "start": 5.272,
+      "end": 5.815
+    },
+    {
+      "word": "practice.",
+      "start": 5.815,
+      "end": 6.539
+    }
+  ],
+  "duration": 6.741587
+}

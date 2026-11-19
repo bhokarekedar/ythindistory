@@ -1,0 +1,65 @@
+{
+  "word_timings": [
+    {
+      "word": "Excellent",
+      "start": 0.182,
+      "end": 0.748
+    },
+    {
+      "word": "work!",
+      "start": 0.748,
+      "end": 1.25
+    },
+    {
+      "word": "Keep",
+      "start": 1.25,
+      "end": 1.501
+    },
+    {
+      "word": "listening,",
+      "start": 1.501,
+      "end": 2.192
+    },
+    {
+      "word": "keep",
+      "start": 2.192,
+      "end": 2.443
+    },
+    {
+      "word": "practicing,",
+      "start": 2.443,
+      "end": 3.197
+    },
+    {
+      "word": "and",
+      "start": 3.197,
+      "end": 3.385
+    },
+    {
+      "word": "most",
+      "start": 3.385,
+      "end": 3.636
+    },
+    {
+      "word": "importantly,",
+      "start": 3.636,
+      "end": 4.452
+    },
+    {
+      "word": "keep",
+      "start": 4.452,
+      "end": 4.703
+    },
+    {
+      "word": "speaking",
+      "start": 4.703,
+      "end": 5.205
+    },
+    {
+      "word": "English.",
+      "start": 5.205,
+      "end": 5.896
+    }
+  ],
+  "duration": 6.080272
+}

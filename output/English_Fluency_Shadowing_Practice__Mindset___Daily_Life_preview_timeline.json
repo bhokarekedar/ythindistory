@@ -1,0 +1,986 @@
+[
+  {
+    "event_id": 0,
+    "start_time": 0.0,
+    "end_time": 6.742,
+    "duration": 6.742,
+    "type": "speech",
+    "sub_type": "narration",
+    "text": "Hello everyone, and welcome back to English Fluency Teacher. Today we are going to do an English shadowing practice.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/1c6053f754d467b9629f718108a586aaf5a66336afdb3ce91d9c7077f3ccfa8b.wav",
+    "word_timings": [
+      {
+        "word": "Hello",
+        "start": 0.202,
+        "end": 0.504
+      },
+      {
+        "word": "everyone,",
+        "start": 0.504,
+        "end": 1.108
+      },
+      {
+        "word": "and",
+        "start": 1.108,
+        "end": 1.289
+      },
+      {
+        "word": "welcome",
+        "start": 1.289,
+        "end": 1.711
+      },
+      {
+        "word": "back",
+        "start": 1.711,
+        "end": 1.952
+      },
+      {
+        "word": "to",
+        "start": 1.952,
+        "end": 2.073
+      },
+      {
+        "word": "English",
+        "start": 2.073,
+        "end": 2.495
+      },
+      {
+        "word": "Fluency",
+        "start": 2.495,
+        "end": 2.917
+      },
+      {
+        "word": "Teacher.",
+        "start": 2.917,
+        "end": 3.581
+      },
+      {
+        "word": "Today",
+        "start": 3.581,
+        "end": 3.883
+      },
+      {
+        "word": "we",
+        "start": 3.883,
+        "end": 4.004
+      },
+      {
+        "word": "are",
+        "start": 4.004,
+        "end": 4.185
+      },
+      {
+        "word": "going",
+        "start": 4.185,
+        "end": 4.487
+      },
+      {
+        "word": "to",
+        "start": 4.487,
+        "end": 4.608
+      },
+      {
+        "word": "do",
+        "start": 4.608,
+        "end": 4.729
+      },
+      {
+        "word": "an",
+        "start": 4.729,
+        "end": 4.85
+      },
+      {
+        "word": "English",
+        "start": 4.85,
+        "end": 5.272
+      },
+      {
+        "word": "shadowing",
+        "start": 5.272,
+        "end": 5.815
+      },
+      {
+        "word": "practice.",
+        "start": 5.815,
+        "end": 6.539
+      }
+    ],
+    "repeat_index": null,
+    "repeat_total": null
+  },
+  {
+    "event_id": 1,
+    "start_time": 6.742,
+    "end_time": 9.648,
+    "duration": 2.906,
+    "type": "speech",
+    "sub_type": "section_title",
+    "text": "Section 1: English Learning Mindset",
+    "speaker": "Teacher",
+    "badge_text": "📌 SECTION",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/003045e7b2d220925f9796afaedf3b535815e389f771c9b2c80d46189ff3746b.wav",
+    "word_timings": [
+      {
+        "word": "Section",
+        "start": 0.072,
+        "end": 0.552
+      },
+      {
+        "word": "1:",
+        "start": 0.552,
+        "end": 0.826
+      },
+      {
+        "word": "English",
+        "start": 0.826,
+        "end": 1.306
+      },
+      {
+        "word": "Learning",
+        "start": 1.306,
+        "end": 1.854
+      },
+      {
+        "word": "Mindset",
+        "start": 1.854,
+        "end": 2.334
+      }
+    ],
+    "repeat_index": null,
+    "repeat_total": null
+  },
+  {
+    "event_id": 2,
+    "start_time": 9.648,
+    "end_time": 12.976,
+    "duration": 3.328,
+    "type": "speech",
+    "sub_type": "shadow_speech",
+    "text": "I don't need perfect English to have a meaningful conversation.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ (1/2)",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/29d5534883a2b86cc3ac4cd416d48f59eeb110e3ce78341af05d6c318b727093.wav",
+    "word_timings": [
+      {
+        "word": "I",
+        "start": 0.1,
+        "end": 0.208
+      },
+      {
+        "word": "don't",
+        "start": 0.208,
+        "end": 0.424
+      },
+      {
+        "word": "need",
+        "start": 0.424,
+        "end": 0.64
+      },
+      {
+        "word": "perfect",
+        "start": 0.64,
+        "end": 1.018
+      },
+      {
+        "word": "English",
+        "start": 1.018,
+        "end": 1.396
+      },
+      {
+        "word": "to",
+        "start": 1.396,
+        "end": 1.504
+      },
+      {
+        "word": "have",
+        "start": 1.504,
+        "end": 1.72
+      },
+      {
+        "word": "a",
+        "start": 1.72,
+        "end": 1.828
+      },
+      {
+        "word": "meaningful",
+        "start": 1.828,
+        "end": 2.367
+      },
+      {
+        "word": "conversation.",
+        "start": 2.367,
+        "end": 3.23
+      }
+    ],
+    "repeat_index": 1,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 3,
+    "start_time": 12.976,
+    "end_time": 17.804,
+    "duration": 4.828,
+    "type": "silence",
+    "sub_type": "shadow_silence",
+    "text": "I don't need perfect English to have a meaningful conversation.",
+    "speaker": "You",
+    "badge_text": "🎙️ YOUR TURN (1/2)",
+    "audio_path": null,
+    "word_timings": [
+      {
+        "word": "I",
+        "start": 0.1,
+        "end": 0.208
+      },
+      {
+        "word": "don't",
+        "start": 0.208,
+        "end": 0.424
+      },
+      {
+        "word": "need",
+        "start": 0.424,
+        "end": 0.64
+      },
+      {
+        "word": "perfect",
+        "start": 0.64,
+        "end": 1.018
+      },
+      {
+        "word": "English",
+        "start": 1.018,
+        "end": 1.396
+      },
+      {
+        "word": "to",
+        "start": 1.396,
+        "end": 1.504
+      },
+      {
+        "word": "have",
+        "start": 1.504,
+        "end": 1.72
+      },
+      {
+        "word": "a",
+        "start": 1.72,
+        "end": 1.828
+      },
+      {
+        "word": "meaningful",
+        "start": 1.828,
+        "end": 2.367
+      },
+      {
+        "word": "conversation.",
+        "start": 2.367,
+        "end": 3.23
+      }
+    ],
+    "repeat_index": 1,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 4,
+    "start_time": 17.804,
+    "end_time": 21.132,
+    "duration": 3.328,
+    "type": "speech",
+    "sub_type": "shadow_speech",
+    "text": "I don't need perfect English to have a meaningful conversation.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ (2/2)",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/29d5534883a2b86cc3ac4cd416d48f59eeb110e3ce78341af05d6c318b727093.wav",
+    "word_timings": [
+      {
+        "word": "I",
+        "start": 0.1,
+        "end": 0.208
+      },
+      {
+        "word": "don't",
+        "start": 0.208,
+        "end": 0.424
+      },
+      {
+        "word": "need",
+        "start": 0.424,
+        "end": 0.64
+      },
+      {
+        "word": "perfect",
+        "start": 0.64,
+        "end": 1.018
+      },
+      {
+        "word": "English",
+        "start": 1.018,
+        "end": 1.396
+      },
+      {
+        "word": "to",
+        "start": 1.396,
+        "end": 1.504
+      },
+      {
+        "word": "have",
+        "start": 1.504,
+        "end": 1.72
+      },
+      {
+        "word": "a",
+        "start": 1.72,
+        "end": 1.828
+      },
+      {
+        "word": "meaningful",
+        "start": 1.828,
+        "end": 2.367
+      },
+      {
+        "word": "conversation.",
+        "start": 2.367,
+        "end": 3.23
+      }
+    ],
+    "repeat_index": 2,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 5,
+    "start_time": 21.132,
+    "end_time": 25.96,
+    "duration": 4.828,
+    "type": "silence",
+    "sub_type": "shadow_silence",
+    "text": "I don't need perfect English to have a meaningful conversation.",
+    "speaker": "You",
+    "badge_text": "🎙️ YOUR TURN (2/2)",
+    "audio_path": null,
+    "word_timings": [
+      {
+        "word": "I",
+        "start": 0.1,
+        "end": 0.208
+      },
+      {
+        "word": "don't",
+        "start": 0.208,
+        "end": 0.424
+      },
+      {
+        "word": "need",
+        "start": 0.424,
+        "end": 0.64
+      },
+      {
+        "word": "perfect",
+        "start": 0.64,
+        "end": 1.018
+      },
+      {
+        "word": "English",
+        "start": 1.018,
+        "end": 1.396
+      },
+      {
+        "word": "to",
+        "start": 1.396,
+        "end": 1.504
+      },
+      {
+        "word": "have",
+        "start": 1.504,
+        "end": 1.72
+      },
+      {
+        "word": "a",
+        "start": 1.72,
+        "end": 1.828
+      },
+      {
+        "word": "meaningful",
+        "start": 1.828,
+        "end": 2.367
+      },
+      {
+        "word": "conversation.",
+        "start": 2.367,
+        "end": 3.23
+      }
+    ],
+    "repeat_index": 2,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 6,
+    "start_time": 25.96,
+    "end_time": 30.519,
+    "duration": 4.559,
+    "type": "speech",
+    "sub_type": "shadow_speech",
+    "text": "Every time I speak aloud, I'm making English easier to access next time.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ (1/2)",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/55d3cd000f98129863b0f0d196e90d0fd5ed6280fcc2494c16b4bafc9edd036b.wav",
+    "word_timings": [
+      {
+        "word": "Every",
+        "start": 0.137,
+        "end": 0.472
+      },
+      {
+        "word": "time",
+        "start": 0.472,
+        "end": 0.74
+      },
+      {
+        "word": "I",
+        "start": 0.74,
+        "end": 0.874
+      },
+      {
+        "word": "speak",
+        "start": 0.874,
+        "end": 1.209
+      },
+      {
+        "word": "aloud,",
+        "start": 1.209,
+        "end": 1.678
+      },
+      {
+        "word": "I'm",
+        "start": 1.678,
+        "end": 1.812
+      },
+      {
+        "word": "making",
+        "start": 1.812,
+        "end": 2.214
+      },
+      {
+        "word": "English",
+        "start": 2.214,
+        "end": 2.683
+      },
+      {
+        "word": "easier",
+        "start": 2.683,
+        "end": 3.085
+      },
+      {
+        "word": "to",
+        "start": 3.085,
+        "end": 3.219
+      },
+      {
+        "word": "access",
+        "start": 3.219,
+        "end": 3.621
+      },
+      {
+        "word": "next",
+        "start": 3.621,
+        "end": 3.889
+      },
+      {
+        "word": "time.",
+        "start": 3.889,
+        "end": 4.425
+      }
+    ],
+    "repeat_index": 1,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 7,
+    "start_time": 30.519,
+    "end_time": 36.578,
+    "duration": 6.059,
+    "type": "silence",
+    "sub_type": "shadow_silence",
+    "text": "Every time I speak aloud, I'm making English easier to access next time.",
+    "speaker": "You",
+    "badge_text": "🎙️ YOUR TURN (1/2)",
+    "audio_path": null,
+    "word_timings": [
+      {
+        "word": "Every",
+        "start": 0.137,
+        "end": 0.472
+      },
+      {
+        "word": "time",
+        "start": 0.472,
+        "end": 0.74
+      },
+      {
+        "word": "I",
+        "start": 0.74,
+        "end": 0.874
+      },
+      {
+        "word": "speak",
+        "start": 0.874,
+        "end": 1.209
+      },
+      {
+        "word": "aloud,",
+        "start": 1.209,
+        "end": 1.678
+      },
+      {
+        "word": "I'm",
+        "start": 1.678,
+        "end": 1.812
+      },
+      {
+        "word": "making",
+        "start": 1.812,
+        "end": 2.214
+      },
+      {
+        "word": "English",
+        "start": 2.214,
+        "end": 2.683
+      },
+      {
+        "word": "easier",
+        "start": 2.683,
+        "end": 3.085
+      },
+      {
+        "word": "to",
+        "start": 3.085,
+        "end": 3.219
+      },
+      {
+        "word": "access",
+        "start": 3.219,
+        "end": 3.621
+      },
+      {
+        "word": "next",
+        "start": 3.621,
+        "end": 3.889
+      },
+      {
+        "word": "time.",
+        "start": 3.889,
+        "end": 4.425
+      }
+    ],
+    "repeat_index": 1,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 8,
+    "start_time": 36.578,
+    "end_time": 41.138,
+    "duration": 4.559,
+    "type": "speech",
+    "sub_type": "shadow_speech",
+    "text": "Every time I speak aloud, I'm making English easier to access next time.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ (2/2)",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/55d3cd000f98129863b0f0d196e90d0fd5ed6280fcc2494c16b4bafc9edd036b.wav",
+    "word_timings": [
+      {
+        "word": "Every",
+        "start": 0.137,
+        "end": 0.472
+      },
+      {
+        "word": "time",
+        "start": 0.472,
+        "end": 0.74
+      },
+      {
+        "word": "I",
+        "start": 0.74,
+        "end": 0.874
+      },
+      {
+        "word": "speak",
+        "start": 0.874,
+        "end": 1.209
+      },
+      {
+        "word": "aloud,",
+        "start": 1.209,
+        "end": 1.678
+      },
+      {
+        "word": "I'm",
+        "start": 1.678,
+        "end": 1.812
+      },
+      {
+        "word": "making",
+        "start": 1.812,
+        "end": 2.214
+      },
+      {
+        "word": "English",
+        "start": 2.214,
+        "end": 2.683
+      },
+      {
+        "word": "easier",
+        "start": 2.683,
+        "end": 3.085
+      },
+      {
+        "word": "to",
+        "start": 3.085,
+        "end": 3.219
+      },
+      {
+        "word": "access",
+        "start": 3.219,
+        "end": 3.621
+      },
+      {
+        "word": "next",
+        "start": 3.621,
+        "end": 3.889
+      },
+      {
+        "word": "time.",
+        "start": 3.889,
+        "end": 4.425
+      }
+    ],
+    "repeat_index": 2,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 9,
+    "start_time": 41.138,
+    "end_time": 47.197,
+    "duration": 6.059,
+    "type": "silence",
+    "sub_type": "shadow_silence",
+    "text": "Every time I speak aloud, I'm making English easier to access next time.",
+    "speaker": "You",
+    "badge_text": "🎙️ YOUR TURN (2/2)",
+    "audio_path": null,
+    "word_timings": [
+      {
+        "word": "Every",
+        "start": 0.137,
+        "end": 0.472
+      },
+      {
+        "word": "time",
+        "start": 0.472,
+        "end": 0.74
+      },
+      {
+        "word": "I",
+        "start": 0.74,
+        "end": 0.874
+      },
+      {
+        "word": "speak",
+        "start": 0.874,
+        "end": 1.209
+      },
+      {
+        "word": "aloud,",
+        "start": 1.209,
+        "end": 1.678
+      },
+      {
+        "word": "I'm",
+        "start": 1.678,
+        "end": 1.812
+      },
+      {
+        "word": "making",
+        "start": 1.812,
+        "end": 2.214
+      },
+      {
+        "word": "English",
+        "start": 2.214,
+        "end": 2.683
+      },
+      {
+        "word": "easier",
+        "start": 2.683,
+        "end": 3.085
+      },
+      {
+        "word": "to",
+        "start": 3.085,
+        "end": 3.219
+      },
+      {
+        "word": "access",
+        "start": 3.219,
+        "end": 3.621
+      },
+      {
+        "word": "next",
+        "start": 3.621,
+        "end": 3.889
+      },
+      {
+        "word": "time.",
+        "start": 3.889,
+        "end": 4.425
+      }
+    ],
+    "repeat_index": 2,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 10,
+    "start_time": 47.197,
+    "end_time": 49.877,
+    "duration": 2.68,
+    "type": "speech",
+    "sub_type": "shadow_speech",
+    "text": "Shadowing trains my ears and mouth to work together.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ (1/2)",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/051c2c449c60867d9a5226c597f352f87656c9e5b9e98a0917e9f008786dba52.wav",
+    "word_timings": [
+      {
+        "word": "Shadowing",
+        "start": 0.08,
+        "end": 0.563
+      },
+      {
+        "word": "trains",
+        "start": 0.563,
+        "end": 0.885
+      },
+      {
+        "word": "my",
+        "start": 0.885,
+        "end": 0.992
+      },
+      {
+        "word": "ears",
+        "start": 0.992,
+        "end": 1.206
+      },
+      {
+        "word": "and",
+        "start": 1.206,
+        "end": 1.367
+      },
+      {
+        "word": "mouth",
+        "start": 1.367,
+        "end": 1.635
+      },
+      {
+        "word": "to",
+        "start": 1.635,
+        "end": 1.742
+      },
+      {
+        "word": "work",
+        "start": 1.742,
+        "end": 1.956
+      },
+      {
+        "word": "together.",
+        "start": 1.956,
+        "end": 2.599
+      }
+    ],
+    "repeat_index": 1,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 11,
+    "start_time": 49.877,
+    "end_time": 54.057,
+    "duration": 4.18,
+    "type": "silence",
+    "sub_type": "shadow_silence",
+    "text": "Shadowing trains my ears and mouth to work together.",
+    "speaker": "You",
+    "badge_text": "🎙️ YOUR TURN (1/2)",
+    "audio_path": null,
+    "word_timings": [
+      {
+        "word": "Shadowing",
+        "start": 0.08,
+        "end": 0.563
+      },
+      {
+        "word": "trains",
+        "start": 0.563,
+        "end": 0.885
+      },
+      {
+        "word": "my",
+        "start": 0.885,
+        "end": 0.992
+      },
+      {
+        "word": "ears",
+        "start": 0.992,
+        "end": 1.206
+      },
+      {
+        "word": "and",
+        "start": 1.206,
+        "end": 1.367
+      },
+      {
+        "word": "mouth",
+        "start": 1.367,
+        "end": 1.635
+      },
+      {
+        "word": "to",
+        "start": 1.635,
+        "end": 1.742
+      },
+      {
+        "word": "work",
+        "start": 1.742,
+        "end": 1.956
+      },
+      {
+        "word": "together.",
+        "start": 1.956,
+        "end": 2.599
+      }
+    ],
+    "repeat_index": 1,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 12,
+    "start_time": 54.057,
+    "end_time": 56.737,
+    "duration": 2.68,
+    "type": "speech",
+    "sub_type": "shadow_speech",
+    "text": "Shadowing trains my ears and mouth to work together.",
+    "speaker": "Teacher",
+    "badge_text": "🎧 LISTEN & READ (2/2)",
+    "audio_path": "shadowing_pipeline/assets/audio_cache/051c2c449c60867d9a5226c597f352f87656c9e5b9e98a0917e9f008786dba52.wav",
+    "word_timings": [
+      {
+        "word": "Shadowing",
+        "start": 0.08,
+        "end": 0.563
+      },
+      {
+        "word": "trains",
+        "start": 0.563,
+        "end": 0.885
+      },
+      {
+        "word": "my",
+        "start": 0.885,
+        "end": 0.992
+      },
+      {
+        "word": "ears",
+        "start": 0.992,
+        "end": 1.206
+      },
+      {
+        "word": "and",
+        "start": 1.206,
+        "end": 1.367
+      },
+      {
+        "word": "mouth",
+        "start": 1.367,
+        "end": 1.635
+      },
+      {
+        "word": "to",
+        "start": 1.635,
+        "end": 1.742
+      },
+      {
+        "word": "work",
+        "start": 1.742,
+        "end": 1.956
+      },
+      {
+        "word": "together.",
+        "start": 1.956,
+        "end": 2.599
+      }
+    ],
+    "repeat_index": 2,
+    "repeat_total": 2
+  },
+  {
+    "event_id": 13,
+    "start_time": 56.737,
+    "end_time": 60.917,
+    "duration": 4.18,
+    "type": "silence",
+    "sub_type": "shadow_silence",
+    "text": "Shadowing trains my ears and mouth to work together.",
+    "speaker": "You",
+    "badge_text": "🎙️ YOUR TURN (2/2)",
+    "audio_path": null,
+    "word_timings": [
+      {
+        "word": "Shadowing",
+        "start": 0.08,
+        "end": 0.563
+      },
+      {
+        "word": "trains",
+        "start": 0.563,
+        "end": 0.885
+      },
+      {
+        "word": "my",
+        "start": 0.885,
+        "end": 0.992
+      },
+      {
+        "word": "ears",
+        "start": 0.992,
+        "end": 1.206
+      },
+      {
+        "word": "and",
+        "start": 1.206,
+        "end": 1.367
+      },
+      {
+        "word": "mouth",
+        "start": 1.367,
+        "end": 1.635
+      },
+      {
+        "word": "to",
+        "start": 1.635,
+        "end": 1.742
+      },
+      {
+        "word": "work",
+        "start": 1.742,
+        "end": 1.956
+      },
+      {
+        "word": "together.",
+        "start": 1.956,
+        "end": 2.599
+      }
+    ],
+    "repeat_index": 2,
+    "repeat_total": 2
+  }
+]

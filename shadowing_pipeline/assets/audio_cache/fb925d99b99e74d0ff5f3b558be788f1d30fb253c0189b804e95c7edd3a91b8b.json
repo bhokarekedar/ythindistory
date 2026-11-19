@@ -1,0 +1,25 @@
+{
+  "word_timings": [
+    {
+      "word": "Section",
+      "start": 0.061,
+      "end": 0.6
+    },
+    {
+      "word": "2:",
+      "start": 0.6,
+      "end": 0.908
+    },
+    {
+      "word": "Morning",
+      "start": 0.908,
+      "end": 1.447
+    },
+    {
+      "word": "Routine",
+      "start": 1.447,
+      "end": 1.986
+    }
+  ],
+  "duration": 2.046213
+}

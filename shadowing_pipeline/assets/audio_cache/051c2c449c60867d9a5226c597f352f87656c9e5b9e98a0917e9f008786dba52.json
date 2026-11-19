@@ -1,0 +1,50 @@
+{
+  "word_timings": [
+    {
+      "word": "Shadowing",
+      "start": 0.08,
+      "end": 0.563
+    },
+    {
+      "word": "trains",
+      "start": 0.563,
+      "end": 0.885
+    },
+    {
+      "word": "my",
+      "start": 0.885,
+      "end": 0.992
+    },
+    {
+      "word": "ears",
+      "start": 0.992,
+      "end": 1.206
+    },
+    {
+      "word": "and",
+      "start": 1.206,
+      "end": 1.367
+    },
+    {
+      "word": "mouth",
+      "start": 1.367,
+      "end": 1.635
+    },
+    {
+      "word": "to",
+      "start": 1.635,
+      "end": 1.742
+    },
+    {
+      "word": "work",
+      "start": 1.742,
+      "end": 1.956
+    },
+    {
+      "word": "together.",
+      "start": 1.956,
+      "end": 2.599
+    }
+  ],
+  "duration": 2.680045
+}

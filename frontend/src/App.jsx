@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import ViralClipGenerator from './ViralClipGenerator'
 import CampaignIntelligence from './CampaignIntelligence'
+import EnglishShadowingStudio from './EnglishShadowingStudio'
 
 const RECAP_WEBHOOK_URL = 'http://localhost:5678/webhook/video-complete'
 const THRILLER_WEBHOOK_URL = 'http://localhost:5678/webhook/2a1c46d4-d081-420d-af06-7cc5d94ddaa6'
@@ -564,10 +565,46 @@ function App() {
             Movie Recaps & Stories
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveAppTab('english_shadowing')}
+          style={{
+            flex: 1,
+            padding: '12px 18px',
+            borderRadius: '8px',
+            border: activeAppTab === 'english_shadowing' ? '1.5px solid #ea580c' : '1px solid transparent',
+            background: activeAppTab === 'english_shadowing' ? 'linear-gradient(135deg, #7c2d12 0%, #ea580c 100%)' : 'transparent',
+            color: activeAppTab === 'english_shadowing' ? '#ffffff' : '#a1a1aa',
+            fontWeight: activeAppTab === 'english_shadowing' ? 'bold' : '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            fontSize: '15px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <span>🎙️</span>
+          <span>English Shadowing</span>
+          <span style={{
+            fontSize: '11px',
+            background: activeAppTab === 'english_shadowing' ? '#c2410c' : '#27272a',
+            color: '#ffedd5',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            textTransform: 'uppercase',
+            fontWeight: 'bold'
+          }}>
+            Shadowing
+          </span>
+        </button>
       </div>
       
       {activeAppTab === 'viral_clip' && <ViralClipGenerator />}
       {activeAppTab === 'campaign_intelligence' && <CampaignIntelligence />}
+      {activeAppTab === 'english_shadowing' && <EnglishShadowingStudio />}
       {activeAppTab === 'story_studio' && (
         <>
       <form className="input-form">

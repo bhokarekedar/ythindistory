@@ -1,0 +1,75 @@
+{
+  "word_timings": [
+    {
+      "word": "I",
+      "start": 0.143,
+      "end": 0.298
+    },
+    {
+      "word": "woke",
+      "start": 0.298,
+      "end": 0.607
+    },
+    {
+      "word": "up",
+      "start": 0.607,
+      "end": 0.762
+    },
+    {
+      "word": "around",
+      "start": 0.762,
+      "end": 1.226
+    },
+    {
+      "word": "7:00,",
+      "start": 1.226,
+      "end": 1.613
+    },
+    {
+      "word": "but",
+      "start": 1.613,
+      "end": 1.845
+    },
+    {
+      "word": "I",
+      "start": 1.845,
+      "end": 2.0
+    },
+    {
+      "word": "stayed",
+      "start": 2.0,
+      "end": 2.464
+    },
+    {
+      "word": "in",
+      "start": 2.464,
+      "end": 2.619
+    },
+    {
+      "word": "bed",
+      "start": 2.619,
+      "end": 2.851
+    },
+    {
+      "word": "for",
+      "start": 2.851,
+      "end": 3.083
+    },
+    {
+      "word": "another",
+      "start": 3.083,
+      "end": 3.625
+    },
+    {
+      "word": "10",
+      "start": 3.625,
+      "end": 3.78
+    },
+    {
+      "word": "minutes.",
+      "start": 3.78,
+      "end": 4.631
+    }
+  ],
+  "duration": 4.774104
+}

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>English Shadowing Video Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FDF9F3;
+      --card-bg: #FFFFFF;
+      --primary: #FF7A1A;
+      --primary-hover: #E86608;
+      --accent: #FFB338;
+      --text-dark: #221E1C;
+      --text-muted: #7E746D;
+      --border: #EDE4D8;
+      --success: #2E8B57;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text-dark);
+      padding: 30px 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 1100px;
+    }
+    header {
+      margin-bottom: 25px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(255, 122, 26, 0.12);
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 13px;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      color: #1A1715;
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-top: 4px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 25px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .btn-small {
+      font-size: 12px;
+      background: #F4EDE2;
+      border: none;
+      color: #63564A;
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-small:hover { background: #E8DCCF; }
+    textarea {
+      width: 100%;
+      height: 380px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      font-family: monospace;
+      font-size: 13px;
+      resize: vertical;
+      background: #FAFAFA;
+      color: #2B2623;
+      outline: none;
+      transition: border 0.2s;
+      line-height: 1.5;
+    }
+    textarea:focus { border-color: var(--primary); background: #FFF; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 14px;
+      box-shadow: 0 4px 14px rgba(255, 122, 26, 0.35);
+      transition: transform 0.15s, opacity 0.2s;
+    }
+    .btn-primary:hover { transform: translateY(-1px); opacity: 0.95; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      background: #F3ECE2;
+      color: #4A3E34;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover { background: #E8DFD3; }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Progress & Output view */
+    .progress-box {
+      margin-top: 20px;
+      display: none;
+    }
+    .progress-bar-bg {
+      background: #EDE4D8;
+      height: 12px;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-bar-fill {
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      height: 100%;
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+    .progress-status {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .video-preview {
+      margin-top: 20px;
+      display: none;
+    }
+    video {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .download-links {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .btn-download {
+      flex: 1;
+      text-align: center;
+      background: var(--success);
+      color: white;
+      text-decoration: none;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 3px 10px rgba(46, 139, 87, 0.25);
+    }
+    .btn-link {
+      background: #EAE3D8;
+      color: #3B332C;
+      text-decoration: none;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .alert-error {
+      background: #FDEDED;
+      border: 1px solid #F5C6CB;
+      color: #A91E2C;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-top: 14px;
+      display: none;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">YouTube Pipeline</div>
+      <h1>English Shadowing Studio</h1>
+      <p class="subtitle">Turn JSON scripts into 1080p shadowing practice videos with word-level pill highlighting</p>
+    </header>
+
+    <div class="grid">
+      <!-- Input Column -->
+      <div class="card">
+        <div class="card-title">
+          <span>Script JSON</span>
+          <button class="btn-small" onclick="loadSampleScript()">Insert Sample Script</button>
+        </div>
+        <textarea id="scriptInput" placeholder="Paste your script JSON here..."></textarea>
+        <button id="btnGenerate" class="btn-primary" onclick="startGeneration(false)">Render Full Video (1080p MP4)</button>
+        <button id="btnPreview" class="btn-secondary" onclick="startGeneration(true)">Fast Preview (First 5 Segments)</button>
+        <div id="errorBox" class="alert-error"></div>
+      </div>
+
+      <!-- Result Column -->
+      <div class="card">
+        <div class="card-title">Render Status & Output</div>
+        
+        <div id="idleState" style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
+          <div style="font-size: 42px; margin-bottom: 10px;">🎙️</div>
+          <p style="font-weight: 600; font-size: 15px;">No active rendering job</p>
+          <p style="font-size: 13px; margin-top: 4px;">Paste a script on the left and click Render to start generating.</p>
+        </div>
+
+        <div id="progressBox" class="progress-box">
+          <div style="font-weight: 600; font-size: 14px;" id="progressTitle">Rendering Video...</div>
+          <div class="progress-bar-bg">
+            <div id="progressBar" class="progress-bar-fill"></div>
+          </div>
+          <div class="progress-status">
+            <span id="progressText">Synthesizing audio & timeline...</span>
+            <span id="progressPct">0%</span>
+          </div>
+        </div>
+
+        <div id="videoContainer" class="video-preview">
+          <video id="videoPlayer" controls playsinline></video>
+          <div class="download-links">
+            <a id="videoDownload" class="btn-download" href="#" download>Download MP4</a>
+            <a id="srtDownload" class="btn-link" href="#" download>SRT</a>
+            <a id="timelineDownload" class="btn-link" href="#" download>Timeline</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sampleScript = {
+      "title": "English Shadowing Practice: Mindset & Routine",
+      "settings": {
+        "buffer_seconds": 1.5,
+        "default_repeat": 2,
+        "voice_teacher": "Samantha",
+        "voice_speaker_b": "Alex"
+      },
+      "segments": [
+        {
+          "type": "narration",
+          "text": "Hello everyone, and welcome back to English Fluency Teacher. Today we are going to do a shadowing practice."
+        },
+        {
+          "type": "section_title",
+          "text": "Section 1: English Learning Mindset"
+        },
+        {
+          "type": "shadow",
+          "text": "I don't need perfect English to have a meaningful conversation.",
+          "repeat": 2
+        },
+        {
+          "type": "shadow",
+          "text": "Every time I speak aloud, I'm making English easier to access.",
+          "repeat": 2
+        },
+        {
+          "type": "dialogue",
+          "speaker": "Speaker A",
+          "text": "What time did you wake up this morning?"
+        },
+        {
+          "type": "dialogue",
+          "speaker": "Speaker B",
+          "text": "I woke up around 7:00, but I stayed in bed for another 10 minutes."
+        },
+        {
+          "type": "free_answer",
+          "text": "What is the first thing you normally do after getting up?",
+          "pause_seconds": 5.0
+        }
+      ]
+    };
+
+    function loadSampleScript() {
+      document.getElementById('scriptInput').value = JSON.stringify(sampleScript, null, 2);
+    }
+
+    let activeJobId = null;
+    let pollInterval = null;
+
+    async function startGeneration(preview) {
+      const scriptText = document.getElementById('scriptInput').value.trim();
+      const errorBox = document.getElementById('errorBox');
+      errorBox.style.display = 'none';
+
+      if (!scriptText) {
+        showError("Please paste or load a JSON script first.");
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(scriptText);
+      } catch (e) {
+        showError("JSON syntax error: " + e.message);
+        return;
+      }
+
+      setLoading(true);
+      document.getElementById('idleState').style.display = 'none';
+      document.getElementById('progressBox').style.display = 'block';
+      document.getElementById('videoContainer').style.display = 'none';
+      updateProgress(0, "Submitting task to renderer...");
+
+      try {
+        const resp = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ script: parsed, preview: preview })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.detail || "Server error");
+        }
+        activeJobId = data.job_id;
+        startPolling();
+      } catch (err) {
+        showError(err.message);
+        setLoading(false);
+      }
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        try {
+          const resp = await fetch(`/api/jobs/${activeJobId}`);
+          const job = await resp.json();
+
+          if (job.status === 'processing') {
+            updateProgress(job.progress, job.status_text || "Rendering frames...");
+          } else if (job.status === 'completed') {
+            clearInterval(pollInterval);
+            updateProgress(100, "Rendering complete!");
+            showVideo(job.result);
+            setLoading(false);
+          } else if (job.status === 'failed') {
+            clearInterval(pollInterval);
+            showError("Rendering failed: " + job.error);
+            setLoading(false);
+          }
+        } catch (err) {
+          console.error("Polling error", err);
+        }
+      }, 800);
+    }
+
+    function updateProgress(pct, text) {
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressPct').innerText = pct + '%';
+      document.getElementById('progressText').innerText = text;
+    }
+
+    function showVideo(result) {
+      const container = document.getElementById('videoContainer');
+      const player = document.getElementById('videoPlayer');
+      const videoDownload = document.getElementById('videoDownload');
+      const srtDownload = document.getElementById('srtDownload');
+      const timelineDownload = document.getElementById('timelineDownload');
+
+      player.src = result.video_url;
+      videoDownload.href = result.video_url;
+      srtDownload.href = result.srt_url;
+      timelineDownload.href = result.timeline_url;
+
+      container.style.display = 'block';
+      player.load();
+    }
+
+    function showError(msg) {
+      const errorBox = document.getElementById('errorBox');
+      errorBox.innerText = msg;
+      errorBox.style.display = 'block';
+    }
+
+    function setLoading(isLoading) {
+      document.getElementById('btnGenerate').disabled = isLoading;
+      document.getElementById('btnPreview').disabled = isLoading;
+    }
+
+    // Auto-load sample script on initial open
+    window.onload = loadSampleScript;
+  </script>
+</body>
+</html>
+

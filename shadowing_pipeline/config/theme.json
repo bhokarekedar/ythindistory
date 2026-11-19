@@ -1,0 +1,81 @@
+{
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30
+  },
+  "background": {
+    "gradient_top": [255, 145, 40],
+    "gradient_bottom": [255, 215, 75],
+    "wave_color": [255, 255, 255, 35],
+    "wave_lines": 5,
+    "wave_thickness": 3
+  },
+  "typography": {
+    "font_bold": "shadowing_pipeline/assets/fonts/Poppins-Bold.ttf",
+    "font_extrabold": "shadowing_pipeline/assets/fonts/Poppins-ExtraBold.ttf",
+    "font_size_main": 54,
+    "font_size_title": 72,
+    "font_size_badge": 26,
+    "line_spacing": 22
+  },
+  "colors": {
+    "text_normal": [32, 28, 26],
+    "text_dimmed": [140, 115, 95],
+    "pill_bg": [255, 255, 255],
+    "pill_text": [25, 20, 18],
+    "card_bg": [255, 255, 255, 175],
+    "card_outline": [255, 255, 255, 220]
+  },
+  "layout": {
+    "text_area_width_ratio": 0.65,
+    "margin_left": 110,
+    "margin_top": 240,
+    "illustration_path": "shadowing_pipeline/assets/images/illustration.png",
+    "illustration_pos": [1300, 180],
+    "logo_path": "shadowing_pipeline/assets/images/logo.png",
+    "logo_pos": [1600, 940]
+  },
+  "waveform": {
+    "num_bars": 52,
+    "bar_width": 7,
+    "bar_gap": 6,
+    "max_height": 75,
+    "min_height": 6,
+    "center_x": 620,
+    "bottom_y": 1010,
+    "active_color": [255, 255, 255, 240],
+    "dim_color": [235, 185, 130, 120]
+  },
+  "progressbar": {
+    "x": 110,
+    "y": 800,
+    "width": 1080,
+    "height": 18,
+    "bg_color": [255, 255, 255, 100],
+    "fill_color": [245, 105, 25],
+    "glow_color": [255, 160, 60, 140]
+  },
+  "badges": {
+    "listen": {
+      "text": "🎧 LISTEN & READ",
+      "bg_color": [42, 140, 80],
+      "text_color": [255, 255, 255]
+    },
+    "your_turn": {
+      "text": "🎙️ YOUR TURN (REPEAT OUT LOUD)",
+      "bg_color": [235, 85, 25],
+      "text_color": [255, 255, 255]
+    },
+    "dialogue": {
+      "bg_color": [60, 95, 190],
+      "text_color": [255, 255, 255]
+    },
+    "free_answer": {
+      "text": "💬 ANSWER ALOUD NOW",
+      "bg_color": [170, 50, 180],
+      "text_color": [255, 255, 255]
+    }
+  }
+}
+

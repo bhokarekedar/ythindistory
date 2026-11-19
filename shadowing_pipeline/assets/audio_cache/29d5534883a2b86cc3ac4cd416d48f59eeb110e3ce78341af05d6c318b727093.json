@@ -1,0 +1,55 @@
+{
+  "word_timings": [
+    {
+      "word": "I",
+      "start": 0.1,
+      "end": 0.208
+    },
+    {
+      "word": "don't",
+      "start": 0.208,
+      "end": 0.424
+    },
+    {
+      "word": "need",
+      "start": 0.424,
+      "end": 0.64
+    },
+    {
+      "word": "perfect",
+      "start": 0.64,
+      "end": 1.018
+    },
+    {
+      "word": "English",
+      "start": 1.018,
+      "end": 1.396
+    },
+    {
+      "word": "to",
+      "start": 1.396,
+      "end": 1.504
+    },
+    {
+      "word": "have",
+      "start": 1.504,
+      "end": 1.72
+    },
+    {
+      "word": "a",
+      "start": 1.72,
+      "end": 1.828
+    },
+    {
+      "word": "meaningful",
+      "start": 1.828,
+      "end": 2.367
+    },
+    {
+      "word": "conversation.",
+      "start": 2.367,
+      "end": 3.23
+    }
+  ],
+  "duration": 3.328209
+}

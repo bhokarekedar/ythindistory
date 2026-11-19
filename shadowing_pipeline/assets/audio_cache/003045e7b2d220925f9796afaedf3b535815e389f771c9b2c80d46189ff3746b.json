@@ -1,0 +1,30 @@
+{
+  "word_timings": [
+    {
+      "word": "Section",
+      "start": 0.072,
+      "end": 0.552
+    },
+    {
+      "word": "1:",
+      "start": 0.552,
+      "end": 0.826
+    },
+    {
+      "word": "English",
+      "start": 0.826,
+      "end": 1.306
+    },
+    {
+      "word": "Learning",
+      "start": 1.306,
+      "end": 1.854
+    },
+    {
+      "word": "Mindset",
+      "start": 1.854,
+      "end": 2.334
+    }
+  ],
+  "duration": 2.406122
+}

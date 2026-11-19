@@ -3,6 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 import time
 import shutil
 import threading
@@ -2323,6 +2329,79 @@ def trigger_manual_login_session(timeout_seconds: int = 180):
 
 
 
+
+
+# ====================================================
+# ENGLISH SHADOWING PIPELINE
+# ====================================================
+shadowing_jobs: Dict[str, Dict[str, Any]] = {}
+
+class ShadowingGenerateRequest(BaseModel):
+    script: Dict[str, Any]
+    preview: bool = False
+
+def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
+    try:
+        from shadowing_pipeline.core.pipeline import ShadowingVideoPipeline
+        shadowing_jobs[job_id]["status"] = "processing"
+        shadowing_jobs[job_id]["status_text"] = "Parsing script & generating audio/timeline..."
+
+        def progress_cb(rendered: int, total: int, pct: float):
+            shadowing_jobs[job_id]["progress"] = pct
+            shadowing_jobs[job_id]["status_text"] = f"Rendering frames: {rendered}/{total} ({pct:.0f}%)"
+
+        pipeline = ShadowingVideoPipeline()
+        results = pipeline.run(
+            script_input=script_data,
+            output_dir=str(Path("output").resolve()),
+            preview=preview,
+            progress_callback=progress_cb,
+        )
+
+        vid_filename = Path(results["video"]).name
+        srt_filename = Path(results["srt"]).name
+        tl_filename = Path(results["timeline"]).name
+
+        shadowing_jobs[job_id]["status"] = "completed"
+        shadowing_jobs[job_id]["progress"] = 100.0
+        shadowing_jobs[job_id]["result"] = {
+            "video_url": f"/output/{vid_filename}",
+            "srt_url": f"/output/{srt_filename}",
+            "timeline_url": f"/output/{tl_filename}",
+            "duration": results["duration"],
+        }
+    except Exception as e:
+        shadowing_jobs[job_id]["status"] = "failed"
+        shadowing_jobs[job_id]["error"] = str(e)
+
+
+@app.post("/api/shadowing/generate")
+def start_shadowing_generation(req: ShadowingGenerateRequest):
+    import uuid
+    import threading
+    job_id = str(uuid.uuid4())[:8]
+    shadowing_jobs[job_id] = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0.0,
+        "status_text": "Queued",
+        "error": None,
+        "result": None,
+    }
+    t = threading.Thread(
+        target=_run_shadowing_job_worker,
+        args=(job_id, req.script, req.preview),
+        daemon=True,
+    )
+    t.start()
+    return {"job_id": job_id, "message": "Shadowing video job started"}
+
+
+@app.get("/api/shadowing/jobs/{job_id}")
+def get_shadowing_job_status(job_id: str):
+    if job_id not in shadowing_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return shadowing_jobs[job_id]
 
 
 if __name__ == "__main__":

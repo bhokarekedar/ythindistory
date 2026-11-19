@@ -92,23 +92,34 @@ class ViralMomentDetector:
             if len(window_text) < 150:
                 continue
 
-            system_prompt = """You are a Senior Viral Content Strategist & Video Editor.
+            system_prompt = """You are a Senior Viral Content Strategist & Master Video Editor.
 Find the single BEST story-complete viral moment from this timeline window of the video.
-RULES:
-1. Clip duration MUST be between 25 and 70 seconds.
-2. It MUST tell a complete mini-story with SETUP (the challenge/bet/situation), DEVELOPMENT (action/tension), and PAYOFF (the reaction/eating/winner/punchline).
-3. DO NOT cut off before the payoff!
-4. Return valid JSON matching schema:
+
+CRITICAL LAWS:
+1. THE COLD VIEWER TEST (MANDATORY):
+   - A viewer scrolling on TikTok/YouTube Shorts knows NOTHING about the video.
+   - Within the first 5 seconds of the clip, the spoken dialogue MUST explicitly identify the subject (e.g. "This is a 900-yen meal", "We ordered the $500 Bonito fish", "Look at this giant melon soda").
+   - NEVER start on vague pronouns or demonstratives like "Wow, so this is the salad... and then this one..." or chewing without the dish/item being verbally identified!
+   - If someone is reacting to or tasting something, start timestamp MUST begin at the sentence where the item, price, or bet is introduced!
+2. NO HALLUCINATIONS:
+   - Do NOT invent words or prices in the title or hook (like 'Wagyu' or '$90') if that word is NEVER spoken in the dialogue!
+   - Every claim in your title and hook must be verifiable in the provided transcript.
+3. STORY COMPLETENESS:
+   - Duration MUST be between 25 and 75 seconds.
+   - Must have SETUP (introducing what they have/are doing), DEVELOPMENT (the attempt/eating/conflict), and PAYOFF (the reaction/winner/punchline).
+   - NEVER cut off before the payoff!
+
+Return valid JSON:
 {
   "clip_number": 1,
-  "title": "Exciting viral title with emoji",
+  "title": "Accurate viral title with emoji",
   "category": "Challenge/Comedy/Story",
-  "hook": "Opening 1-2 sentence hook",
+  "hook": "Opening 1-2 sentence hook matching actual spoken dialogue",
   "start_time": 0.0,
   "end_time": 0.0,
   "story": {
-    "context": "Brief context",
-    "setup": "Initial setup",
+    "context": "Clear context stating the exact item/challenge",
+    "setup": "Where the item or challenge is verbally introduced",
     "development": "How it progresses",
     "payoff": "Definitive outcome, reaction, or consequence",
     "ending_type": "complete_payoff"

@@ -179,9 +179,10 @@ Evaluate the clip against these 6 CRITERIA (Score 0 to 10 for each):
 - Is it relevant to what happens later?
 
 2. CONTEXT (20% weight):
-- Can a new viewer understand what is happening without having watched the full original video?
-- Is the challenge, game situation, problem, or objective clear?
-- Does the clip include sufficient setup?
+- COLD VIEWER CHECK: Look ONLY at the actual spoken dialogue lines in the transcript. Does the spoken dialogue verbally state WHAT the item, food, challenge, or situation is?
+- If the clip begins with vague demonstratives (e.g. "so this is the salad... and then this one...") or people eating without ever verbally naming what they are eating or doing, score CONTEXT as FAILED (< 5)!
+- If the title/hook claims something (e.g. "$90 Wagyu") that is NEVER spoken in the clip's dialogue, score CONTEXT as FAILED (< 5)!
+- Can a brand new viewer scrolling on TikTok/Shorts understand what is happening without having watched the full original video?
 
 3. DEVELOPMENT (15% weight):
 - Does the situation escalate or progress after the opening?
@@ -204,9 +205,10 @@ Evaluate the clip against these 6 CRITERIA (Score 0 to 10 for each):
 - Does the clip feel complete and self-contained when watched alone?
 
 CRITICAL EDITORIAL FAILURES (Instantly triggers REJECTED status):
+- The food/item/challenge is never verbally identified in dialogue (viewer doesn't know what they are eating/doing).
 - Clip ends before the main event, result, or payoff occurs.
 - Impossible to understand without missing context.
-- The opening promises something that is never shown.
+- The title/hook promises something that is never spoken or delivered in the clip.
 - The main sentence or action is cut off.
 - Contains no meaningful development or outcome.
 
