@@ -201,6 +201,25 @@ class ShadowingVideoPipeline:
                 result_dict["youtube_upload"] = upload_res
                 result_dict["youtube_url"] = upload_res.get("video_url")
                 print(f"🎉 Successfully uploaded {privacy} video to YouTube: {upload_res.get('video_url')}")
+
+                if upload_res.get("success") and upload_res.get("video_id"):
+                    # 1. Save covered topics and YouTube metadata to training_dataset/
+                    self._save_to_training_dataset(
+                        script=script,
+                        raw_dict=raw_dict,
+                        upload_res=upload_res,
+                        metadata_path=yt_meta_paths.get("metadata_path"),
+                    )
+
+                    # 2. Clear rendered video (.mp4) from output directory to free disk space
+                    try:
+                        import os
+                        if final_mp4 and os.path.exists(final_mp4):
+                            os.remove(final_mp4)
+                            print(f"🗑️ Cleaned up rendered video from output: {final_mp4} (successfully saved to YouTube & stored in training_dataset)")
+                            result_dict["video_cleaned_up"] = True
+                    except Exception as clean_err:
+                        print(f"⚠️ Note: Could not delete output video {final_mp4}: {clean_err}")
             except Exception as e:
                 print(f"⚠️ Auto-upload to YouTube encountered an error: {e}")
                 result_dict["youtube_upload_error"] = str(e)
@@ -287,4 +306,78 @@ class ShadowingVideoPipeline:
             "video_metadata": yt_meta_paths.get("video_metadata", {}),
             "warnings": chap_warnings,
         }
+
+    def _save_to_training_dataset(
+        self,
+        script: Any,
+        raw_dict: dict,
+        upload_res: dict,
+        metadata_path: Optional[str] = None,
+    ):
+        """Saves covered topics, full script, and YouTube metadata into backend/training_dataset/."""
+        import datetime
+        import os
+
+        # Find training_dataset directory
+        training_dir = PACKAGE_DIR.parent / "training_dataset"
+        training_dir.mkdir(parents=True, exist_ok=True)
+
+        video_id = upload_res.get("video_id", "unknown")
+        video_url = upload_res.get("video_url", f"https://youtu.be/{video_id}")
+        title = getattr(script, "title", raw_dict.get("title", "untitled"))
+        safe_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in title).strip("_")
+        now_iso = datetime.datetime.now().isoformat()
+
+        # Load video_metadata.json if available
+        yt_meta = {}
+        if metadata_path and os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    yt_meta = json.load(f)
+            except Exception:
+                pass
+        if not yt_meta and isinstance(raw_dict.get("youtube"), dict):
+            yt_meta = raw_dict.get("youtube")
+
+        dataset_entry = {
+            "video_id": video_id,
+            "video_url": video_url,
+            "title": title,
+            "uploaded_at": now_iso,
+            "youtube": yt_meta,
+            "script": raw_dict,
+        }
+
+        # 1. Save individual detailed record per video
+        record_file = training_dir / f"{safe_title}_{video_id}.json"
+        with open(record_file, "w", encoding="utf-8") as f:
+            json.dump(dataset_entry, f, indent=2, ensure_ascii=False)
+        print(f"💾 Saved topic & YouTube metadata to training dataset: {record_file}")
+
+        # 2. Update cumulative topics history index
+        history_file = training_dir / "topics_history.json"
+        history = []
+        if history_file.exists():
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+            except Exception:
+                history = []
+
+        history = [h for h in history if h.get("video_id") != video_id]
+        summary_item = {
+            "video_id": video_id,
+            "video_url": video_url,
+            "title": title,
+            "youtube_title": yt_meta.get("title") if isinstance(yt_meta, dict) else title,
+            "playlist": yt_meta.get("playlist") if isinstance(yt_meta, dict) else "",
+            "tags": yt_meta.get("tags", []) if isinstance(yt_meta, dict) else [],
+            "uploaded_at": now_iso,
+        }
+        history.append(summary_item)
+
+        with open(history_file, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+        print(f"📚 Updated cumulative topics history ({len(history)} total topics recorded): {history_file}")
+
 

@@ -354,7 +354,7 @@ class VisualEngine:
         by = 130
         bbox = self.font_badge.getbbox(badge_text)
         bw = (bbox[2] - bbox[0]) + 44
-        bh = (bbox[3] - bbox[1]) + 24
+        bh = (bbox[3] - bbox[1]) + 28
 
         # 1. Text Container Card (Drawn FIRST as background)
         layout = self._get_or_compute_text_layout(event)
@@ -445,9 +445,9 @@ class VisualEngine:
                         pad_x = 14
                         pill_rect = [
                             wx - pad_x,
-                            wy + 4,
+                            wy + 6,
                             wx + ww + pad_x,
-                            wy + 74,
+                            wy + 78,
                         ]
                         # Pill with subtle drop shadow
                         draw.rounded_rectangle(
