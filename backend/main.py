@@ -2334,7 +2334,29 @@ def trigger_manual_login_session(timeout_seconds: int = 180):
 # ====================================================
 # ENGLISH SHADOWING PIPELINE
 # ====================================================
-shadowing_jobs: Dict[str, Dict[str, Any]] = {}
+SHADOWING_JOBS_FILE = Path(__file__).resolve().parent / "temp" / "shadowing_jobs.json"
+
+
+def _load_shadowing_jobs() -> Dict[str, Dict[str, Any]]:
+    if SHADOWING_JOBS_FILE.exists():
+        try:
+            with open(SHADOWING_JOBS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_shadowing_jobs():
+    try:
+        SHADOWING_JOBS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(SHADOWING_JOBS_FILE, "w", encoding="utf-8") as f:
+            json.dump(shadowing_jobs, f, indent=2)
+    except Exception:
+        pass
+
+
+shadowing_jobs: Dict[str, Dict[str, Any]] = _load_shadowing_jobs()
 
 class ShadowingGenerateRequest(BaseModel):
     script: Dict[str, Any]
@@ -2345,10 +2367,12 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
         from shadowing_pipeline.core.pipeline import ShadowingVideoPipeline
         shadowing_jobs[job_id]["status"] = "processing"
         shadowing_jobs[job_id]["status_text"] = "Parsing script & generating audio/timeline..."
+        _save_shadowing_jobs()
 
         def progress_cb(rendered: int, total: int, pct: float):
             shadowing_jobs[job_id]["progress"] = pct
             shadowing_jobs[job_id]["status_text"] = f"Rendering frames: {rendered}/{total} ({pct:.0f}%)"
+            _save_shadowing_jobs()
 
         pipeline = ShadowingVideoPipeline()
         backend_dir = Path(__file__).resolve().parent
@@ -2371,9 +2395,11 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
             "timeline_url": f"/output/{tl_filename}",
             "duration": results["duration"],
         }
+        _save_shadowing_jobs()
     except Exception as e:
         shadowing_jobs[job_id]["status"] = "failed"
         shadowing_jobs[job_id]["error"] = str(e)
+        _save_shadowing_jobs()
 
 
 @app.post("/api/shadowing/generate")
@@ -2389,6 +2415,7 @@ def start_shadowing_generation(req: ShadowingGenerateRequest):
         "error": None,
         "result": None,
     }
+    _save_shadowing_jobs()
     t = threading.Thread(
         target=_run_shadowing_job_worker,
         args=(job_id, req.script, req.preview),

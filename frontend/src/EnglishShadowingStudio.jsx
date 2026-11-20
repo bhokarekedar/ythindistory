@@ -192,9 +192,20 @@ export default function EnglishShadowingStudio() {
       const jobId = data.job_id;
 
       // Start polling
+      let consecutive404Count = 0;
       const pollTimer = setInterval(async () => {
         try {
           const sResp = await fetch(`${BACKEND_BASE}/api/shadowing/jobs/${jobId}`);
+          if (sResp.status === 404) {
+            consecutive404Count++;
+            if (consecutive404Count >= 3) {
+              clearInterval(pollTimer);
+              setLoading(false);
+              setErrorMsg('Backend server reloaded during rendering. Please click "Render" again to start.');
+            }
+            return;
+          }
+          consecutive404Count = 0;
           if (!sResp.ok) return;
 
           const job = await sResp.json();
