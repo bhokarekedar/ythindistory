@@ -282,3 +282,4 @@ class ShadowingScriptAuditor:
             "modified_script": modified_script,
             "original_script": script_data,
         }
+
