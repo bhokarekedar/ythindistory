@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -287,17 +288,22 @@ def upload_to_youtube(
     category_id = CATEGORY_MAP.get(cat_name, "27")
 
     # Map fields (note: title_alternatives is intentionally omitted from snippet)
-    raw_tags = meta.get("tags", [])[:30]
+    # YouTube Data API rules:
+    # 1. Total tags length including quotes around multi-word tags and separating commas must not exceed 500 chars (safe ceiling: 420 chars).
+    # 2. No quotes, brackets, or invalid characters.
+    raw_tags = meta.get("tags", [])
     safe_tags = []
-    curr_len = 0
+    curr_quoted_len = 0
     for t in raw_tags:
-        t_str = str(t).strip().lower()
-        add_len = len(t_str) + (1 if safe_tags else 0)
-        if curr_len + add_len <= 500:
-            safe_tags.append(t_str)
-            curr_len += add_len
+        t_clean = re.sub(r'["\'<>/]', '', str(t)).strip().lower()
+        if not t_clean:
+            continue
+        tag_cost = len(t_clean) + (2 if " " in t_clean else 0) + (1 if safe_tags else 0)
+        if curr_quoted_len + tag_cost <= 420:
+            safe_tags.append(t_clean)
+            curr_quoted_len += tag_cost
         else:
-            logger.warning(f"Trimming tag '{t_str}' because total tags length would exceed 500 chars.")
+            logger.info(f"Omitted tag '{t_clean}' to stay strictly within YouTube 500-char quota (currently {curr_quoted_len} chars).")
             break
 
     snippet_body = {
