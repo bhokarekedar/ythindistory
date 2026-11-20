@@ -3,9 +3,16 @@ import { useState, useEffect } from 'react'
 export default function LiveStreamClipper() {
   const [streamUrl, setStreamUrl] = useState('')
   const [spikeThreshold, setSpikeThreshold] = useState(2.0)
-  const [maxClips, setMaxClips] = useState(6)
+  const [maxClips, setMaxClips] = useState(3)
   const [clipDuration, setClipDuration] = useState(45)
   const [layoutMode, setLayoutMode] = useState('blurred_stack')
+
+  // Auto-Pilot state (Auto Clip & Direct YouTube Upload)
+  const [autoPilotCount, setAutoPilotCount] = useState(3)
+  const [autoPilotPrivacy, setAutoPilotPrivacy] = useState('public')
+  const [autoPilotRunning, setAutoPilotRunning] = useState(false)
+  const [autoPilotProgress, setAutoPilotProgress] = useState('')
+  const [autoPilotCompleted, setAutoPilotCompleted] = useState(false)
 
   // Analysis state
   const [analyzing, setAnalyzing] = useState(false)
@@ -37,6 +44,81 @@ export default function LiveStreamClipper() {
     }
   }
 
+  // Auto-Pilot: 1-Click Clip & Direct Upload Top Moments (No manual approval needed)
+  const handleAutoPilotUpload = async () => {
+    if (!streamUrl.trim()) {
+      setErrorMsg('Please enter a livestream or VOD URL')
+      return
+    }
+    setErrorMsg('')
+    setAutoPilotRunning(true)
+    setAutoPilotCompleted(false)
+    setAutoPilotProgress('1/3: Analyzing stream chat velocity & detecting peak explosion moments...')
+    setStreamInfo(null)
+    setMoments([])
+    setTimeline([])
+    setClipStates({})
+
+    try {
+      const res = await fetch('http://localhost:8000/api/stream-clipper/auto-upload-top-moments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: streamUrl.trim(),
+          top_n: parseInt(autoPilotCount),
+          spike_threshold: parseFloat(spikeThreshold),
+          clip_duration: parseInt(clipDuration),
+          layout: layoutMode,
+          privacy_status: autoPilotPrivacy
+        })
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Auto-upload failed')
+      }
+
+      const data = await res.json()
+      setStreamInfo(data.stream_info)
+
+      const newClipStates = {}
+      const newMoments = (data.results || []).map((r, idx) => {
+        newClipStates[r.moment_id] = {
+          rendering: false,
+          rendered: true,
+          video_url: `http://localhost:8000${r.video_url}`,
+          clip_id: r.clip_id,
+          metadata: {
+            title: r.title,
+            privacy: autoPilotPrivacy
+          },
+          publishing: false,
+          published: true,
+          publish_result: r.upload_result,
+          error: null
+        }
+        return {
+          id: r.moment_id,
+          rank: idx + 1,
+          peak_time_str: r.peak_time_str,
+          peak_velocity: r.peak_velocity,
+          suggested_title: r.title,
+          duration: clipDuration
+        }
+      })
+
+      setMoments(newMoments)
+      setClipStates(newClipStates)
+      setAutoPilotCompleted(true)
+      setAutoPilotProgress(`🎉 All ${data.uploaded_count} top moments clipped & published directly to YouTube!`)
+    } catch (err) {
+      setErrorMsg(err.message || 'Auto-upload failed. Please verify YouTube connection and URL.')
+    } finally {
+      setAutoPilotRunning(false)
+    }
+  }
+
+  // Analyze First (Inspect Moments)
   const handleAnalyze = async () => {
     if (!streamUrl.trim()) {
       setErrorMsg('Please enter a livestream or VOD URL')
@@ -44,6 +126,7 @@ export default function LiveStreamClipper() {
     }
     setErrorMsg('')
     setAnalyzing(true)
+    setAutoPilotCompleted(false)
     setStreamInfo(null)
     setMoments([])
     setTimeline([])
@@ -72,25 +155,24 @@ export default function LiveStreamClipper() {
       setTimeline(data.timeline || [])
       setStats(data.stats || {})
 
-      // Initialize clip states
       const initial = {}
-      ;(data.moments || []).forEach(m => {
-        initial[m.id] = {
-          rendering: false,
-          rendered: false,
-          video_url: null,
-          metadata: {
-            title: m.suggested_title,
-            description: `Live chat went crazy during ${data.stream_info?.uploader || 'the stream'}! \n\n#Shorts #LiveStream #Highlights`,
-            tags: ['Shorts', 'StreamHighlights', ...(m.top_keywords || [])],
-            privacy: 'unlisted'
-          },
-          publishing: false,
-          published: false,
-          publish_result: null,
-          error: null
-        }
-      })
+        ; (data.moments || []).forEach(m => {
+          initial[m.id] = {
+            rendering: false,
+            rendered: false,
+            video_url: null,
+            metadata: {
+              title: m.suggested_title,
+              description: `Live chat exploded during ${data.stream_info?.uploader || 'the stream'}! \n\n#Shorts #LiveStream #Highlights`,
+              tags: ['Shorts', 'StreamHighlights', ...(m.top_keywords || [])],
+              privacy: autoPilotPrivacy
+            },
+            publishing: false,
+            published: false,
+            publish_result: null,
+            error: null
+          }
+        })
       setClipStates(initial)
     } catch (err) {
       setErrorMsg(err.message || 'Stream analysis failed. Please check the URL.')
@@ -99,7 +181,8 @@ export default function LiveStreamClipper() {
     }
   }
 
-  const handleRenderClip = async (moment) => {
+  // 1-Click Direct Clip & Upload for an individual moment
+  const handleDirectClipAndUpload = async (moment) => {
     const momentId = moment.id
     setClipStates(prev => ({
       ...prev,
@@ -107,7 +190,8 @@ export default function LiveStreamClipper() {
     }))
 
     try {
-      const res = await fetch('http://localhost:8000/api/stream-clipper/render-clip', {
+      // 1. Render clip
+      const renderRes = await fetch('http://localhost:8000/api/stream-clipper/render-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,90 +207,72 @@ export default function LiveStreamClipper() {
         })
       })
 
-      if (!res.ok) {
-        const err = await res.json()
+      if (!renderRes.ok) {
+        const err = await renderRes.json()
         throw new Error(err.detail || 'Rendering failed')
       }
 
-      const data = await res.json()
+      const renderData = await renderRes.json()
+      const clipId = renderData.clip_id
+      const meta = renderData.metadata || {}
+
+      // 2. Immediately Upload to YouTube without stopping for approval
       setClipStates(prev => ({
         ...prev,
         [momentId]: {
           ...prev[momentId],
           rendering: false,
           rendered: true,
-          video_url: `http://localhost:8000${data.video_url}`,
-          clip_id: data.clip_id,
-          metadata: {
-            ...prev[momentId]?.metadata,
-            ...(data.metadata || {})
-          }
+          publishing: true,
+          video_url: `http://localhost:8000${renderData.video_url}`,
+          clip_id: clipId,
+          metadata: meta
         }
       }))
-    } catch (err) {
-      setClipStates(prev => ({
-        ...prev,
-        [momentId]: { ...prev[momentId], rendering: false, error: err.message }
-      }))
-    }
-  }
 
-  const handlePublishYouTube = async (momentId) => {
-    const state = clipStates[momentId]
-    if (!state || !state.rendered) return
-
-    setClipStates(prev => ({
-      ...prev,
-      [momentId]: { ...prev[momentId], publishing: true, error: null }
-    }))
-
-    try {
-      const res = await fetch('http://localhost:8000/api/stream-clipper/upload', {
+      const uploadRes = await fetch('http://localhost:8000/api/stream-clipper/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clip_id: state.clip_id,
-          title: state.metadata?.title || 'Stream Highlight #Shorts',
-          description: state.metadata?.description || '',
-          tags: state.metadata?.tags || ['Shorts'],
-          privacy_status: state.metadata?.privacy || 'unlisted'
+          clip_id: clipId,
+          title: meta.title || moment.suggested_title || 'Live Stream Highlight #Shorts',
+          description: meta.description || '',
+          tags: meta.tags || ['Shorts'],
+          privacy_status: autoPilotPrivacy
         })
       })
 
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.detail || 'Publishing failed')
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json()
+        throw new Error(err.detail || 'Upload failed')
       }
 
-      const data = await res.json()
+      const uploadData = await uploadRes.json()
       setClipStates(prev => ({
         ...prev,
         [momentId]: {
           ...prev[momentId],
           publishing: false,
           published: true,
-          publish_result: data.result
+          publish_result: uploadData.result
         }
       }))
     } catch (err) {
       setClipStates(prev => ({
         ...prev,
-        [momentId]: { ...prev[momentId], publishing: false, error: err.message }
+        [momentId]: { ...prev[momentId], rendering: false, publishing: false, error: err.message }
       }))
     }
   }
 
-  const updateMetadata = (momentId, field, val) => {
-    setClipStates(prev => ({
-      ...prev,
-      [momentId]: {
-        ...prev[momentId],
-        metadata: {
-          ...prev[momentId]?.metadata,
-          [field]: val
-        }
+  // 1-Click Batch Upload All Top Moments
+  const handleBatchUploadAll = async () => {
+    for (const moment of moments) {
+      const state = clipStates[moment.id]
+      if (!state?.published) {
+        await handleDirectClipAndUpload(moment)
       }
-    }))
+    }
   }
 
   // Calculate SVG timeline points
@@ -227,7 +293,7 @@ export default function LiveStreamClipper() {
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', color: '#e4e4e7', padding: '10px 0 60px 0' }}>
-      
+
       {/* Header Banner */}
       <div style={{
         background: 'linear-gradient(135deg, #18181b 0%, #1e1b4b 50%, #0f172a 100%)',
@@ -242,7 +308,7 @@ export default function LiveStreamClipper() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
               <span style={{ fontSize: '32px' }}>⚡</span>
               <h1 style={{ margin: 0, fontSize: '26px', fontWeight: '800', letterSpacing: '-0.5px', color: '#ffffff' }}>
-                Live Stream Chat Clipper
+                Live Stream Chat Clipper & Direct Auto-Publisher
               </h1>
               <span style={{
                 fontSize: '11px',
@@ -254,12 +320,12 @@ export default function LiveStreamClipper() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px'
               }}>
-                Spike Sniper
+                Auto-Pilot
               </span>
             </div>
             <p style={{ margin: 0, color: '#a1a1aa', fontSize: '15px', maxWidth: '750px', lineHeight: '1.5' }}>
-              Snipes moments when live chat exploded with messages, laughs, superchats, and hype. 
-              Zero manual scrubbing: isolates peak moments, generates vertical 9:16 Shorts, and publishes directly to YouTube.
+              Detects where chat went crazy, clips the 9:16 vertical Short, and publishes directly to YouTube.
+              <strong> Zero approval bottlenecks: paste the live stream URL and let it automatically upload the top viral moments.</strong>
             </p>
           </div>
 
@@ -276,7 +342,7 @@ export default function LiveStreamClipper() {
             <span style={{ fontSize: '18px' }}>{ytAuth?.connected ? '✅' : '⚠️'}</span>
             <div>
               <div style={{ fontSize: '11px', color: '#a1a1aa', textTransform: 'uppercase', fontWeight: '600' }}>
-                YouTube Channel
+                Target YouTube Channel
               </div>
               <div style={{ fontSize: '13px', fontWeight: '700', color: ytAuth?.connected ? '#a7f3d0' : '#f43f5e' }}>
                 {ytAuth?.channel_title || (ytAuth?.connected ? 'Connected' : 'Not Connected')}
@@ -286,7 +352,7 @@ export default function LiveStreamClipper() {
         </div>
       </div>
 
-      {/* Input & Configuration Card */}
+      {/* Input & 1-Click Auto-Upload Action */}
       <div style={{
         background: '#18181b',
         border: '1px solid #27272a',
@@ -297,14 +363,14 @@ export default function LiveStreamClipper() {
         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#d4d4d8', marginBottom: '8px', textTransform: 'uppercase' }}>
           Live Stream or VOD Replay URL
         </label>
-        
+
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <input
             type="text"
             placeholder="Paste YouTube Live stream URL (e.g. https://www.youtube.com/watch?v=...)"
             value={streamUrl}
             onChange={(e) => setStreamUrl(e.target.value)}
-            disabled={analyzing}
+            disabled={autoPilotRunning || analyzing}
             style={{
               flex: '1',
               minWidth: '320px',
@@ -318,40 +384,65 @@ export default function LiveStreamClipper() {
               transition: 'border 0.2s'
             }}
           />
+
+          {/* PRIMARY AUTO-PILOT ACTION */}
           <button
             type="button"
-            onClick={handleAnalyze}
-            disabled={analyzing || !streamUrl.trim()}
+            onClick={handleAutoPilotUpload}
+            disabled={autoPilotRunning || analyzing || !streamUrl.trim()}
             style={{
               padding: '14px 28px',
-              background: analyzing ? '#4338ca' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+              background: autoPilotRunning ? '#b91c1c' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
               border: 'none',
               borderRadius: '10px',
               color: '#ffffff',
               fontSize: '15px',
-              fontWeight: '700',
-              cursor: analyzing ? 'not-allowed' : 'pointer',
+              fontWeight: '800',
+              cursor: autoPilotRunning || analyzing ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              boxShadow: '0 4px 15px rgba(79, 70, 229, 0.3)'
+              boxShadow: '0 4px 20px rgba(239, 68, 68, 0.4)'
             }}
           >
-            {analyzing ? (
+            {autoPilotRunning ? (
               <>
                 <span className="spinner" style={{ display: 'inline-block', width: '16px', height: '16px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                <span>Scanning Chat Spikes...</span>
+                <span>Auto-Uploading to YouTube...</span>
               </>
             ) : (
               <>
-                <span>🔥</span>
-                <span>Analyze Chat Explosions</span>
+                <span>🚀</span>
+                <span>Auto-Clip & Upload Top Moments</span>
               </>
             )}
           </button>
+
+          {/* SECONDARY: ANALYZE FIRST */}
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={autoPilotRunning || analyzing || !streamUrl.trim()}
+            style={{
+              padding: '14px 20px',
+              background: '#27272a',
+              border: '1px solid #3f3f46',
+              borderRadius: '10px',
+              color: '#d4d4d8',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: autoPilotRunning || analyzing ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <span>🔍</span>
+            <span>Analyze First</span>
+          </button>
         </div>
 
-        {/* Sensitivity & Clip Controls */}
+        {/* Auto-Pilot Controls */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -363,7 +454,79 @@ export default function LiveStreamClipper() {
         }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
-              Spike Sensitivity Threshold ({spikeThreshold}x)
+              Auto-Upload Moments Count
+            </label>
+            <select
+              value={autoPilotCount}
+              onChange={(e) => setAutoPilotCount(e.target.value)}
+              disabled={autoPilotRunning || analyzing}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: '#18181b',
+                color: '#ffffff',
+                border: '1px solid #3f3f46',
+                borderRadius: '8px',
+                fontSize: '13px'
+              }}
+            >
+              <option value="1">Top 1 Biggest Spike</option>
+              <option value="3">Top 3 Viral Moments (Recommended)</option>
+              <option value="5">Top 5 Moments</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
+              YouTube Privacy Setting
+            </label>
+            <select
+              value={autoPilotPrivacy}
+              onChange={(e) => setAutoPilotPrivacy(e.target.value)}
+              disabled={autoPilotRunning || analyzing}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: '#18181b',
+                color: '#ffffff',
+                border: '1px solid #3f3f46',
+                borderRadius: '8px',
+                fontSize: '13px'
+              }}
+            >
+              <option value="public">Public (Immediate Live Post)</option>
+              <option value="unlisted">Unlisted (Shareable Link)</option>
+              <option value="private">Private (Only You)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
+              Clip Duration (Shorts)
+            </label>
+            <select
+              value={clipDuration}
+              onChange={(e) => setClipDuration(e.target.value)}
+              disabled={autoPilotRunning || analyzing}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: '#18181b',
+                color: '#ffffff',
+                border: '1px solid #3f3f46',
+                borderRadius: '8px',
+                fontSize: '13px'
+              }}
+            >
+              <option value="30">30 Seconds (Fast)</option>
+              <option value="45">45 Seconds (Standard)</option>
+              <option value="60">60 Seconds (Full Highlight)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
+              Spike Sensitivity ({spikeThreshold}x)
             </label>
             <input
               type="range"
@@ -372,86 +535,35 @@ export default function LiveStreamClipper() {
               step="0.1"
               value={spikeThreshold}
               onChange={(e) => setSpikeThreshold(e.target.value)}
-              disabled={analyzing}
-              style={{ width: '100%', accentColor: '#6366f1' }}
+              disabled={autoPilotRunning || analyzing}
+              style={{ width: '100%', accentColor: '#ef4444' }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#71717a' }}>
               <span>More Clips (1.5x)</span>
-              <span>Hype Spikes Only (4.0x)</span>
+              <span>Ultra Hype (4.0x)</span>
             </div>
           </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
-              Max Highlights
-            </label>
-            <select
-              value={maxClips}
-              onChange={(e) => setMaxClips(e.target.value)}
-              disabled={analyzing}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: '#18181b',
-                color: '#ffffff',
-                border: '1px solid #3f3f46',
-                borderRadius: '8px',
-                fontSize: '13px'
-              }}
-            >
-              <option value="3">Top 3 Moments</option>
-              <option value="6">Top 6 Moments</option>
-              <option value="10">Top 10 Moments</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
-              Clip Duration
-            </label>
-            <select
-              value={clipDuration}
-              onChange={(e) => setClipDuration(e.target.value)}
-              disabled={analyzing}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: '#18181b',
-                color: '#ffffff',
-                border: '1px solid #3f3f46',
-                borderRadius: '8px',
-                fontSize: '13px'
-              }}
-            >
-              <option value="30">30 Seconds (Fast Short)</option>
-              <option value="45">45 Seconds (Recommended)</option>
-              <option value="60">60 Seconds (Full Context)</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', fontWeight: '600', marginBottom: '6px' }}>
-              Video Layout (9:16 Shorts)
-            </label>
-            <select
-              value={layoutMode}
-              onChange={(e) => setLayoutMode(e.target.value)}
-              disabled={analyzing}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: '#18181b',
-                color: '#ffffff',
-                border: '1px solid #3f3f46',
-                borderRadius: '8px',
-                fontSize: '13px'
-              }}
-            >
-              <option value="blurred_stack">Blurred Ambient Stack (Recommended)</option>
-              <option value="center_crop">Center Crop 9:16</option>
-            </select>
-          </div>
         </div>
+
+        {/* Live Auto-Pilot Progress Banner */}
+        {autoPilotProgress && (
+          <div style={{
+            marginTop: '16px',
+            padding: '14px 18px',
+            background: autoPilotCompleted ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+            border: autoPilotCompleted ? '1px solid #10b981' : '1px solid #ef4444',
+            borderRadius: '10px',
+            color: autoPilotCompleted ? '#6ee7b7' : '#fca5a5',
+            fontSize: '14px',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            {autoPilotRunning && <span className="spinner" style={{ display: 'inline-block', width: '16px', height: '16px', border: '2px solid #ef4444', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
+            <span>{autoPilotProgress}</span>
+          </div>
+        )}
 
         {errorMsg && (
           <div style={{
@@ -481,8 +593,7 @@ export default function LiveStreamClipper() {
           padding: '24px',
           marginBottom: '24px'
         }}>
-          {/* Metadata banner */}
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
             {streamInfo.thumbnail && (
               <img
                 src={streamInfo.thumbnail}
@@ -494,13 +605,37 @@ export default function LiveStreamClipper() {
               <h2 style={{ margin: '0 0 6px 0', fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>
                 {streamInfo.title}
               </h2>
-              <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#a1a1aa' }}>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#a1a1aa', flexWrap: 'wrap' }}>
                 <span>👤 <strong>{streamInfo.uploader}</strong></span>
                 <span>⏱️ Duration: <strong>{streamInfo.duration_str}</strong></span>
                 {stats && <span>💬 Total Chat: <strong>{stats.total_messages?.toLocaleString()} msgs</strong></span>}
                 {stats && <span>🔥 Peak Velocity: <strong style={{ color: '#f59e0b' }}>{stats.peak_velocity_mpm} msgs/min</strong></span>}
               </div>
             </div>
+
+            {/* Quick Batch Upload Button if not all published */}
+            {moments.some(m => !clipStates[m.id]?.published) && (
+              <button
+                type="button"
+                onClick={handleBatchUploadAll}
+                style={{
+                  padding: '12px 20px',
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <span>🚀</span>
+                <span>Upload All Top Moments to YouTube</span>
+              </button>
+            )}
           </div>
 
           {/* Interactive Chat Heatmap Timeline */}
@@ -508,10 +643,10 @@ export default function LiveStreamClipper() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <span style={{ fontSize: '13px', fontWeight: '700', color: '#d4d4d8', textTransform: 'uppercase' }}>
-                  📊 Chat Explosion Velocity Graph (Messages / Minute)
+                  📊 Chat Explosion Velocity Heatmap
                 </span>
                 <span style={{ fontSize: '12px', color: '#a1a1aa' }}>
-                  Peaks marked with <strong style={{ color: '#ef4444' }}>🔴 Flame Marker</strong>
+                  Spikes marked with <strong style={{ color: '#ef4444' }}>🔴 Flame Marker</strong>
                 </span>
               </div>
 
@@ -530,7 +665,6 @@ export default function LiveStreamClipper() {
                     </linearGradient>
                   </defs>
 
-                  {/* Gradient Area */}
                   {timeline.length > 1 && (
                     <polygon
                       points={`0,${svgHeight} ${getPoints()} ${svgWidth},${svgHeight}`}
@@ -538,7 +672,6 @@ export default function LiveStreamClipper() {
                     />
                   )}
 
-                  {/* Line Chart */}
                   {timeline.length > 1 && (
                     <polyline
                       fill="none"
@@ -548,7 +681,6 @@ export default function LiveStreamClipper() {
                     />
                   )}
 
-                  {/* Peak Marker Points */}
                   {timeline.map((pt, i) => {
                     if (!pt.is_peak) return null
                     const x = (i / (timeline.length - 1)) * svgWidth
@@ -576,12 +708,12 @@ export default function LiveStreamClipper() {
         </div>
       )}
 
-      {/* Detected Moments Grid */}
+      {/* Top Moments Cards Gallery */}
       {moments.length > 0 && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#ffffff' }}>
-              🎯 Detected Chat Explosions ({moments.length})
+              🎯 Top Explosion Moments ({moments.length})
             </h2>
             <span style={{ fontSize: '13px', color: '#a1a1aa' }}>
               Ranked by chat velocity spike intensity
@@ -596,7 +728,7 @@ export default function LiveStreamClipper() {
                   key={moment.id}
                   style={{
                     background: '#18181b',
-                    border: state.rendered ? '1px solid #10b981' : '1px solid #27272a',
+                    border: state.published ? '1.5px solid #059669' : state.rendered ? '1px solid #3b82f6' : '1px solid #27272a',
                     borderRadius: '14px',
                     padding: '20px',
                     display: 'flex',
@@ -626,47 +758,47 @@ export default function LiveStreamClipper() {
                         fontSize: '12px',
                         fontWeight: '700'
                       }}>
-                        🔥 {moment.peak_velocity} msgs/min ({moment.spike_ratio}x spike)
+                        🔥 {moment.peak_velocity} msgs/min
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '13px', color: '#a1a1aa', marginBottom: '12px' }}>
-                      Clip Window: <strong>{moment.start_time_str}</strong> to <strong>{moment.end_time_str}</strong> ({moment.duration}s)
-                    </div>
-
-                    {/* Exploding Keywords Pills */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                      {(moment.top_keywords || []).map((kw, i) => (
-                        <span key={i} style={{
-                          background: '#27272a',
-                          color: '#fcd34d',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: '700'
-                        }}>
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Chat quotes preview ticker */}
-                    <div style={{
-                      background: '#09090b',
-                      borderRadius: '8px',
-                      padding: '10px 12px',
-                      marginBottom: '16px',
-                      border: '1px solid #27272a'
-                    }}>
-                      <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', marginBottom: '4px', fontWeight: '700' }}>
-                        💬 Chat Reaction At This Moment:
-                      </div>
-                      {(moment.sample_chat || []).slice(0, 3).map((chat, idx) => (
-                        <div key={idx} style={{ fontSize: '12px', color: '#d4d4d8', marginBottom: '2px', fontStyle: 'italic' }}>
-                          "{chat}"
+                    {/* Published Success Banner */}
+                    {state.published && (
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.2) 0%, rgba(6, 78, 59, 0.3) 100%)',
+                        border: '1px solid #059669',
+                        borderRadius: '10px',
+                        padding: '12px 14px',
+                        marginBottom: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a7f3d0', fontWeight: '800', fontSize: '13px' }}>
+                          <span>✅</span>
+                          <span>LIVE ON YOUTUBE</span>
                         </div>
-                      ))}
-                    </div>
+                        {state.publish_result?.shorts_url && (
+                          <a
+                            href={state.publish_result.shorts_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: '#38bdf8',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              textDecoration: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <span>🔗 Watch Short on YouTube</span>
+                            <span>↗</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
 
                     {/* Rendered Video Player Preview */}
                     {state.rendered && state.video_url && (
@@ -674,32 +806,33 @@ export default function LiveStreamClipper() {
                         <video
                           controls
                           src={state.video_url}
-                          style={{ width: '100%', maxHeight: '320px', background: '#000000', display: 'block' }}
+                          style={{ width: '100%', maxHeight: '300px', background: '#000000', display: 'block' }}
                         />
                       </div>
                     )}
 
-                    {/* Editable Title for YouTube Shorts */}
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', color: '#a1a1aa', fontWeight: '600', marginBottom: '4px' }}>
-                        YouTube Shorts Title
-                      </label>
-                      <input
-                        type="text"
-                        value={state.metadata?.title || ''}
-                        onChange={(e) => updateMetadata(moment.id, 'title', e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          background: '#09090b',
-                          border: '1px solid #3f3f46',
-                          borderRadius: '6px',
-                          color: '#ffffff',
-                          fontSize: '13px',
-                          boxSizing: 'border-box'
-                        }}
-                      />
+                    {/* Title Banner */}
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', marginBottom: '8px', lineHeight: '1.4' }}>
+                      {state.metadata?.title || moment.suggested_title}
                     </div>
+
+                    {/* Exploding Keywords Pills */}
+                    {moment.top_keywords && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                        {(moment.top_keywords || []).map((kw, i) => (
+                          <span key={i} style={{
+                            background: '#27272a',
+                            color: '#fcd34d',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '700'
+                          }}>
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions Area */}
@@ -710,106 +843,66 @@ export default function LiveStreamClipper() {
                       </div>
                     )}
 
-                    {!state.rendered ? (
+                    {!state.published ? (
                       <button
                         type="button"
-                        onClick={() => handleRenderClip(moment)}
-                        disabled={state.rendering}
+                        onClick={() => handleDirectClipAndUpload(moment)}
+                        disabled={state.rendering || state.publishing}
                         style={{
                           width: '100%',
                           padding: '12px',
-                          background: state.rendering ? '#4338ca' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+                          background: state.rendering || state.publishing
+                            ? '#b45309'
+                            : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                           border: 'none',
                           borderRadius: '8px',
                           color: '#ffffff',
-                          fontWeight: '700',
+                          fontWeight: '800',
                           fontSize: '14px',
-                          cursor: state.rendering ? 'not-allowed' : 'pointer',
+                          cursor: state.rendering || state.publishing ? 'not-allowed' : 'pointer',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '8px'
+                          gap: '8px',
+                          boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
                         }}
                       >
                         {state.rendering ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span className="spinner" style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                              <span>Sniping & Rendering (~15-20s)...</span>
-                            </div>
-                            <span style={{ fontSize: '11px', color: '#c7d2fe', fontWeight: '400' }}>
-                              Extracting live chunks & encoding 9:16 vertical short
-                            </span>
-                          </div>
+                          <>
+                            <span className="spinner" style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <span>Sniping & Rendering 9:16...</span>
+                          </>
+                        ) : state.publishing ? (
+                          <>
+                            <span className="spinner" style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <span>Publishing to YouTube...</span>
+                          </>
                         ) : (
                           <>
-                            <span>⚡</span>
-                            <span>Generate 9:16 Short</span>
+                            <span>🚀</span>
+                            <span>Direct Clip & Upload to YouTube</span>
                           </>
                         )}
                       </button>
                     ) : (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <select
-                          value={state.metadata?.privacy || 'unlisted'}
-                          onChange={(e) => updateMetadata(moment.id, 'privacy', e.target.value)}
-                          disabled={state.publishing || state.published}
-                          style={{
-                            padding: '10px 12px',
-                            background: '#09090b',
-                            border: '1px solid #3f3f46',
-                            borderRadius: '8px',
-                            color: '#ffffff',
-                            fontSize: '13px'
-                          }}
-                        >
-                          <option value="unlisted">Unlisted</option>
-                          <option value="public">Public</option>
-                          <option value="private">Private</option>
-                        </select>
-
-                        <button
-                          type="button"
-                          onClick={() => handlePublishYouTube(moment.id)}
-                          disabled={state.publishing || state.published}
-                          style={{
-                            flex: 1,
-                            padding: '10px 16px',
-                            background: state.published
-                              ? '#059669'
-                              : state.publishing
-                              ? '#b45309'
-                              : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                            border: 'none',
-                            borderRadius: '8px',
-                            color: '#ffffff',
-                            fontWeight: '700',
-                            fontSize: '13px',
-                            cursor: state.publishing || state.published ? 'default' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px'
-                          }}
-                        >
-                          {state.published ? (
-                            <>
-                              <span>✅</span>
-                              <span>Published to YouTube</span>
-                            </>
-                          ) : state.publishing ? (
-                            <>
-                              <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                              <span>Uploading...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>🚀</span>
-                              <span>Approve & Upload to YouTube</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
+                      <a
+                        href={state.publish_result?.shorts_url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'block',
+                          textAlign: 'center',
+                          padding: '12px',
+                          background: '#059669',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          fontWeight: '800',
+                          fontSize: '14px',
+                          textDecoration: 'none'
+                        }}
+                      >
+                        ▶️ Open Short on YouTube
+                      </a>
                     )}
                   </div>
                 </div>
@@ -828,4 +921,3 @@ export default function LiveStreamClipper() {
     </div>
   )
 }
-

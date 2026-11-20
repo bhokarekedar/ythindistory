@@ -40,6 +40,98 @@ class StreamUploadRequest(BaseModel):
     privacy_status: Optional[str] = "unlisted"
 
 
+class StreamAutoUploadRequest(BaseModel):
+    url: str
+    top_n: int = 3
+    spike_threshold: float = 2.0
+    clip_duration: int = 45
+    layout: str = "blurred_stack"
+    privacy_status: str = "public"
+
+
+@router.post("/auto-upload-top-moments")
+def auto_upload_top_moments(request: StreamAutoUploadRequest):
+    url = request.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Livestream URL cannot be empty")
+
+    try:
+        # 1. Fetch metadata
+        info = get_stream_info(url)
+
+        # 2. Extract chat & detect explosions
+        messages = fetch_live_chat_messages(url, max_messages=40000, timeout_sec=45)
+        analysis = analyze_chat_velocity(
+            messages=messages,
+            duration=info["duration"],
+            spike_threshold=request.spike_threshold,
+            max_clips=request.top_n,
+            clip_duration=request.clip_duration
+        )
+
+        moments = analysis.get("moments", [])
+        if not moments:
+            raise HTTPException(status_code=404, detail="No explosive chat moments detected in stream")
+
+        processed_results = []
+        for moment in moments[:request.top_n]:
+            moment_id = moment["id"]
+            clip_id = f"stream_{moment_id}"
+
+            # Download & vertical render
+            raw_path = renderer.download_segment(
+                url=url,
+                start_time=moment["start_time"],
+                duration=moment["duration"],
+                clip_id=clip_id
+            )
+            final_mp4 = renderer.render_vertical(
+                raw_video_path=raw_path,
+                clip_id=clip_id,
+                layout=request.layout
+            )
+
+            # Metadata
+            meta = renderer.generate_ai_metadata(
+                stream_title=info.get("title", ""),
+                streamer=info.get("uploader", ""),
+                top_keywords=moment.get("top_keywords", []),
+                sample_chat=moment.get("sample_chat", [])
+            )
+
+            title = meta.get("title") or moment.get("suggested_title")
+            desc = meta.get("description", "")
+            tags = meta.get("tags", ["Shorts"])
+
+            # Direct Upload to YouTube
+            upload_res = publisher.upload_video(
+                video_path=final_mp4,
+                title=title,
+                description=desc,
+                tags=tags,
+                privacy_status=request.privacy_status or "public"
+            )
+
+            processed_results.append({
+                "moment_id": moment_id,
+                "clip_id": clip_id,
+                "peak_time_str": moment["peak_time_str"],
+                "peak_velocity": moment["peak_velocity"],
+                "title": title,
+                "video_url": f"/output/stream_clips/{clip_id}.mp4",
+                "upload_result": upload_res
+            })
+
+        return {
+            "status": "success",
+            "stream_info": info,
+            "uploaded_count": len(processed_results),
+            "results": processed_results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auto-upload failed: {str(e)}")
+
+
 @router.post("/analyze")
 def analyze_livestream(request: StreamAnalyzeRequest):
     url = request.url.strip()

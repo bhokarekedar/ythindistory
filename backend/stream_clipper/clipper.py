@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 import subprocess
 import json
 from typing import Dict, Any, Optional
@@ -81,9 +82,10 @@ class StreamClipRenderer:
             print(f"[StreamClipper] Direct stream download fallback note: {e}")
 
         # Method 2: yt-dlp range download fallback
+        tmpl_pattern = os.path.join(self.temp_dir, "stream_clips", f"{clip_id}_raw.%(ext)s")
         ydl_fallback_opts = {
             'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
-            'outtmpl': raw_output,
+            'outtmpl': tmpl_pattern,
             'download_ranges': yt_dlp.utils.download_range_func(None, [(start_time, start_time + duration)]),
             'force_keyframes_at_cuts': True,
             'quiet': True,
@@ -94,10 +96,12 @@ class StreamClipRenderer:
         with yt_dlp.YoutubeDL(ydl_fallback_opts) as ydl:
             ydl.download([url])
 
-        if not os.path.exists(raw_output) or os.path.getsize(raw_output) < 1024:
+        candidates = glob.glob(os.path.join(self.temp_dir, "stream_clips", f"{clip_id}_raw.*"))
+        valid = [c for c in candidates if os.path.exists(c) and os.path.getsize(c) > 1024]
+        if not valid:
             raise FileNotFoundError(f"Failed to download stream clip section for {clip_id}")
 
-        return raw_output
+        return valid[0]
 
     def render_vertical(
         self,
