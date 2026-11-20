@@ -19,9 +19,9 @@ venv/
 
 # Secrets & OAuth Tokens
 backend/data/client_secrets.json
-backend/data/youtube_token.json
+backend/data/youtube_token*.json
 client_secrets.json
-youtube_token.json
+youtube_token*.json
 
 # Media artifacts
 *.mp4

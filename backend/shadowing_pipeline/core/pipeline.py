@@ -1,6 +1,7 @@
 """End-to-End Orchestrator for the English Shadowing Video Pipeline.
 """
 
+import copy
 import json
 import time
 from pathlib import Path
@@ -68,7 +69,30 @@ class ShadowingVideoPipeline:
             raw_dict = script_input
 
         print("🔍 Validating script schema...")
-        script = parse_and_validate_script(raw_dict)
+        # The video renderer must ignore "youtube" completely
+        try:
+            script = parse_and_validate_script(raw_dict)
+        except ValueError as val_err:
+            # If youtube metadata has validation errors, the video renderer still proceeds
+            temp_dict = copy.deepcopy(raw_dict)
+            yt_block = temp_dict.pop("youtube", None) if isinstance(temp_dict, dict) else None
+            # Validate segments strictly
+            script = parse_and_validate_script(temp_dict, require_youtube=False)
+            if yt_block and isinstance(yt_block, dict):
+                # Auto-trim tags if > 500 characters so auto-upload still succeeds
+                if isinstance(yt_block.get("tags"), list):
+                    trimmed_tags = []
+                    curr_len = 0
+                    for t in yt_block["tags"]:
+                        add_len = len(str(t)) + (1 if trimmed_tags else 0)
+                        if curr_len + add_len <= 500:
+                            trimmed_tags.append(str(t).lower())
+                            curr_len += add_len
+                    yt_block["tags"] = trimmed_tags
+                from shadowing_pipeline.core.schema import validate_youtube_metadata
+                parsed_yt, _, _ = validate_youtube_metadata(yt_block, temp_dict.get("segments"))
+                script.youtube = parsed_yt
+            print(f"ℹ️ Video renderer proceeding (YouTube metadata auto-adapted: {val_err})")
         print(f"✅ Script validated: '{script.title}' ({len(script.segments)} segments)")
 
         # 2. Build Timeline
@@ -209,7 +233,25 @@ class ShadowingVideoPipeline:
         else:
             raw_dict = script_input
 
-        script = parse_and_validate_script(raw_dict)
+        try:
+            script = parse_and_validate_script(raw_dict)
+        except ValueError as val_err:
+            temp_dict = copy.deepcopy(raw_dict)
+            yt_block = temp_dict.pop("youtube", None) if isinstance(temp_dict, dict) else None
+            script = parse_and_validate_script(temp_dict, require_youtube=False)
+            if yt_block and isinstance(yt_block, dict):
+                if isinstance(yt_block.get("tags"), list):
+                    trimmed_tags = []
+                    curr_len = 0
+                    for t in yt_block["tags"]:
+                        add_len = len(str(t)) + (1 if trimmed_tags else 0)
+                        if curr_len + add_len <= 500:
+                            trimmed_tags.append(str(t).lower())
+                            curr_len += add_len
+                    yt_block["tags"] = trimmed_tags
+                from shadowing_pipeline.core.schema import validate_youtube_metadata
+                parsed_yt, _, _ = validate_youtube_metadata(yt_block, temp_dict.get("segments"))
+                script.youtube = parsed_yt
         events = self.timeline_builder.build_timeline(script, preview=False)
         total_duration = events[-1].end_time if events else 0.0
 

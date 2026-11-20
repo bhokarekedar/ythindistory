@@ -31,8 +31,7 @@ const sampleScript = {
       "common interview answers english",
       "improve english speaking",
       "english pronunciation practice",
-      "english for beginners and intermediate",
-      "daily english practice"
+      "english beginners"
     ],
     "hashtags": ["#EnglishShadowing", "#JobInterviewEnglish", "#SpeakEnglish"],
     "thumbnail_text": "SPEAK IN INTERVIEWS",

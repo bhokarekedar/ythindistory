@@ -287,10 +287,23 @@ def upload_to_youtube(
     category_id = CATEGORY_MAP.get(cat_name, "27")
 
     # Map fields (note: title_alternatives is intentionally omitted from snippet)
+    raw_tags = meta.get("tags", [])[:30]
+    safe_tags = []
+    curr_len = 0
+    for t in raw_tags:
+        t_str = str(t).strip().lower()
+        add_len = len(t_str) + (1 if safe_tags else 0)
+        if curr_len + add_len <= 500:
+            safe_tags.append(t_str)
+            curr_len += add_len
+        else:
+            logger.warning(f"Trimming tag '{t_str}' because total tags length would exceed 500 chars.")
+            break
+
     snippet_body = {
         "title": meta.get("title", "Untitled Shadowing Lesson")[:100],
         "description": meta.get("description", "")[:5000],
-        "tags": meta.get("tags", [])[:30],
+        "tags": safe_tags,
         "categoryId": category_id,
         "defaultLanguage": meta.get("language", "en"),
     }
