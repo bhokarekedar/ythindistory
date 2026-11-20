@@ -1,0 +1,24 @@
+# Output & Generated Video Files
+output/
+_temp/
+temp/
+
+# Audio Cache
+shadowing_pipeline/assets/audio_cache/
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Media artifacts
+*.mp4
+*.wav
+*.aiff
+
+# OS files
+.DS_Store
+Thumbs.db
+
