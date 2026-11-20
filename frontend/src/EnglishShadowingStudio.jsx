@@ -81,6 +81,13 @@ export default function EnglishShadowingStudio() {
   const [formatSuccess, setFormatSuccess] = useState(false);
   const [showMetaPreview, setShowMetaPreview] = useState(false);
 
+  // AI Script QA Auditor States
+  const [auditing, setAuditing] = useState(false);
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [auditData, setAuditData] = useState(null);
+  const [pendingRenderPreview, setPendingRenderPreview] = useState(null);
+  const [auditNotice, setAuditNotice] = useState('');
+
   // YouTube Channel States
   const [ytChannel, setYtChannel] = useState(null);
   const [connectingChannel, setConnectingChannel] = useState(false);
@@ -350,8 +357,9 @@ export default function EnglishShadowingStudio() {
     }
   };
 
-  const handleStartGeneration = async (preview = false) => {
+  const handleRunAudit = async () => {
     setErrorMsg('');
+    setAuditNotice('');
     let parsed;
     try {
       parsed = JSON.parse(scriptJson.trim());
@@ -359,22 +367,36 @@ export default function EnglishShadowingStudio() {
       setErrorMsg('JSON Parse Error: Please verify valid JSON syntax. ' + e.message);
       return;
     }
-
-    // Auto-normalize if user pasted just a single segment or an array of segments
     if (Array.isArray(parsed)) {
-      parsed = {
-        title: "English Shadowing Practice",
-        segments: parsed
-      };
-    } else if (typeof parsed === 'object' && parsed !== null) {
-      if (parsed.type && !parsed.segments) {
-        parsed = {
-          title: "English Shadowing Practice",
-          segments: [parsed]
-        };
-      }
+      parsed = { title: "English Shadowing Practice", segments: parsed };
     }
+    setAuditing(true);
+    try {
+      const resp = await fetch(`${BACKEND_BASE}/api/shadowing/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: parsed })
+      });
+      if (!resp.ok) {
+        let errDetail = 'Audit request failed';
+        try {
+          const errData = await resp.json();
+          errDetail = errData.detail || errDetail;
+        } catch (_) {}
+        throw new Error(errDetail);
+      }
+      const data = await resp.json();
+      setAuditData(data);
+      setPendingRenderPreview(null);
+      setAuditModalOpen(true);
+    } catch (err) {
+      setErrorMsg('Audit Error: ' + err.message);
+    } finally {
+      setAuditing(false);
+    }
+  };
 
+  const executeGeneration = async (scriptObj, preview = false) => {
     setLoading(true);
     setProgress(0);
     setStatusText('Submitting script to shadowing renderer...');
@@ -384,7 +406,7 @@ export default function EnglishShadowingStudio() {
       const resp = await fetch(`${BACKEND_BASE}/api/shadowing/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: parsed, preview })
+        body: JSON.stringify({ script: scriptObj, preview })
       });
 
       if (!resp.ok) {
@@ -455,6 +477,102 @@ export default function EnglishShadowingStudio() {
       setErrorMsg(`Connection Error: ${err.message}. (Ensure backend server is running on port 8000).`);
       setLoading(false);
     }
+  };
+
+  const handleStartGeneration = async (preview = false, bypassAudit = false) => {
+    setErrorMsg('');
+    setAuditNotice('');
+    let parsed;
+    try {
+      parsed = JSON.parse(scriptJson.trim());
+    } catch (e) {
+      setErrorMsg('JSON Parse Error: Please verify valid JSON syntax. ' + e.message);
+      return;
+    }
+
+    // Auto-normalize if user pasted just a single segment or an array of segments
+    if (Array.isArray(parsed)) {
+      parsed = {
+        title: "English Shadowing Practice",
+        segments: parsed
+      };
+    } else if (typeof parsed === 'object' && parsed !== null) {
+      if (parsed.type && !parsed.segments) {
+        parsed = {
+          title: "English Shadowing Practice",
+          segments: [parsed]
+        };
+      }
+    }
+
+    let scriptToRun = parsed;
+
+    // Run AI QA Audit unless bypassed
+    if (!bypassAudit) {
+      setLoading(true);
+      setProgress(0);
+      setStatusText('Running AI Script QA Audit (Groq LLM)...');
+      try {
+        const auditResp = await fetch(`${BACKEND_BASE}/api/shadowing/audit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script: parsed })
+        });
+        if (auditResp.ok) {
+          const auditRes = await auditResp.json();
+          if (auditRes.patch_count > 0) {
+            if (auditRes.requires_approval) {
+              // > 10% modifications requires user approval!
+              setLoading(false);
+              setAuditData(auditRes);
+              setPendingRenderPreview(preview);
+              setAuditModalOpen(true);
+              return;
+            } else {
+              // <= 10% auto-applied!
+              scriptToRun = auditRes.modified_script;
+              setScriptJson(JSON.stringify(scriptToRun, null, 2));
+              setAuditNotice(
+                `✨ AI QA auto-applied ${auditRes.patch_count} minor fix(es) (${auditRes.patch_percentage}% of segments) for TTS/naturalness.`
+              );
+            }
+          }
+        }
+      } catch (auditErr) {
+        console.warn('AI QA Audit skipped or failed, proceeding with original script:', auditErr);
+      }
+    }
+
+    await executeGeneration(scriptToRun, preview);
+  };
+
+  const handleApproveAndRender = () => {
+    if (!auditData) return;
+    const toRun = auditData.modified_script || auditData.original_script;
+    const isPrev = pendingRenderPreview !== null ? pendingRenderPreview : false;
+    setScriptJson(JSON.stringify(toRun, null, 2));
+    setAuditNotice(`✅ Approved and applied ${auditData.patch_count} AI QA patch(es). Rendering started...`);
+    setAuditModalOpen(false);
+    setPendingRenderPreview(null);
+    executeGeneration(toRun, isPrev);
+  };
+
+  const handleIgnoreAndRender = () => {
+    if (!auditData) return;
+    const toRun = auditData.original_script;
+    const isPrev = pendingRenderPreview !== null ? pendingRenderPreview : false;
+    setAuditModalOpen(false);
+    setPendingRenderPreview(null);
+    executeGeneration(toRun, isPrev);
+  };
+
+  const handleApplyPatchesToEditor = () => {
+    if (!auditData) return;
+    const toRun = auditData.modified_script;
+    setScriptJson(JSON.stringify(toRun, null, 2));
+    setAuditNotice(`✨ Applied ${auditData.patch_count} AI QA patch(es) to script editor.`);
+    setAuditModalOpen(false);
+    setPendingRenderPreview(null);
   };
 
   return (
@@ -717,6 +835,42 @@ export default function EnglishShadowingStudio() {
             }}
           />
 
+          {/* AI QA Notification Banner */}
+          {auditNotice && (
+            <div style={{
+              background: 'rgba(34, 197, 94, 0.15)',
+              border: '1px solid #22c55e',
+              color: '#86efac',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: '0 2px 8px rgba(34, 197, 94, 0.1)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🛡️</span>
+                <span>{auditNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAuditNotice('')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#86efac',
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 'bold',
+                  padding: '2px 6px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Bottom Toolbar right below editor */}
           <div style={{
             display: 'flex',
@@ -726,7 +880,7 @@ export default function EnglishShadowingStudio() {
             flexWrap: 'wrap',
             gap: '10px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={handleFormatJson}
@@ -771,6 +925,30 @@ export default function EnglishShadowingStudio() {
                 }}
               >
                 🔍 Check Syntax
+              </button>
+
+              <button
+                type="button"
+                disabled={loading || auditing}
+                onClick={handleRunAudit}
+                title="Audit script quality, phonetic spoken overrides, and TTS safety using Groq LLM"
+                style={{
+                  background: auditing ? '#581c87' : 'rgba(168, 85, 247, 0.15)',
+                  color: '#d8b4fe',
+                  border: '1px solid rgba(168, 85, 247, 0.4)',
+                  borderRadius: '6px',
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: (loading || auditing) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                  boxShadow: '0 2px 6px rgba(168, 85, 247, 0.15)'
+                }}
+              >
+                <span>{auditing ? '⏳ Auditing Script...' : '🛡️ Audit Script (AI QA)'}</span>
               </button>
             </div>
 
@@ -1199,6 +1377,331 @@ export default function EnglishShadowingStudio() {
           )}
         </div>
       </div>
+
+      {/* AI QA Audit & Approval Modal */}
+      {auditModalOpen && auditData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#18181b',
+            border: '1px solid #3f3f46',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '850px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '18px 24px',
+              borderBottom: '1px solid #27272a',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#121215'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '24px' }}>🛡️</span>
+                <div>
+                  <h3 style={{ margin: 0, color: '#f4f4f5', fontSize: '18px', fontWeight: '700' }}>
+                    AI Script QA Audit & Patch Review
+                  </h3>
+                  <div style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '2px' }}>
+                    Inspected with Groq LLM (ESL A2-B2 Shadowing Rules & TTS Safety)
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  background: auditData.requires_approval ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                  color: auditData.requires_approval ? '#fca5a5' : '#86efac',
+                  border: `1px solid ${auditData.requires_approval ? '#ef4444' : '#22c55e'}`,
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '12px'
+                }}>
+                  {auditData.requires_approval ? `Approval Required (${auditData.patch_percentage}% > 10%)` : `Safe / Minor (${auditData.patch_percentage}% ≤ 10%)`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setAuditModalOpen(false); setPendingRenderPreview(null); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#9ca3af',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{
+              padding: '20px 24px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}>
+              {/* Summary Metrics */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: '12px'
+              }}>
+                <div style={{ background: '#27272a', padding: '12px 14px', borderRadius: '10px', border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Audit Verdict</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: auditData.summary?.verdict === 'pass' ? '#4ade80' : auditData.summary?.verdict === 'major_rewrite' ? '#f87171' : '#fbbf24', textTransform: 'capitalize' }}>
+                    {auditData.summary?.verdict || 'Reviewed'}
+                  </div>
+                </div>
+
+                <div style={{ background: '#27272a', padding: '12px 14px', borderRadius: '10px', border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Patches / Affected</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: auditData.requires_approval ? '#fca5a5' : '#38bdf8' }}>
+                    {auditData.patch_count} / {auditData.total_segments} ({auditData.patch_percentage}%)
+                  </div>
+                </div>
+
+                <div style={{ background: '#27272a', padding: '12px 14px', borderRadius: '10px', border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Shadow Sentences</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: '#f4f4f5' }}>
+                    {auditData.summary?.shadow_count || 0}
+                  </div>
+                </div>
+
+                <div style={{ background: '#27272a', padding: '12px 14px', borderRadius: '10px', border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Est. Duration</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: '#f4f4f5' }}>
+                    ~{auditData.summary?.estimated_minutes || scriptStats.estimatedDurationMinutes} mins
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Issues Alert Box if any */}
+              {auditData.summary?.top_issues && auditData.summary.top_issues.length > 0 && (
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '10px',
+                  padding: '12px 16px'
+                }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#fbbf24', marginBottom: '6px' }}>
+                    Key Findings from Auditor:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: '#fef3c7', lineHeight: '1.6' }}>
+                    {auditData.summary.top_issues.map((issue, idx) => (
+                      <li key={idx}>{issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Patches List */}
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#e4e4e7', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Proposed Patches ({auditData.patches?.length || 0})</span>
+                  <span style={{ fontSize: '11px', color: '#71717a' }}>Changes will only be applied if approved</span>
+                </div>
+
+                {(!auditData.patches || auditData.patches.length === 0) ? (
+                  <div style={{
+                    padding: '24px',
+                    textAlign: 'center',
+                    background: '#27272a',
+                    borderRadius: '10px',
+                    color: '#86efac',
+                    fontSize: '13px'
+                  }}>
+                    🎉 <strong>All Clean!</strong> Zero patches required. The script conforms with all ESL shadowing and TTS rules.
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    maxHeight: '340px',
+                    overflowY: 'auto',
+                    paddingRight: '4px'
+                  }}>
+                    {auditData.patches.map((p, pIdx) => {
+                      const origSeg = auditData.original_script?.segments?.find(s => s.id === p.id);
+                      return (
+                        <div
+                          key={pIdx}
+                          style={{
+                            background: '#27272a',
+                            border: '1px solid #3f3f46',
+                            borderRadius: '8px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                background: p.action === 'replace' ? '#ea580c' : p.action === 'delete' ? '#dc2626' : '#16a34a',
+                                color: '#fff',
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                textTransform: 'uppercase'
+                              }}>
+                                {p.action}
+                              </span>
+                              <span style={{ fontFamily: 'monospace', fontSize: '12px', color: '#38bdf8', fontWeight: 'bold' }}>
+                                {p.id}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#d4d4d8', fontStyle: 'italic' }}>
+                              {p.reason}
+                            </span>
+                          </div>
+
+                          {/* Detail / Diff */}
+                          {p.action === 'replace' && (
+                            <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {origSeg && (
+                                <div style={{ color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                                  <strong style={{ fontSize: '10px' }}>BEFORE:</strong> "{origSeg.text}" {origSeg.spoken ? `[spoken: ${origSeg.spoken}]` : ''}
+                                </div>
+                              )}
+                              <div style={{ color: '#4ade80', background: 'rgba(34, 197, 94, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                                <strong style={{ fontSize: '10px' }}>AFTER:</strong> "{p.segment?.text}" {p.segment?.spoken ? <span style={{ color: '#38bdf8' }}>[spoken: "{p.segment.spoken}"]</span> : ''}
+                              </div>
+                            </div>
+                          )}
+
+                          {p.action === 'delete' && (
+                            <div style={{ fontSize: '12px', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                              <strong style={{ fontSize: '10px' }}>REMOVED:</strong> "{origSeg?.text || p.id}"
+                            </div>
+                          )}
+
+                          {p.action === 'insert_after' && (
+                            <div style={{ fontSize: '12px', color: '#4ade80', background: 'rgba(34, 197, 94, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                              <strong style={{ fontSize: '10px' }}>INSERTED ({p.segment?.id}):</strong> "{p.segment?.text}"
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer Controls */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid #27272a',
+              background: '#121215',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              <button
+                type="button"
+                onClick={() => { setAuditModalOpen(false); setPendingRenderPreview(null); }}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #3f3f46',
+                  color: '#d4d4d8',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleApplyPatchesToEditor}
+                  title="Apply changes into JSON editor to review or edit manually"
+                  style={{
+                    background: '#27272a',
+                    border: '1px solid #0284c7',
+                    color: '#38bdf8',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✏️ Apply to Editor Only
+                </button>
+
+                {pendingRenderPreview !== null && (
+                  <button
+                    type="button"
+                    onClick={handleIgnoreAndRender}
+                    title="Ignore patches and render video with your original script"
+                    style={{
+                      background: '#3f3f46',
+                      border: 'none',
+                      color: '#f4f4f5',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🚫 Keep Original & Render
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={pendingRenderPreview !== null ? handleApproveAndRender : handleApplyPatchesToEditor}
+                  style={{
+                    background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(22, 163, 74, 0.4)'
+                  }}
+                >
+                  {pendingRenderPreview !== null ? '✅ Approve & Render Video' : '✅ Apply All Patches'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

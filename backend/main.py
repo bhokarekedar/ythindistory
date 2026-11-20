@@ -2361,10 +2361,24 @@ shadowing_jobs: Dict[str, Dict[str, Any]] = _load_shadowing_jobs()
 class ShadowingGenerateRequest(BaseModel):
     script: Dict[str, Any]
     preview: bool = False
+    approved_patches: Optional[List[Dict[str, Any]]] = None
 
-def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
+class ShadowingAuditRequest(BaseModel):
+    script: Dict[str, Any]
+
+class ShadowingApplyPatchesRequest(BaseModel):
+    script: Dict[str, Any]
+    patches: List[Dict[str, Any]]
+
+def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool, approved_patches: list = None):
     try:
         from shadowing_pipeline.core.pipeline import ShadowingVideoPipeline
+        from shadowing_pipeline.core.auditor import ShadowingScriptAuditor
+
+        if approved_patches:
+            script_data = ShadowingScriptAuditor.apply_patches(script_data, approved_patches)
+            shadowing_jobs[job_id]["status_text"] = f"Applied {len(approved_patches)} QA audit patches..."
+            _save_shadowing_jobs()
         shadowing_jobs[job_id]["status"] = "processing"
         shadowing_jobs[job_id]["status_text"] = "Parsing script & generating audio/timeline..."
         _save_shadowing_jobs()
@@ -2432,11 +2446,32 @@ def start_shadowing_generation(req: ShadowingGenerateRequest):
     _save_shadowing_jobs()
     t = threading.Thread(
         target=_run_shadowing_job_worker,
-        args=(job_id, req.script, req.preview),
+        args=(job_id, req.script, req.preview, req.approved_patches),
         daemon=True,
     )
     t.start()
     return {"job_id": job_id, "message": "Shadowing video job started"}
+
+
+@app.post("/api/shadowing/audit")
+def audit_shadowing_script(req: ShadowingAuditRequest):
+    try:
+        from shadowing_pipeline.core.auditor import ShadowingScriptAuditor
+        auditor = ShadowingScriptAuditor()
+        result = auditor.audit_script(req.script)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
+
+
+@app.post("/api/shadowing/apply-patches")
+def apply_shadowing_patches(req: ShadowingApplyPatchesRequest):
+    try:
+        from shadowing_pipeline.core.auditor import ShadowingScriptAuditor
+        modified = ShadowingScriptAuditor.apply_patches(req.script, req.patches)
+        return {"success": True, "modified_script": modified}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to apply patches: {str(e)}")
 
 
 @app.post("/api/shadowing/export-metadata")
