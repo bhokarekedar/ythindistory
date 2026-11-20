@@ -74,23 +74,23 @@ export default function LiveStreamClipper() {
 
       // Initialize clip states
       const initial = {}
-      ;(data.moments || []).forEach(m => {
-        initial[m.id] = {
-          rendering: false,
-          rendered: false,
-          video_url: null,
-          metadata: {
-            title: m.suggested_title,
-            description: `Live chat went crazy during ${data.stream_info?.uploader || 'the stream'}! \n\n#Shorts #LiveStream #Highlights`,
-            tags: ['Shorts', 'StreamHighlights', ...(m.top_keywords || [])],
-            privacy: 'unlisted'
-          },
-          publishing: false,
-          published: false,
-          publish_result: null,
-          error: null
-        }
-      })
+        ; (data.moments || []).forEach(m => {
+          initial[m.id] = {
+            rendering: false,
+            rendered: false,
+            video_url: null,
+            metadata: {
+              title: m.suggested_title,
+              description: `Live chat went crazy during ${data.stream_info?.uploader || 'the stream'}! \n\n#Shorts #LiveStream #Highlights`,
+              tags: ['Shorts', 'StreamHighlights', ...(m.top_keywords || [])],
+              privacy: 'unlisted'
+            },
+            publishing: false,
+            published: false,
+            publish_result: null,
+            error: null
+          }
+        })
       setClipStates(initial)
     } catch (err) {
       setErrorMsg(err.message || 'Stream analysis failed. Please check the URL.')
@@ -227,7 +227,7 @@ export default function LiveStreamClipper() {
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', color: '#e4e4e7', padding: '10px 0 60px 0' }}>
-      
+
       {/* Header Banner */}
       <div style={{
         background: 'linear-gradient(135deg, #18181b 0%, #1e1b4b 50%, #0f172a 100%)',
@@ -258,7 +258,7 @@ export default function LiveStreamClipper() {
               </span>
             </div>
             <p style={{ margin: 0, color: '#a1a1aa', fontSize: '15px', maxWidth: '750px', lineHeight: '1.5' }}>
-              Snipes moments when live chat exploded with messages, laughs, superchats, and hype. 
+              Snipes moments when live chat exploded with messages, laughs, superchats, and hype.
               Zero manual scrubbing: isolates peak moments, generates vertical 9:16 Shorts, and publishes directly to YouTube.
             </p>
           </div>
@@ -297,7 +297,7 @@ export default function LiveStreamClipper() {
         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#d4d4d8', marginBottom: '8px', textTransform: 'uppercase' }}>
           Live Stream or VOD Replay URL
         </label>
-        
+
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <input
             type="text"
@@ -732,10 +732,15 @@ export default function LiveStreamClipper() {
                         }}
                       >
                         {state.rendering ? (
-                          <>
-                            <span className="spinner" style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            <span>Clipping & Rendering 9:16...</span>
-                          </>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="spinner" style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              <span>Sniping & Rendering (~15-20s)...</span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#c7d2fe', fontWeight: '400' }}>
+                              Extracting live chunks & encoding 9:16 vertical short
+                            </span>
+                          </div>
                         ) : (
                           <>
                             <span>⚡</span>
@@ -773,8 +778,8 @@ export default function LiveStreamClipper() {
                             background: state.published
                               ? '#059669'
                               : state.publishing
-                              ? '#b45309'
-                              : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                ? '#b45309'
+                                : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                             border: 'none',
                             borderRadius: '8px',
                             color: '#ffffff',

@@ -71,8 +71,7 @@ def fetch_live_chat_messages(url: str, max_messages: int = 50000, timeout_sec: i
             url=url,
             max_messages=max_messages,
             timeout=timeout_sec,
-            inactivity_timeout=15,
-            message_types=['text_message', 'super_chat', 'super_sticker', 'paid_message']
+            inactivity_timeout=15
         )
         
         for msg in chat_iter:
