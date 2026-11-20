@@ -3,6 +3,7 @@ import './App.css'
 import ViralClipGenerator from './ViralClipGenerator'
 import CampaignIntelligence from './CampaignIntelligence'
 import EnglishShadowingStudio from './EnglishShadowingStudio'
+import LiveStreamClipper from './LiveStreamClipper'
 
 const RECAP_WEBHOOK_URL = 'http://localhost:5678/webhook/video-complete'
 const THRILLER_WEBHOOK_URL = 'http://localhost:5678/webhook/2a1c46d4-d081-420d-af06-7cc5d94ddaa6'
@@ -419,192 +420,242 @@ function App() {
 
   return (
     <div className="container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 style={{ margin: 0, fontSize: '26px' }}>Automated Video Studio</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '12px', color: '#155724', background: '#d4edda', padding: '6px 12px', borderRadius: '6px', border: '1px solid #c3e6cb' }} title="Permanently saved scripts for LLM fine-tuning (never cleared by temp/output cleanup)">
-            📚 Datasets: <b>{datasetCount}</b>
-          </span>
-          <span style={{ fontSize: '12px', color: '#555', background: '#f1f3f5', padding: '6px 12px', borderRadius: '6px', border: '1px solid #dee2e6' }}>
-            💾 Temp: <b>{storageStats.temp_size}</b> | Output: <b>{storageStats.output_size}</b>
-          </span>
+      {/* Top Header Bar */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+        flexWrap: 'wrap',
+        gap: '14px',
+        padding: '4px 0'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)'
+          }}>
+            🎬
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '800', letterSpacing: '-0.5px', color: '#ffffff' }}>
+                Automated Video Studio
+              </h1>
+              <span style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                background: 'rgba(99, 102, 241, 0.15)',
+                color: '#a5b4fc',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                fontWeight: '700',
+                letterSpacing: '0.5px'
+              }}>
+                PRO
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: '13px', color: '#71717a', fontWeight: '500' }}>
+              Multi-Channel AI Production & Automation Hub
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{
+            fontSize: '12px',
+            color: '#34d399',
+            background: 'rgba(16, 185, 129, 0.1)',
+            padding: '7px 14px',
+            borderRadius: '8px',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontWeight: '600'
+          }} title="Permanently saved scripts for LLM fine-tuning (never cleared by temp/output cleanup)">
+            <span>📚</span>
+            <span>Datasets:</span>
+            <b style={{ color: '#10b981' }}>{datasetCount}</b>
+          </div>
+
+          <div style={{
+            fontSize: '12px',
+            color: '#d4d4d8',
+            background: 'rgba(255, 255, 255, 0.05)',
+            padding: '7px 14px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontWeight: '500'
+          }}>
+            <span>💾</span>
+            <span>Temp: <b style={{ color: '#ffffff' }}>{storageStats.temp_size}</b></span>
+            <span style={{ color: '#52525b' }}>|</span>
+            <span>Output: <b style={{ color: '#ffffff' }}>{storageStats.output_size}</b></span>
+          </div>
+
           <button 
             type="button" 
             onClick={handleClearStorage} 
             disabled={cleaning}
             style={{ 
-              padding: '6px 12px', 
+              padding: '7px 14px', 
               fontSize: '12px', 
-              background: '#6c757d', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '6px', 
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              transition: 'background 0.2s'
+              background: 'rgba(239, 68, 68, 0.12)', 
+              color: '#f87171', 
+              border: '1px solid rgba(239, 68, 68, 0.25)', 
+              borderRadius: '8px', 
+              cursor: cleaning ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease'
             }}
-            onMouseOver={(e) => e.target.style.background = '#5a6268'}
-            onMouseOut={(e) => e.target.style.background = '#6c757d'}
+            onMouseOver={(e) => { if (!cleaning) { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.22)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)'; } }}
+            onMouseOut={(e) => { if (!cleaning) { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)'; } }}
           >
-            {cleaning ? 'Cleaning...' : '🧹 Clear Storage'}
+            <span>{cleaning ? '⏳' : '🧹'}</span>
+            <span>{cleaning ? 'Cleaning...' : 'Clear Storage'}</span>
           </button>
         </div>
       </div>
 
       {/* Top-Level Navigation Tabs */}
       <div style={{
-        display: 'flex',
-        gap: '12px',
-        marginBottom: '24px',
-        background: '#18181b',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        gap: '8px',
+        marginBottom: '26px',
+        background: '#13141a',
         padding: '6px',
-        borderRadius: '12px',
-        border: '1px solid #27272a'
+        borderRadius: '14px',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
       }}>
-        <button
-          type="button"
-          onClick={() => setActiveAppTab('viral_clip')}
-          style={{
-            flex: 1,
-            padding: '12px 18px',
-            borderRadius: '8px',
-            border: activeAppTab === 'viral_clip' ? '1.5px solid #6366f1' : '1px solid transparent',
-            background: activeAppTab === 'viral_clip' ? 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)' : 'transparent',
-            color: activeAppTab === 'viral_clip' ? '#ffffff' : '#a1a1aa',
-            fontWeight: activeAppTab === 'viral_clip' ? 'bold' : '500',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            fontSize: '15px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <span>🔥</span>
-          <span>Viral Clip Generator</span>
-          <span style={{
-            fontSize: '11px',
-            background: activeAppTab === 'viral_clip' ? '#4f46e5' : '#27272a',
-            color: '#c7d2fe',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            textTransform: 'uppercase',
-            fontWeight: 'bold'
-          }}>
-            ViralLoop
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveAppTab('campaign_intelligence')}
-          style={{
-            flex: 1,
-            padding: '12px 18px',
-            borderRadius: '8px',
-            border: activeAppTab === 'campaign_intelligence' ? '1.5px solid #0284c7' : '1px solid transparent',
-            background: activeAppTab === 'campaign_intelligence' ? 'linear-gradient(135deg, #0c4a6e 0%, #0369a1 100%)' : 'transparent',
-            color: activeAppTab === 'campaign_intelligence' ? '#ffffff' : '#a1a1aa',
-            fontWeight: activeAppTab === 'campaign_intelligence' ? 'bold' : '500',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            fontSize: '15px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <span>🎯</span>
-          <span>Campaign Intelligence</span>
-          <span style={{
-            fontSize: '11px',
-            background: activeAppTab === 'campaign_intelligence' ? '#0284c7' : '#27272a',
-            color: '#bae6fd',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            textTransform: 'uppercase',
-            fontWeight: 'bold'
-          }}>
-            Monetization
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveAppTab('story_studio')}
-          style={{
-            flex: 1,
-            padding: '12px 18px',
-            borderRadius: '8px',
-            border: activeAppTab === 'story_studio' ? '1.5px solid #059669' : '1px solid transparent',
-            background: activeAppTab === 'story_studio' ? 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)' : 'transparent',
-            color: activeAppTab === 'story_studio' ? '#ffffff' : '#a1a1aa',
-            fontWeight: activeAppTab === 'story_studio' ? 'bold' : '500',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            fontSize: '15px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <span>🎬</span>
-          <span>Story Studio</span>
-          <span style={{
-            fontSize: '11px',
-            background: activeAppTab === 'story_studio' ? '#047857' : '#27272a',
-            color: '#a7f3d0',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            textTransform: 'uppercase',
-            fontWeight: 'bold'
-          }}>
-            Movie Recaps & Stories
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveAppTab('english_shadowing')}
-          style={{
-            flex: 1,
-            padding: '12px 18px',
-            borderRadius: '8px',
-            border: activeAppTab === 'english_shadowing' ? '1.5px solid #ea580c' : '1px solid transparent',
-            background: activeAppTab === 'english_shadowing' ? 'linear-gradient(135deg, #7c2d12 0%, #ea580c 100%)' : 'transparent',
-            color: activeAppTab === 'english_shadowing' ? '#ffffff' : '#a1a1aa',
-            fontWeight: activeAppTab === 'english_shadowing' ? 'bold' : '500',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            fontSize: '15px',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <span>🎙️</span>
-          <span>English Shadowing</span>
-          <span style={{
-            fontSize: '11px',
-            background: activeAppTab === 'english_shadowing' ? '#c2410c' : '#27272a',
-            color: '#ffedd5',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            textTransform: 'uppercase',
-            fontWeight: 'bold'
-          }}>
-            Shadowing
-          </span>
-        </button>
+        {[
+          {
+            id: 'viral_clip',
+            icon: '🔥',
+            title: 'Viral Clip Gen',
+            badge: 'ViralLoop',
+            color: '#6366f1',
+            activeBg: 'linear-gradient(135deg, rgba(99, 102, 241, 0.28) 0%, rgba(99, 102, 241, 0.45) 100%)',
+            badgeBg: '#4f46e5',
+            badgeColor: '#c7d2fe',
+          },
+          {
+            id: 'campaign_intelligence',
+            icon: '🎯',
+            title: 'Campaign Intel',
+            badge: 'Monetize',
+            color: '#0284c7',
+            activeBg: 'linear-gradient(135deg, rgba(2, 132, 199, 0.28) 0%, rgba(2, 132, 199, 0.45) 100%)',
+            badgeBg: '#0284c7',
+            badgeColor: '#bae6fd',
+          },
+          {
+            id: 'story_studio',
+            icon: '🎬',
+            title: 'Story Studio',
+            badge: 'Recaps & Stories',
+            color: '#059669',
+            activeBg: 'linear-gradient(135deg, rgba(5, 150, 105, 0.28) 0%, rgba(5, 150, 105, 0.45) 100%)',
+            badgeBg: '#047857',
+            badgeColor: '#a7f3d0',
+          },
+          {
+            id: 'english_shadowing',
+            icon: '🎙️',
+            title: 'English Shadowing',
+            badge: 'Shadowing',
+            color: '#ea580c',
+            activeBg: 'linear-gradient(135deg, rgba(234, 88, 12, 0.28) 0%, rgba(234, 88, 12, 0.45) 100%)',
+            badgeBg: '#c2410c',
+            badgeColor: '#ffedd5',
+          },
+          {
+            id: 'stream_clipper',
+            icon: '⚡',
+            title: 'Stream Clipper',
+            badge: 'Chat Explosions',
+            color: '#8b5cf6',
+            activeBg: 'linear-gradient(135deg, rgba(139, 92, 246, 0.28) 0%, rgba(139, 92, 246, 0.45) 100%)',
+            badgeBg: '#7c3aed',
+            badgeColor: '#ede9fe',
+          },
+        ].map((tab) => {
+          const isActive = activeAppTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveAppTab(tab.id)}
+              style={{
+                padding: '11px 14px',
+                borderRadius: '10px',
+                border: isActive ? `1.5px solid ${tab.color}` : '1px solid transparent',
+                background: isActive ? tab.activeBg : 'transparent',
+                color: isActive ? '#ffffff' : '#a1a1aa',
+                fontWeight: isActive ? '700' : '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: isActive ? `0 0 16px ${tab.color}35` : 'none',
+                minWidth: 0,
+              }}
+              onMouseOver={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                  e.currentTarget.style.color = '#ffffff';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#a1a1aa';
+                }
+              }}
+            >
+              <span style={{ fontSize: '16px', flexShrink: 0 }}>{tab.icon}</span>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+              <span style={{
+                fontSize: '10px',
+                background: isActive ? tab.badgeBg : 'rgba(255, 255, 255, 0.06)',
+                color: isActive ? tab.badgeColor : '#71717a',
+                padding: '2px 7px',
+                borderRadius: '6px',
+                textTransform: 'uppercase',
+                fontWeight: '700',
+                letterSpacing: '0.4px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
+              }}>
+                {tab.badge}
+              </span>
+            </button>
+          );
+        })}
       </div>
       
       {activeAppTab === 'viral_clip' && <ViralClipGenerator />}
       {activeAppTab === 'campaign_intelligence' && <CampaignIntelligence />}
       {activeAppTab === 'english_shadowing' && <EnglishShadowingStudio />}
+      {activeAppTab === 'stream_clipper' && <LiveStreamClipper />}
       {activeAppTab === 'story_studio' && (
         <>
       <form className="input-form">
