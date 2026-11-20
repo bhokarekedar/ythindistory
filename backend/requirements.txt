@@ -12,3 +12,4 @@ httpx
 google-cloud-texttospeech
 kokoro
 soundfile
+chat-downloader

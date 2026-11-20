@@ -2555,5 +2555,15 @@ def upload_shadowing_video_to_youtube(req: ShadowingUploadRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# -------------------------------------------------------------
+# LIVE STREAM CHAT CLIPPER ROUTER
+# -------------------------------------------------------------
+try:
+    from stream_clipper.router import router as stream_clipper_router
+    app.include_router(stream_clipper_router, prefix="/api/stream-clipper", tags=["Stream Clipper"])
+except Exception as e:
+    print(f"[Main] Warning: Could not register stream_clipper_router: {e}")
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
