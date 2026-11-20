@@ -32,6 +32,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/youtube.force-ssl",
+    "https://www.googleapis.com/auth/youtube.readonly",
 ]
 
 # Standard YouTube Category IDs
@@ -46,6 +47,124 @@ CATEGORY_MAP = {
 }
 
 
+def resolve_token_file(token_path: Optional[str] = None) -> Path:
+    """Resolves which token file to use, preferring shadow english specific token."""
+    base_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+    if token_path:
+        return Path(token_path)
+    
+    shadow_token = base_data_dir / "youtube_token_shadow_english.json"
+    if shadow_token.exists():
+        return shadow_token
+    
+    default_token = base_data_dir / "youtube_token.json"
+    if default_token.exists():
+        return default_token
+        
+    return shadow_token
+
+
+def get_channel_status(token_path: Optional[str] = None) -> Dict[str, Any]:
+    """Returns the authenticated YouTube channel details or connection failure info."""
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    base_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+    token_file = resolve_token_file(token_path)
+    secrets_file = base_data_dir / "client_secrets.json"
+
+    if not token_file.exists():
+        return {
+            "connected": False,
+            "has_client_secrets": secrets_file.exists(),
+            "token_file": str(token_file),
+            "message": f"Channel token not found at {token_file.name}. Please connect the channel."
+        }
+
+    try:
+        creds = Credentials.from_authorized_user_file(str(token_file))
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(token_file, "w", encoding="utf-8") as f:
+                f.write(creds.to_json())
+
+        if creds and creds.valid:
+            service = build("youtube", "v3", credentials=creds)
+            ch_res = service.channels().list(part="snippet,statistics", mine=True).execute()
+            items = ch_res.get("items", [])
+            if items:
+                ch = items[0]
+                snippet = ch.get("snippet", {})
+                stats = ch.get("statistics", {})
+                custom_url = snippet.get("customUrl", "")
+                title = snippet.get("title", "")
+                is_target_channel = "@shadowenglishdaily" in custom_url.lower() or "shadow english" in title.lower()
+
+                return {
+                    "connected": True,
+                    "channel_id": ch.get("id"),
+                    "channel_title": title,
+                    "custom_url": custom_url,
+                    "thumbnail": snippet.get("thumbnails", {}).get("default", {}).get("url"),
+                    "subscriber_count": stats.get("subscriberCount", "0"),
+                    "video_count": stats.get("videoCount", "0"),
+                    "is_target_channel": is_target_channel,
+                    "token_file": str(token_file),
+                    "message": f"Connected to {title} ({custom_url})"
+                }
+            return {
+                "connected": True,
+                "token_file": str(token_file),
+                "message": "Authorized, but no channel found for this Google account."
+            }
+    except Exception as e:
+        return {
+            "connected": False,
+            "token_file": str(token_file),
+            "error": str(e),
+            "message": f"Authentication check failed: {e}"
+        }
+
+
+def authenticate_channel(
+    token_path: Optional[str] = None,
+    client_secrets_path: Optional[str] = None,
+    port: int = 8089,
+) -> Dict[str, Any]:
+    """Runs interactive local OAuth flow in the browser to connect a YouTube channel."""
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    base_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+    token_file = Path(token_path) if token_path else (base_data_dir / "youtube_token_shadow_english.json")
+    secrets_file = Path(client_secrets_path) if client_secrets_path else (base_data_dir / "client_secrets.json")
+
+    if not secrets_file.exists():
+        return {
+            "success": False,
+            "error": "client_secrets_missing",
+            "message": f"OAuth client_secrets.json not found at {secrets_file}."
+        }
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), SCOPES)
+        creds = flow.run_local_server(port=port, prompt="consent", access_type="offline")
+
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(token_file, "w", encoding="utf-8") as f:
+            f.write(creds.to_json())
+
+        status = get_channel_status(token_path=str(token_file))
+        status["success"] = True
+        return status
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"OAuth flow failed: {e}"
+        }
+
+
 def get_authenticated_service(
     token_path: Optional[str] = None,
     client_secrets_path: Optional[str] = None,
@@ -57,13 +176,13 @@ def get_authenticated_service(
     from googleapiclient.discovery import build
 
     base_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-    token_file = Path(token_path) if token_path else (base_data_dir / "youtube_token.json")
+    token_file = resolve_token_file(token_path)
     secrets_file = Path(client_secrets_path) if client_secrets_path else (base_data_dir / "client_secrets.json")
 
     creds = None
     if token_file.exists():
         try:
-            creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
+            creds = Credentials.from_authorized_user_file(str(token_file))
         except Exception as e:
             logger.warning(f"Error reading existing token file: {e}")
 
@@ -82,7 +201,7 @@ def get_authenticated_service(
                 )
             logger.info("Initiating browser OAuth flow for YouTube channel authorization...")
             flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), SCOPES)
-            creds = flow.run_local_server(port=8088, prompt="consent", access_type="offline")
+            creds = flow.run_local_server(port=8089, prompt="consent", access_type="offline")
             token_file.parent.mkdir(parents=True, exist_ok=True)
             with open(token_file, "w", encoding="utf-8") as f:
                 f.write(creds.to_json())

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 const BACKEND_BASE = 'http://localhost:8000';
 
@@ -81,6 +81,43 @@ export default function EnglishShadowingStudio() {
   const [result, setResult] = useState(null);
   const [formatSuccess, setFormatSuccess] = useState(false);
   const [showMetaPreview, setShowMetaPreview] = useState(false);
+
+  // YouTube Channel States
+  const [ytChannel, setYtChannel] = useState(null);
+  const [connectingChannel, setConnectingChannel] = useState(false);
+
+  const fetchChannelStatus = async () => {
+    try {
+      const resp = await fetch(`${BACKEND_BASE}/api/shadowing/youtube/status`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setYtChannel(data.auth || null);
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    fetchChannelStatus();
+  }, []);
+
+  const handleConnectChannel = async () => {
+    setConnectingChannel(true);
+    setErrorMsg('');
+    try {
+      const resp = await fetch(`${BACKEND_BASE}/api/shadowing/youtube/connect`, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.auth) {
+        setYtChannel(data.auth);
+      } else {
+        setErrorMsg(data.detail || 'Channel connection failed');
+      }
+    } catch (e) {
+      setErrorMsg('Error connecting channel: ' + e.message);
+    } finally {
+      setConnectingChannel(false);
+      fetchChannelStatus();
+    }
+  };
 
   // Compute live validation stats from scriptJson
   const scriptStats = useMemo(() => {
@@ -399,7 +436,10 @@ export default function EnglishShadowingStudio() {
               description_url: `${BACKEND_BASE}${job.result.description_url || '/output/description.txt'}`,
               tags_url: `${BACKEND_BASE}${job.result.tags_url || '/output/tags.txt'}`,
               chapters_url: `${BACKEND_BASE}${job.result.chapters_url || '/output/chapters.txt'}`,
-              duration: job.result.duration
+              duration: job.result.duration,
+              youtube_url: job.result.youtube_url,
+              youtube_upload: job.result.youtube_upload,
+              youtube_upload_error: job.result.youtube_upload_error
             });
             setLoading(false);
           } else if (job.status === 'failed') {
@@ -472,6 +512,101 @@ export default function EnglishShadowingStudio() {
         >
           Load Sample Script
         </button>
+      </div>
+
+      {/* YouTube Channel Integration Bar */}
+      <div style={{
+        background: '#18181b',
+        borderRadius: '12px',
+        border: ytChannel && ytChannel.is_target_channel
+          ? '1px solid #16a34a'
+          : ytChannel && ytChannel.connected
+          ? '1px solid #f59e0b'
+          : '1px solid #3f3f46',
+        padding: '14px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            overflow: 'hidden',
+            background: '#27272a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '2px solid #ef4444'
+          }}>
+            {ytChannel && ytChannel.thumbnail ? (
+              <img src={ytChannel.thumbnail} alt="Channel" style={{ width: '100%', height: '100%' }} />
+            ) : (
+              <span style={{ fontSize: '20px' }}>📺</span>
+            )}
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
+                Target YouTube Channel:
+              </span>
+              <a
+                href="https://www.youtube.com/@ShadowEnglishDaily-d4z"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#38bdf8', textDecoration: 'none', fontSize: '13px', fontWeight: '600' }}
+              >
+                @ShadowEnglishDaily-d4z ↗
+              </a>
+            </div>
+
+            <div style={{ fontSize: '12px', marginTop: '2px', color: '#a1a1aa' }}>
+              {ytChannel && ytChannel.connected ? (
+                ytChannel.is_target_channel ? (
+                  <span style={{ color: '#4ade80', fontWeight: '600' }}>
+                    🟢 Connected: {ytChannel.channel_title} ({ytChannel.custom_url})
+                  </span>
+                ) : (
+                  <span style={{ color: '#fbbf24', fontWeight: '600' }}>
+                    ⚠️ Currently authorized as: <strong>{ytChannel.channel_title}</strong> ({ytChannel.custom_url}) — Connect @ShadowEnglishDaily-d4z below!
+                  </span>
+                )
+              ) : (
+                <span style={{ color: '#f87171' }}>
+                  🔴 No YouTube account connected for English Shadowing.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            type="button"
+            disabled={connectingChannel}
+            onClick={handleConnectChannel}
+            style={{
+              background: ytChannel && ytChannel.is_target_channel
+                ? '#27272a'
+                : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '8px',
+              padding: '8px 16px',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>{connectingChannel ? '⏳ Authorizing...' : ytChannel && ytChannel.is_target_channel ? '🔄 Reconnect Account' : '🔗 Connect @ShadowEnglishDaily-d4z'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Grid */}
@@ -774,7 +909,7 @@ export default function EnglishShadowingStudio() {
                 boxShadow: '0 4px 14px rgba(234, 88, 12, 0.4)'
               }}
             >
-              Generate Video (1080p)
+              Generate Video & Auto-Upload (Private)
             </button>
 
             <button
@@ -1006,6 +1141,61 @@ export default function EnglishShadowingStudio() {
                   </a>
                 )}
               </div>
+
+              {/* YouTube Auto-Upload Success Banner */}
+              {result.youtube_url && (
+                <div style={{
+                  marginTop: '16px',
+                  background: '#052e16',
+                  border: '1px solid #16a34a',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  color: '#86efac',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <div style={{ fontWeight: '700', fontSize: '15px', color: '#4ade80', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🎉</span>
+                    <span>Auto-Uploaded to YouTube as Private Video!</span>
+                  </div>
+                  <div style={{ fontSize: '13px' }}>
+                    <strong>Channel:</strong> {ytChannel ? `${ytChannel.channel_title} (${ytChannel.custom_url})` : '@ShadowEnglishDaily-d4z'}
+                  </div>
+                  <div style={{ fontSize: '13px' }}>
+                    <strong>YouTube Link:</strong>{' '}
+                    <a
+                      href={result.youtube_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: '#38bdf8', textDecoration: 'underline', fontWeight: 'bold' }}
+                    >
+                      {result.youtube_url} ↗
+                    </a>
+                  </div>
+                  <div style={{ color: '#fef08a', fontSize: '12px', marginTop: '4px' }}>
+                    🔒 Video uploaded as <strong>Private</strong>. Review it anytime in YouTube Studio!
+                  </div>
+                </div>
+              )}
+
+              {/* YouTube Auto-Upload Error / Notice if any */}
+              {result.youtube_upload_error && (
+                <div style={{
+                  marginTop: '16px',
+                  background: '#450a0a',
+                  border: '1px solid #991b1b',
+                  borderRadius: '10px',
+                  padding: '14px',
+                  color: '#fca5a5',
+                  fontSize: '13px'
+                }}>
+                  <strong>⚠️ YouTube Auto-Upload Notice:</strong> {result.youtube_upload_error}
+                  <div style={{ color: '#cbd5e1', fontSize: '12px', marginTop: '4px' }}>
+                    (The MP4 video, subtitles, chapters, and metadata were all generated successfully above).
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

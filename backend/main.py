@@ -2380,6 +2380,8 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
             script_input=script_data,
             output_dir=str(backend_dir / "output"),
             preview=preview,
+            auto_upload=(not preview),
+            privacy="private",
             progress_callback=progress_cb,
         )
 
@@ -2389,7 +2391,7 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
 
         shadowing_jobs[job_id]["status"] = "completed"
         shadowing_jobs[job_id]["progress"] = 100.0
-        shadowing_jobs[job_id]["result"] = {
+        res_dict = {
             "video_url": f"/output/{vid_filename}",
             "srt_url": f"/output/{srt_filename}",
             "timeline_url": f"/output/{tl_filename}",
@@ -2399,6 +2401,14 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
             "chapters_url": "/output/chapters.txt",
             "duration": results["duration"],
         }
+        if "youtube_url" in results:
+            res_dict["youtube_url"] = results["youtube_url"]
+        if "youtube_upload" in results:
+            res_dict["youtube_upload"] = results["youtube_upload"]
+        if "youtube_upload_error" in results:
+            res_dict["youtube_upload_error"] = results["youtube_upload_error"]
+
+        shadowing_jobs[job_id]["result"] = res_dict
         _save_shadowing_jobs()
     except Exception as e:
         shadowing_jobs[job_id]["status"] = "failed"
@@ -2461,6 +2471,88 @@ def get_shadowing_job_status(job_id: str):
     if job_id not in shadowing_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return shadowing_jobs[job_id]
+
+
+# -------------------------------------------------------------
+# SHADOWING YOUTUBE PUBLISHING ENDPOINTS
+# -------------------------------------------------------------
+class ShadowingUploadRequest(BaseModel):
+    job_id: Optional[str] = None
+    video_path: Optional[str] = None
+    metadata_path: Optional[str] = None
+    thumbnail_path: Optional[str] = None
+    privacy: str = "private"
+    publish_at: Optional[str] = None
+    confirm: bool = False
+
+
+@app.get("/api/shadowing/youtube/status")
+def get_shadowing_youtube_status():
+    from shadowing_pipeline.core.youtube_uploader import get_channel_status
+    status = get_channel_status()
+    return {"status": "success", "auth": status}
+
+
+@app.post("/api/shadowing/youtube/connect")
+def connect_shadowing_youtube_channel():
+    from shadowing_pipeline.core.youtube_uploader import authenticate_channel
+    res = authenticate_channel(port=8089)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return {"status": "success", "auth": res}
+
+
+@app.post("/api/shadowing/youtube/upload")
+def upload_shadowing_video_to_youtube(req: ShadowingUploadRequest):
+    from shadowing_pipeline.core.youtube_uploader import upload_to_youtube
+
+    if not req.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation required: pass confirm=True to upload to YouTube."
+        )
+
+    backend_dir = Path(__file__).resolve().parent
+
+    video_path = req.video_path
+    metadata_path = req.metadata_path
+
+    # If job_id provided, locate its rendered files
+    if req.job_id:
+        if req.job_id in shadowing_jobs and "result" in shadowing_jobs[req.job_id]:
+            res = shadowing_jobs[req.job_id]["result"]
+            if not video_path:
+                v_url = res.get("video_url", "")
+                if v_url:
+                    video_path = str(backend_dir / v_url.lstrip("/"))
+            if not metadata_path:
+                m_url = res.get("metadata_url", "")
+                if m_url:
+                    metadata_path = str(backend_dir / m_url.lstrip("/"))
+
+    # Fall back to default output paths if not specified
+    if not video_path:
+        video_path = str(backend_dir / "output" / "video.mp4")
+    if not metadata_path:
+        metadata_path = str(backend_dir / "output" / "video_metadata.json")
+
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail=f"Video file not found at: {video_path}")
+    if not os.path.exists(metadata_path):
+        raise HTTPException(status_code=404, detail=f"Metadata file not found at: {metadata_path}")
+
+    try:
+        result = upload_to_youtube(
+            video_path=video_path,
+            metadata_path=metadata_path,
+            thumbnail_path=req.thumbnail_path,
+            publish_at=req.publish_at,
+            privacy=req.privacy,
+            confirm=True
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 import json
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from shadowing_pipeline.core.audio_builder import AudioBuilder
 from shadowing_pipeline.core.audio_provider import AudioProvider
 from shadowing_pipeline.core.exporters import (
@@ -44,8 +44,10 @@ class ShadowingVideoPipeline:
         output_dir: str = "output",
         video_filename: Optional[str] = None,
         preview: bool = False,
+        auto_upload: bool = False,
+        privacy: str = "private",
         progress_callback: Optional[Callable[[int, int, float], None]] = None,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         """Runs the complete script-to-video generation pipeline.
 
         Returns a dictionary of output paths: video, srt, timeline.
@@ -160,6 +162,25 @@ class ShadowingVideoPipeline:
                 "description": yt_meta_paths["description_path"],
                 "tags": yt_meta_paths["tags_path"],
             })
+
+        # 6. Automatically upload to YouTube as private video
+        if auto_upload and not preview and yt_meta_paths and "metadata_path" in yt_meta_paths:
+            print(f"\n🚀 Automatically uploading to YouTube (@ShadowEnglishDaily-d4z) as {privacy} video...")
+            try:
+                from shadowing_pipeline.core.youtube_uploader import upload_to_youtube
+                upload_res = upload_to_youtube(
+                    video_path=final_mp4,
+                    metadata_path=yt_meta_paths["metadata_path"],
+                    privacy=privacy,
+                    confirm=True,
+                )
+                result_dict["youtube_upload"] = upload_res
+                result_dict["youtube_url"] = upload_res.get("video_url")
+                print(f"🎉 Successfully uploaded {privacy} video to YouTube: {upload_res.get('video_url')}")
+            except Exception as e:
+                print(f"⚠️ Auto-upload to YouTube encountered an error: {e}")
+                result_dict["youtube_upload_error"] = str(e)
+
         return result_dict
 
     def export_metadata_only(

@@ -33,6 +33,18 @@ def parse_args():
         help="Render preview of only the first 5 segments for quick QA.",
     )
     parser.add_argument(
+        "--no-upload",
+        action="store_true",
+        help="Skip auto-uploading to YouTube.",
+    )
+    parser.add_argument(
+        "--privacy",
+        type=str,
+        default="private",
+        choices=["private", "unlisted", "public"],
+        help="YouTube privacy status (default: private).",
+    )
+    parser.add_argument(
         "--output-dir",
         type=str,
         default=str(BACKEND_DIR / "output"),
@@ -75,12 +87,15 @@ def main():
         script_input = str(script_path.resolve())
 
     try:
+        should_upload = (not args.preview) and (not args.no_upload)
         pipeline = ShadowingVideoPipeline(theme_path=args.theme)
         results = pipeline.run(
             script_input=script_input,
             output_dir=args.output_dir,
             video_filename=args.name,
             preview=args.preview,
+            auto_upload=should_upload,
+            privacy=args.privacy,
             progress_callback=progress_tracker,
         )
         print("\n" + "=" * 60)
@@ -89,6 +104,10 @@ def main():
         print(f"📝 Subtitle: {results['srt']}")
         print(f"📊 Timeline: {results['timeline']}")
         print(f"⏱️ Duration: {results['duration']:.1f} seconds")
+        if "youtube_url" in results and results["youtube_url"]:
+            print(f"🚀 YouTube:  {results['youtube_url']} ({args.privacy})")
+        elif "youtube_upload_error" in results:
+            print(f"⚠️ YouTube Upload Error: {results['youtube_upload_error']}")
         print("=" * 60)
 
     except Exception as e:

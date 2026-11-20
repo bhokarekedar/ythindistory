@@ -62,6 +62,8 @@ def run_pipeline_worker(job_id: str, script_data: dict, preview: bool):
             script_input=script_data,
             output_dir=str(output_dir),
             preview=preview,
+            auto_upload=(not preview),
+            privacy="private",
             progress_callback=progress_cb,
         )
 
@@ -79,6 +81,12 @@ def run_pipeline_worker(job_id: str, script_data: dict, preview: bool):
             "chapters_url": "/output/chapters.txt",
             "duration": results["duration"],
         }
+        if "youtube_url" in results:
+            shadowing_res["youtube_url"] = results["youtube_url"]
+        if "youtube_upload" in results:
+            shadowing_res["youtube_upload"] = results["youtube_upload"]
+        if "youtube_upload_error" in results:
+            shadowing_res["youtube_upload_error"] = results["youtube_upload_error"]
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["progress"] = 100.0
         jobs[job_id]["result"] = shadowing_res
