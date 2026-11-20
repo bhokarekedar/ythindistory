@@ -34,7 +34,7 @@
     "margin_top": 240,
     "illustration_path": null,
     "illustration_pos": [1300, 180],
-    "logo_path": "shadowing_pipeline/assets/images/logo.png",
+    "logo_path": "backend/shadowing_pipeline/assets/images/logo.png",
     "logo_pos": [1600, 940]
   },
   "waveform": {

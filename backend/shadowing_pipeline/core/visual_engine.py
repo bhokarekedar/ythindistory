@@ -158,9 +158,11 @@ class VisualEngine:
         line_spacing = self.theme["typography"]["line_spacing"]
 
         font = self.font_main
-        # Space width
+        # Space width & fixed line height from font metrics
         space_bbox = font.getbbox(" ")
         space_w = space_bbox[2] - space_bbox[0]
+        ascent, descent = font.getmetrics()
+        line_height = ascent + descent
 
         lines: List[List[Dict[str, Any]]] = [[]]
         curr_x = start_x
@@ -174,8 +176,8 @@ class VisualEngine:
             w_height = bbox[3] - bbox[1]
 
             if curr_x + w_width > max_width and lines[-1]:
-                # Wrap to next line
-                curr_y += w_height + line_spacing
+                # Wrap to next line with uniform line height
+                curr_y += line_height + line_spacing
                 curr_x = start_x
                 lines.append([])
 
@@ -193,7 +195,7 @@ class VisualEngine:
 
         layout_data = {
             "lines": lines,
-            "total_height": (curr_y - start_y) + 70,
+            "total_height": (curr_y - start_y) + line_height + 20,
         }
         self._layout_cache[event.event_id] = layout_data
         return layout_data
@@ -351,27 +353,15 @@ class VisualEngine:
         bx = self.theme["layout"]["margin_left"]
         by = 130
         bbox = self.font_badge.getbbox(badge_text)
-        bw = bbox[2] - bbox[0] + 36
-        bh = bbox[3] - bbox[1] + 18
+        bw = (bbox[2] - bbox[0]) + 44
+        bh = (bbox[3] - bbox[1]) + 24
 
-        draw.rounded_rectangle(
-            [bx, by, bx + bw, by + bh],
-            radius=14,
-            fill=badge_bg + (240,),
-        )
-        draw.text(
-            (bx + 18, by + 9),
-            badge_text,
-            font=self.font_badge,
-            fill=(255, 255, 255),
-        )
-
-        # 2. Text Container Card
+        # 1. Text Container Card (Drawn FIRST as background)
         layout = self._get_or_compute_text_layout(event)
         card_x0 = bx - 25
         card_y0 = self.theme["layout"]["margin_top"] - 30
         card_x1 = int(self.width * self.theme["layout"]["text_area_width_ratio"]) + 25
-        card_y1 = card_y0 + layout["total_height"] + 50
+        card_y1 = card_y0 + layout["total_height"] + 40
 
         draw.rounded_rectangle(
             [card_x0, card_y0, card_x1, card_y1],
@@ -379,6 +369,20 @@ class VisualEngine:
             fill=tuple(self.theme["colors"]["card_bg"]),
             outline=tuple(self.theme["colors"]["card_outline"]),
             width=2,
+        )
+
+        # 2. Top Status Badge (Drawn on top with centered anchor and balanced padding)
+        draw.rounded_rectangle(
+            [bx, by, bx + bw, by + bh],
+            radius=14,
+            fill=badge_bg + (245,),
+        )
+        draw.text(
+            (bx + bw / 2, by + bh / 2),
+            badge_text,
+            font=self.font_badge,
+            fill=(255, 255, 255),
+            anchor="mm",
         )
 
         # 3. Words and Pill Highlighting
@@ -437,14 +441,13 @@ class VisualEngine:
                     draw.text((wx, wy), w_str, font=self.font_main, fill=normal_col)
                 else:
                     if global_w_idx == active_word_idx:
-                        # ACTIVE CURRENT WORD: White rounded pill background + dark text
+                        # ACTIVE CURRENT WORD: Stable line-based pill enclosing entire word vertically
                         pad_x = 14
-                        pad_y = 6
                         pill_rect = [
                             wx - pad_x,
-                            wy - pad_y,
+                            wy + 4,
                             wx + ww + pad_x,
-                            wy + wh + pad_y + 4,
+                            wy + 74,
                         ]
                         # Pill with subtle drop shadow
                         draw.rounded_rectangle(
@@ -454,12 +457,12 @@ class VisualEngine:
                                 pill_rect[2] + 1,
                                 pill_rect[3] + 2,
                             ],
-                            radius=12,
+                            radius=14,
                             fill=(0, 0, 0, 25),
                         )
                         draw.rounded_rectangle(
                             pill_rect,
-                            radius=12,
+                            radius=14,
                             fill=pill_bg_col + (255,),
                             outline=(255, 235, 180, 255),
                             width=2,
