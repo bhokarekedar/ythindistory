@@ -9,7 +9,7 @@ const sampleScript = {
     "default_repeat": 2,
     "voice_teacher": "af_heart",
     "voice_speaker_b": "am_adam",
-    "speed": 0.92
+    "speed": 0.85
   },
   "segments": [
     {
@@ -351,13 +351,13 @@ export default function EnglishShadowingStudio() {
               </button>
             ))}
             <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', marginLeft: '6px' }}>Speed:</span>
-            {[0.90, 0.92, 1.0].map(s => (
+            {[0.80, 0.85, 0.90, 0.95, 1.0].map(s => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setKokoroSpeed(s)}
                 style={{
-                  background: scriptJson.includes(`"speed": ${s}`) ? '#0284c7' : '#3f3f46',
+                  background: scriptJson.includes(`"speed": ${s}`) || (s === 0.85 && !scriptJson.includes('"speed":')) ? '#0284c7' : '#3f3f46',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '6px',
@@ -367,7 +367,7 @@ export default function EnglishShadowingStudio() {
                   cursor: 'pointer'
                 }}
               >
-                {s}x
+                {s === 0.85 ? '0.85x (ESL)' : `${s}x`}
               </button>
             ))}
           </div>

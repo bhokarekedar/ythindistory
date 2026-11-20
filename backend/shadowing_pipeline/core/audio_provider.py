@@ -22,6 +22,21 @@ PACKAGE_DIR = Path(__file__).resolve().parent.parent
 CACHE_DIR = PACKAGE_DIR / "assets" / "audio_cache"
 
 _KOKORO_PIPELINES: Dict[str, Any] = {}
+_WHISPER_MODEL: Any = None
+
+
+def get_whisper_model():
+    """Singleton instance of WhisperModel for acoustic word timestamp alignment."""
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        try:
+            from faster_whisper import WhisperModel
+            _WHISPER_MODEL = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not initialize WhisperModel: {e}")
+            _WHISPER_MODEL = False
+    return _WHISPER_MODEL if _WHISPER_MODEL is not False else None
 
 
 def get_kokoro_pipeline(lang_code: str = "a"):
@@ -87,7 +102,7 @@ class AudioProvider:
         self.custom_transcribe = custom_transcribe
 
     def get_audio_and_transcription(
-        self, text: str, voice: str = "af_heart", speed: float = 0.92
+        self, text: str, voice: str = "af_heart", speed: float = 0.85
     ) -> Tuple[str, List[Dict], float]:
         """Returns (audio_path, word_timings, duration_seconds).
 
@@ -117,17 +132,41 @@ class AudioProvider:
 
         duration = self._get_audio_duration(str(cached_wav))
 
-        # 2. Transcribe Audio
+        # 2. Transcribe Audio (acoustic timestamps via faster-whisper)
         if self.custom_transcribe:
             word_timings = self.custom_transcribe(str(cached_wav))
         else:
-            word_timings = self._default_transcribe(text, duration)
+            word_timings = self._transcribe_audio(str(cached_wav), text, duration)
 
         # 3. Save to disk cache
         with open(cached_meta, "w", encoding="utf-8") as f:
             json.dump({"word_timings": word_timings, "duration": duration}, f, indent=2)
 
         return str(cached_wav), word_timings, duration
+
+    def _transcribe_audio(self, audio_path: str, text: str, total_duration: float) -> List[Dict]:
+        """Acoustic word-level transcription with fallback to syllable duration model."""
+        model = get_whisper_model()
+        if model:
+            try:
+                segments, _ = model.transcribe(audio_path, word_timestamps=True, language="en")
+                raw_words = []
+                for seg in segments:
+                    for w in seg.words:
+                        clean = w.word.strip()
+                        if clean:
+                            raw_words.append({
+                                "word": clean,
+                                "start": round(float(w.start), 3),
+                                "end": round(float(w.end), 3),
+                            })
+                if raw_words:
+                    return raw_words
+            except Exception as e:
+                import logging
+                logging.warning(f"Whisper transcription error, falling back: {e}")
+
+        return self._default_transcribe(text, total_duration)
 
     def _normalize_audio(self, src: str, dst: str):
         """Converts any audio file to 44100Hz 16-bit mono WAV using ffmpeg."""
@@ -146,7 +185,7 @@ class AudioProvider:
         ]
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-    def _kokoro_tts(self, text: str, voice: str, dst_wav: str, speed: float = 0.92) -> bool:
+    def _kokoro_tts(self, text: str, voice: str, dst_wav: str, speed: float = 0.85) -> bool:
         """Generate high-quality neural speech using Kokoro TTS."""
         try:
             import numpy as np
@@ -177,7 +216,7 @@ class AudioProvider:
             logging.error(f"Kokoro TTS generation error: {e}")
             return False
 
-    def _default_tts(self, text: str, voice: str, dst_wav: str, speed: float = 0.92):
+    def _default_tts(self, text: str, voice: str, dst_wav: str, speed: float = 0.85):
         """Built-in TTS: uses Kokoro neural TTS exclusively."""
         success = self._kokoro_tts(text, voice, dst_wav, speed=speed)
         if not success:

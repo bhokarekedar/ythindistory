@@ -21,28 +21,47 @@ class AudioBuilder:
     def assemble_master_audio(
         self, events: List[TimelineEvent], output_path: str
     ) -> str:
-        """Assembles all speech and silence segments into a single master WAV file."""
+        """Assembles all speech and silence segments into a single master WAV file.
+
+        Enforces absolute clock synchronization: guarantees that each event's audio
+        starts precisely at ev.start_time, preventing any cumulative A/V drift.
+        """
         output_wav = str(Path(output_path).resolve())
         concat_list_file = self.temp_dir / "audio_concat.txt"
 
         lines = []
         silence_idx = 0
+        current_clock = 0.0
 
         for ev in events:
+            # 1. Fill any gap between current audio position and this event's start_time
+            gap = ev.start_time - current_clock
+            if gap > 0.01:
+                silence_wav = self._generate_silence(gap, f"syncgap_{silence_idx}")
+                lines.append(f"file '{silence_wav}'")
+                silence_idx += 1
+                current_clock += gap
+
+            # 2. Add event audio (speech or silence)
             if ev.type == "speech" and ev.audio_path and os.path.exists(ev.audio_path):
-                # Check if speech event has padding (e.g. section_title)
                 actual_dur = self._get_wav_duration(ev.audio_path)
-                diff = ev.duration - actual_dur
                 lines.append(f"file '{Path(ev.audio_path).resolve()}'")
-                if diff > 0.05:
+                current_clock += actual_dur
+
+                # Pad if event duration is longer than raw speech (e.g. section title hold)
+                diff = ev.duration - actual_dur
+                if diff > 0.01:
                     silence_wav = self._generate_silence(diff, f"pad_{silence_idx}")
                     lines.append(f"file '{silence_wav}'")
                     silence_idx += 1
+                    current_clock += diff
             else:
-                # Silence event
-                silence_wav = self._generate_silence(ev.duration, f"silence_{silence_idx}")
-                lines.append(f"file '{silence_wav}'")
-                silence_idx += 1
+                # Explicit silence event
+                if ev.duration > 0.01:
+                    silence_wav = self._generate_silence(ev.duration, f"silence_{silence_idx}")
+                    lines.append(f"file '{silence_wav}'")
+                    silence_idx += 1
+                    current_clock += ev.duration
 
         with open(concat_list_file, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")

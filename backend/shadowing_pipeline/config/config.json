@@ -1,7 +1,7 @@
 {
   "timing": {
     "default_repeat": 2,
-    "repeat_speed_factors": [1.0, 0.92],
+    "repeat_speed_factors": [1.0, 0.95],
     "narration_gap_seconds": 0.4,
     "section_gap_seconds": 0.8,
     "shadow": {
@@ -18,17 +18,17 @@
   "voices": {
     "teacher": {
       "voice_id": "af_heart",
-      "speed": 0.92,
+      "speed": 0.85,
       "lang_code": "a"
     },
     "speaker_a": {
       "voice_id": "af_heart",
-      "speed": 0.92,
+      "speed": 0.85,
       "lang_code": "a"
     },
     "speaker_b": {
       "voice_id": "am_adam",
-      "speed": 0.92,
+      "speed": 0.85,
       "lang_code": "a"
     }
   },

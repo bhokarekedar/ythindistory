@@ -278,7 +278,7 @@ class TimelineBuilder:
                     current_time += dur
                     event_id += 1
 
-                # Inter-narration gap
+                # Inter-narration gap (audio_builder automatically inserts sync silence)
                 current_time += self.narration_gap
 
             # -----------------------------------------------------------------
@@ -534,7 +534,7 @@ class TimelineBuilder:
                 current_time += dur
                 event_id += 1
 
-                # Conversational gap
+                # Conversational gap (audio_builder automatically inserts sync silence)
                 current_time += self.narration_gap
 
             # -----------------------------------------------------------------

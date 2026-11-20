@@ -387,16 +387,41 @@ class VisualEngine:
         pill_bg_col = tuple(self.theme["colors"]["pill_bg"])
         pill_txt_col = tuple(self.theme["colors"]["pill_text"])
 
-        # Determine currently spoken word during speech
+        # Determine currently spoken word and past-spoken progress during speech
         active_word_idx = -1
+        last_spoken_idx = -1
         if is_speech and event.word_timings:
-            for idx, w_info in enumerate(event.word_timings):
-                if w_info["start"] <= local_time < w_info["end"]:
-                    active_word_idx = idx
-                    break
-            # If past the last word but still in clip, keep last word active
-            if active_word_idx == -1 and local_time >= event.word_timings[-1]["start"]:
-                active_word_idx = len(event.word_timings) - 1
+            first_start = event.word_timings[0]["start"]
+            last_end = event.word_timings[-1]["end"]
+
+            if local_time < first_start:
+                # Speech hasn't started yet
+                active_word_idx = -1
+                last_spoken_idx = -1
+            elif local_time >= last_end:
+                # Finished speaking entire sentence
+                active_word_idx = -1
+                last_spoken_idx = len(event.word_timings) - 1
+            else:
+                for idx, w_info in enumerate(event.word_timings):
+                    if w_info["start"] <= local_time <= w_info["end"]:
+                        active_word_idx = idx
+                        last_spoken_idx = idx
+                        break
+                    # Check if inside micro-pause before next word
+                    next_start = (
+                        event.word_timings[idx + 1]["start"]
+                        if idx + 1 < len(event.word_timings)
+                        else w_info["end"]
+                    )
+                    if w_info["end"] < local_time < next_start:
+                        # Smooth transition: keep previous word pill active if micro-pause is short (< 0.22s)
+                        if (next_start - w_info["end"]) < 0.22:
+                            active_word_idx = idx
+                        else:
+                            active_word_idx = -1
+                        last_spoken_idx = idx
+                        break
 
         global_w_idx = 0
         for line in layout["lines"]:
@@ -440,15 +465,11 @@ class VisualEngine:
                             width=2,
                         )
                         draw.text((wx, wy), w_str, font=self.font_main, fill=pill_txt_col)
-                    elif global_w_idx < active_word_idx or active_word_idx == -1:
-                        if active_word_idx == -1 and local_time < (event.word_timings[0]["start"] if event.word_timings else 0):
-                            # Not yet started
-                            draw.text((wx, wy), w_str, font=self.font_main, fill=dimmed_col)
-                        else:
-                            # Already spoken
-                            draw.text((wx, wy), w_str, font=self.font_main, fill=normal_col)
+                    elif global_w_idx <= last_spoken_idx:
+                        # Already spoken: clearly visible normal color
+                        draw.text((wx, wy), w_str, font=self.font_main, fill=normal_col)
                     else:
-                        # Future word: Dimmed
+                        # Future word: dimmed until reached
                         draw.text((wx, wy), w_str, font=self.font_main, fill=dimmed_col)
 
                 global_w_idx += 1
