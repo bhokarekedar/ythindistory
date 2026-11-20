@@ -297,10 +297,6 @@ export default function EnglishShadowingStudio() {
           flexDirection: 'column',
           gap: '14px'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={{ color: '#e4e4e7', fontWeight: '700', fontSize: '15px' }}>
-              Script JSON
-            </label>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <label style={{ color: '#e4e4e7', fontWeight: '700', fontSize: '15px' }}>
