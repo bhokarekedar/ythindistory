@@ -80,7 +80,7 @@ export default function EnglishShadowingStudio() {
       parsed.settings = parsed.settings || {};
       parsed.settings.voice_teacher = teacherVoice;
       setScriptJson(JSON.stringify(parsed, null, 2));
-    } catch (e) { }
+    } catch (e) {}
   };
 
   const setKokoroSpeed = (spd) => {
@@ -89,7 +89,7 @@ export default function EnglishShadowingStudio() {
       parsed.settings = parsed.settings || {};
       parsed.settings.speed = spd;
       setScriptJson(JSON.stringify(parsed, null, 2));
-    } catch (e) { }
+    } catch (e) {}
   };
 
   const handleStartGeneration = async (preview = false) => {
