@@ -1,0 +1,40 @@
+{
+  "timing": {
+    "default_repeat": 2,
+    "repeat_speed_factors": [1.0, 0.92],
+    "narration_gap_seconds": 0.4,
+    "section_gap_seconds": 0.8,
+    "shadow": {
+      "min_pause_seconds": 2.0,
+      "buffer_short_range": [2.0, 3.0],
+      "buffer_long_range": [3.0, 4.0]
+    },
+    "free_answer": {
+      "pause_factor": 1.6,
+      "min_pause_seconds": 4.0,
+      "max_pause_seconds": 15.0
+    }
+  },
+  "voices": {
+    "teacher": {
+      "voice_id": "af_heart",
+      "speed": 0.92,
+      "lang_code": "a"
+    },
+    "speaker_a": {
+      "voice_id": "af_heart",
+      "speed": 0.92,
+      "lang_code": "a"
+    },
+    "speaker_b": {
+      "voice_id": "am_adam",
+      "speed": 0.92,
+      "lang_code": "a"
+    }
+  },
+  "pronunciation": {
+    "Wi-Fi": "why fye",
+    "SIM": "sim"
+  }
+}
+

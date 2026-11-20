@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 from shadowing_pipeline.core.audio_builder import AudioBuilder
 from shadowing_pipeline.core.audio_provider import AudioProvider
-from shadowing_pipeline.core.exporters import export_srt, export_timeline_json
+from shadowing_pipeline.core.exporters import export_chapters_txt, export_srt, export_timeline_json
 from shadowing_pipeline.core.schema import parse_and_validate_script
 from shadowing_pipeline.core.timeline import TimelineBuilder
 from shadowing_pipeline.core.video_renderer import VideoRenderer
@@ -79,12 +79,19 @@ class ShadowingVideoPipeline:
         final_mp4 = str(out_path / f"{base_name}.mp4")
         final_srt = str(out_path / f"{base_name}.srt")
         final_json = str(out_path / f"{base_name}_timeline.json")
+        final_chapters = str(out_path / f"{base_name}_chapters.txt")
         master_wav = str(temp_dir / f"{base_name}_master.wav")
 
-        # 3. Export SRT & Timeline JSON early for inspection
-        print(f"📄 Exporting subtitles and timeline metadata...")
+        # 3. Export SRT, Timeline JSON & Chapters early for inspection
+        print(f"📄 Exporting subtitles, timeline metadata, and chapters...")
         export_srt(events, final_srt)
         export_timeline_json(events, final_json)
+        chapters_txt = export_chapters_txt(self.timeline_builder.chapters, final_chapters)
+        if chapters_txt:
+            print("\n📌 YouTube Chapters:")
+            for line in chapters_txt.splitlines():
+                print(f"   {line}")
+            print("")
 
         # 4. Assemble Master Audio & Pre-compute Waveform Bars
         print("🎵 Assembling master audio track...")
@@ -120,6 +127,7 @@ class ShadowingVideoPipeline:
             "video": final_mp4,
             "srt": final_srt,
             "timeline": final_json,
+            "chapters": final_chapters,
             "duration": total_duration,
         }
 

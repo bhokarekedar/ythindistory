@@ -68,6 +68,54 @@ export default function EnglishShadowingStudio() {
   const [statusText, setStatusText] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);
+  const [formatSuccess, setFormatSuccess] = useState(false);
+  const [jsonValidationStatus, setJsonValidationStatus] = useState({ valid: true, message: '' });
+
+  const handleFormatJson = () => {
+    try {
+      const parsed = JSON.parse(scriptJson.trim());
+      setScriptJson(JSON.stringify(parsed, null, 2));
+      setErrorMsg('');
+      setFormatSuccess(true);
+      setJsonValidationStatus({ valid: true, message: `${parsed.segments ? parsed.segments.length : 0} segments` });
+      setTimeout(() => setFormatSuccess(false), 2000);
+    } catch (e) {
+      setErrorMsg('Cannot format JSON: ' + e.message);
+      setJsonValidationStatus({ valid: false, message: e.message });
+    }
+  };
+
+  const handleValidateJson = () => {
+    try {
+      const parsed = JSON.parse(scriptJson.trim());
+      const segCount = parsed.segments ? parsed.segments.length : 0;
+      setJsonValidationStatus({ valid: true, message: `${segCount} segments` });
+      setErrorMsg('');
+      alert(`Valid JSON! Found ${segCount} segments and title: "${parsed.title || 'Untitled'}".`);
+    } catch (e) {
+      setJsonValidationStatus({ valid: false, message: e.message });
+      setErrorMsg('JSON Syntax Error: ' + e.message);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    // Tab key inserts 2 spaces
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = e.target.selectionStart;
+      const end = e.target.selectionEnd;
+      const val = e.target.value;
+      setScriptJson(val.substring(0, start) + '  ' + val.substring(end));
+      setTimeout(() => {
+        e.target.selectionStart = e.target.selectionEnd = start + 2;
+      }, 0);
+    }
+    // Alt + Shift + F formats JSON
+    if (e.altKey && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault();
+      handleFormatJson();
+    }
+  };
 
   const handleLoadSample = () => {
     setScriptJson(JSON.stringify(sampleScript, null, 2));
@@ -253,6 +301,33 @@ export default function EnglishShadowingStudio() {
             <label style={{ color: '#e4e4e7', fontWeight: '700', fontSize: '15px' }}>
               Script JSON
             </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <label style={{ color: '#e4e4e7', fontWeight: '700', fontSize: '15px' }}>
+                Script JSON
+              </label>
+              <button
+                type="button"
+                onClick={handleFormatJson}
+                title="Format / Prettify JSON (or press Alt+Shift+F)"
+                style={{
+                  background: formatSuccess ? '#166534' : 'rgba(56, 189, 248, 0.12)',
+                  color: formatSuccess ? '#86efac' : '#38bdf8',
+                  border: formatSuccess ? '1px solid #22c55e' : '1px solid rgba(56, 189, 248, 0.35)',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span>{formatSuccess ? '✅ Formatted!' : '✨ Format JSON'}</span>
+              </button>
+            </div>
             <span style={{ color: '#a1a1aa', fontSize: '12px' }}>
               narration • section_title • shadow • dialogue • free_answer
             </span>
@@ -304,7 +379,9 @@ export default function EnglishShadowingStudio() {
           <textarea
             value={scriptJson}
             onChange={(e) => setScriptJson(e.target.value)}
+            onKeyDown={handleKeyDown}
             rows={18}
+            placeholder="Paste or write your shadowing script JSON here..."
             style={{
               width: '100%',
               background: '#09090b',
@@ -320,6 +397,62 @@ export default function EnglishShadowingStudio() {
               boxSizing: 'border-box'
             }}
           />
+
+          {/* Bottom Toolbar right below editor */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '-4px',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={handleFormatJson}
+                title="Format & prettify JSON (Alt+Shift+F)"
+                style={{
+                  background: formatSuccess ? '#166534' : 'rgba(56, 189, 248, 0.15)',
+                  color: formatSuccess ? '#86efac' : '#38bdf8',
+                  border: formatSuccess ? '1px solid #22c55e' : '1px solid #0284c7',
+                  borderRadius: '6px',
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>{formatSuccess ? '✅ Formatted!' : '✨ Format JSON'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleValidateJson}
+                title="Verify JSON syntax and segment count"
+                style={{
+                  background: '#27272a',
+                  color: '#d4d4d8',
+                  border: '1px solid #3f3f46',
+                  borderRadius: '6px',
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                🔍 Check Syntax
+              </button>
+            </div>
+
+            <span style={{ fontSize: '11px', color: '#71717a' }}>
+              Pro tip: press <kbd style={{ background: '#27272a', border: '1px solid #3f3f46', padding: '1px 5px', borderRadius: '4px', color: '#e4e4e7' }}>Alt+Shift+F</kbd> or <kbd style={{ background: '#27272a', border: '1px solid #3f3f46', padding: '1px 5px', borderRadius: '4px', color: '#e4e4e7' }}>Tab</kbd> in editor
+            </span>
+          </div>
 
           {errorMsg && (
             <div style={{
