@@ -410,29 +410,39 @@ class TimelineBuilder:
                     event_id += 1
 
             # -----------------------------------------------------------------
-            # 4. SHADOW PAIR (Conversation exchange repeated as a whole block)
+            # -----------------------------------------------------------------
+            # 4. SHADOW PAIR (Each line practiced N times before next line)
             # -----------------------------------------------------------------
             elif isinstance(segment, ShadowPairSegment):
                 repeat_count = int(segment.repeat or self.default_repeat)
                 lines = segment.lines
 
-                # Pre-generate audio for each line
+                # Pre-generate audio for each line across repetition takes
                 cached_line_takes: List[Dict[float, Tuple[str, List[Dict], float]]] = [{} for _ in lines]
 
-                for r in range(1, repeat_count + 1):
-                    speed_factor = 1.0
-                    if self.repeat_speed_factors:
-                        speed_idx = (r - 1) % len(self.repeat_speed_factors)
-                        speed_factor = float(self.repeat_speed_factors[speed_idx])
+                for l_idx, line in enumerate(lines):
+                    display_text = line.text.strip()
+                    default_role = "speaker_a" if l_idx % 2 == 0 else "speaker_b"
+                    voice_id, base_speed = self.resolve_voice_info(line.voice, default_role)
 
-                    for l_idx, line in enumerate(lines):
-                        display_text = line.text.strip()
-                        default_role = "speaker_a" if l_idx % 2 == 0 else "speaker_b"
-                        voice_id, base_speed = self.resolve_voice_info(line.voice, default_role)
+                    spoken_raw = line.spoken.strip() if line.spoken else display_text
+                    spoken_text = apply_pronunciation(spoken_raw, self.pronunciation_dict)
+
+                    line_id = f"{seg_id}_L{l_idx+1}"
+                    v_lower = (line.voice or "").lower()
+                    if "speaker_b" in v_lower or v_lower.endswith("_b") or v_lower == "b":
+                        speaker_name = "Speaker B"
+                    elif "speaker_a" in v_lower or v_lower.endswith("_a") or v_lower == "a":
+                        speaker_name = "Speaker A"
+                    else:
+                        speaker_name = "Speaker A" if l_idx % 2 == 0 else "Speaker B"
+
+                    for r in range(1, repeat_count + 1):
+                        speed_factor = 1.0
+                        if self.repeat_speed_factors:
+                            speed_idx = (r - 1) % len(self.repeat_speed_factors)
+                            speed_factor = float(self.repeat_speed_factors[speed_idx])
                         actual_speed = round(base_speed * speed_factor, 2)
-
-                        spoken_raw = line.spoken.strip() if line.spoken else display_text
-                        spoken_text = apply_pronunciation(spoken_raw, self.pronunciation_dict)
 
                         if actual_speed not in cached_line_takes[l_idx]:
                             audio_path, raw_timings, dur = self.audio_provider.get_audio_and_transcription(
@@ -444,10 +454,7 @@ class TimelineBuilder:
                         a_path, w_timings, dur = cached_line_takes[l_idx][actual_speed]
                         pause_dur = self.calc_shadow_pause(dur, display_text)
 
-                        line_id = f"{seg_id}_L{l_idx+1}"
-                        speaker_name = "Speaker A" if l_idx % 2 == 0 else "Speaker B"
-
-                        # Line SPEECH
+                        # Line SPEECH (Listen & Read)
                         speech_ev = TimelineEvent(
                             event_id=event_id,
                             segment_id=line_id,
@@ -472,7 +479,7 @@ class TimelineBuilder:
                         current_time += dur
                         event_id += 1
 
-                        # Line SILENCE
+                        # Line SILENCE (Your Turn)
                         silence_ev = TimelineEvent(
                             event_id=event_id,
                             segment_id=line_id,

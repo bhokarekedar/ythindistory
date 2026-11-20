@@ -169,7 +169,7 @@ class TestTimelineSpec(unittest.TestCase):
         self.assertEqual(events_r3[5].repeat_index, 3)
 
     def test_shadow_pair_two_rounds(self):
-        """Verify shadow_pair with 2 rounds repeats the whole multi-line exchange as a block."""
+        """Verify shadow_pair practices each line N times (speech + silence) before moving to next line."""
         script_pair = parse_and_validate_script(self._with_youtube({
             "title": "Test Shadow Pair",
             "segments": [
@@ -189,25 +189,31 @@ class TestTimelineSpec(unittest.TestCase):
         # 2 lines * 2 (speech + silence) * 2 rounds = 8 events total
         self.assertEqual(len(events), 8)
 
-        # Round 1: Line 1 SPEECH -> Line 1 SILENCE -> Line 2 SPEECH -> Line 2 SILENCE
+        # Line 1 practiced twice: Take 1 (Listen & Read -> Your Turn) -> Take 2 (Listen & Read -> Your Turn)
         self.assertEqual(events[0].event_type, "SPEECH")
         self.assertEqual(events[0].text, "Where is the departure gate?")
         self.assertEqual(events[0].repeat_index, 1)
         self.assertEqual(events[1].event_type, "SILENCE")
+        self.assertEqual(events[1].repeat_index, 1)
 
         self.assertEqual(events[2].event_type, "SPEECH")
-        self.assertEqual(events[2].text, "It is down the hall to your right.")
-        self.assertEqual(events[2].repeat_index, 1)
+        self.assertEqual(events[2].text, "Where is the departure gate?")
+        self.assertEqual(events[2].repeat_index, 2)
         self.assertEqual(events[3].event_type, "SILENCE")
+        self.assertEqual(events[3].repeat_index, 2)
 
-        # Round 2: Line 1 SPEECH -> Line 1 SILENCE -> Line 2 SPEECH -> Line 2 SILENCE
+        # Line 2 practiced twice: Take 1 (Listen & Read -> Your Turn) -> Take 2 (Listen & Read -> Your Turn)
         self.assertEqual(events[4].event_type, "SPEECH")
-        self.assertEqual(events[4].repeat_index, 2)
+        self.assertEqual(events[4].text, "It is down the hall to your right.")
+        self.assertEqual(events[4].repeat_index, 1)
         self.assertEqual(events[5].event_type, "SILENCE")
+        self.assertEqual(events[5].repeat_index, 1)
 
         self.assertEqual(events[6].event_type, "SPEECH")
+        self.assertEqual(events[6].text, "It is down the hall to your right.")
         self.assertEqual(events[6].repeat_index, 2)
         self.assertEqual(events[7].event_type, "SILENCE")
+        self.assertEqual(events[7].repeat_index, 2)
 
     def test_narration_produces_no_silence(self):
         """Verify narration creates only SPEECH events and zero learner silence pauses."""
