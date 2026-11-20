@@ -69,17 +69,47 @@ def run_pipeline_worker(job_id: str, script_data: dict, preview: bool):
         srt_filename = Path(results["srt"]).name
         tl_filename = Path(results["timeline"]).name
 
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["progress"] = 100.0
-        jobs[job_id]["result"] = {
+        shadowing_res = {
             "video_url": f"/output/{vid_filename}",
             "srt_url": f"/output/{srt_filename}",
             "timeline_url": f"/output/{tl_filename}",
+            "metadata_url": "/output/video_metadata.json",
+            "description_url": "/output/description.txt",
+            "tags_url": "/output/tags.txt",
+            "chapters_url": "/output/chapters.txt",
             "duration": results["duration"],
         }
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["progress"] = 100.0
+        jobs[job_id]["result"] = shadowing_res
     except Exception as e:
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
+
+
+@app.post("/api/export-metadata")
+async def export_metadata(req: GenerateRequest):
+    try:
+        pipeline = ShadowingVideoPipeline()
+        res = pipeline.export_metadata_only(
+            script_input=req.script,
+            output_dir=str(output_dir),
+        )
+        return {
+            "success": True,
+            "title": res["title"],
+            "duration_seconds": res["duration_seconds"],
+            "chapters": res["chapters"],
+            "chapters_txt": res["chapters_txt"],
+            "metadata_url": "/output/video_metadata.json",
+            "description_url": "/output/description.txt",
+            "tags_url": "/output/tags.txt",
+            "chapters_url": "/output/chapters.txt",
+            "video_metadata": res["video_metadata"],
+            "warnings": res["warnings"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/generate")

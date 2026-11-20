@@ -2393,6 +2393,10 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
             "video_url": f"/output/{vid_filename}",
             "srt_url": f"/output/{srt_filename}",
             "timeline_url": f"/output/{tl_filename}",
+            "metadata_url": "/output/video_metadata.json",
+            "description_url": "/output/description.txt",
+            "tags_url": "/output/tags.txt",
+            "chapters_url": "/output/chapters.txt",
             "duration": results["duration"],
         }
         _save_shadowing_jobs()
@@ -2423,6 +2427,33 @@ def start_shadowing_generation(req: ShadowingGenerateRequest):
     )
     t.start()
     return {"job_id": job_id, "message": "Shadowing video job started"}
+
+
+@app.post("/api/shadowing/export-metadata")
+def export_shadowing_metadata(req: ShadowingGenerateRequest):
+    try:
+        from shadowing_pipeline.core.pipeline import ShadowingVideoPipeline
+        pipeline = ShadowingVideoPipeline()
+        backend_dir = Path(__file__).resolve().parent
+        res = pipeline.export_metadata_only(
+            script_input=req.script,
+            output_dir=str(backend_dir / "output"),
+        )
+        return {
+            "success": True,
+            "title": res["title"],
+            "duration_seconds": res["duration_seconds"],
+            "chapters": res["chapters"],
+            "chapters_txt": res["chapters_txt"],
+            "metadata_url": "/output/video_metadata.json",
+            "description_url": "/output/description.txt",
+            "tags_url": "/output/tags.txt",
+            "chapters_url": "/output/chapters.txt",
+            "video_metadata": res["video_metadata"],
+            "warnings": res["warnings"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/shadowing/jobs/{job_id}")

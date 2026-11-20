@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 from shadowing_pipeline.core.audio_builder import AudioBuilder
 from shadowing_pipeline.core.audio_provider import AudioProvider
-from shadowing_pipeline.core.exporters import export_chapters_txt, export_srt, export_timeline_json
+from shadowing_pipeline.core.exporters import (
+    build_chapters_list,
+    export_chapters_txt,
+    export_srt,
+    export_timeline_json,
+    export_youtube_metadata,
+)
 from shadowing_pipeline.core.schema import parse_and_validate_script
 from shadowing_pipeline.core.timeline import TimelineBuilder
 from shadowing_pipeline.core.video_renderer import VideoRenderer
@@ -82,16 +88,34 @@ class ShadowingVideoPipeline:
         final_chapters = str(out_path / f"{base_name}_chapters.txt")
         master_wav = str(temp_dir / f"{base_name}_master.wav")
 
-        # 3. Export SRT, Timeline JSON & Chapters early for inspection
-        print(f"📄 Exporting subtitles, timeline metadata, and chapters...")
+        # 3. Export SRT, Timeline JSON, Chapters & YouTube Metadata
+        print(f"📄 Exporting subtitles, timeline metadata, chapters, and YouTube metadata...")
         export_srt(events, final_srt)
         export_timeline_json(events, final_json)
-        chapters_txt = export_chapters_txt(self.timeline_builder.chapters, final_chapters)
+        
+        # Build chapters with '00:00 Intro'
+        formatted_chapters, chap_warnings = build_chapters_list(
+            self.timeline_builder.chapters, total_duration=total_duration
+        )
+        for w in chap_warnings:
+            print(f"   ⚠️ {w}")
+        chapters_txt = export_chapters_txt(formatted_chapters, final_chapters)
         if chapters_txt:
             print("\n📌 YouTube Chapters:")
             for line in chapters_txt.splitlines():
                 print(f"   {line}")
             print("")
+
+        yt_meta_paths = {}
+        if script.youtube:
+            yt_meta_paths = export_youtube_metadata(
+                youtube_data=script.youtube,
+                chapters_content=chapters_txt,
+                chapters_list=formatted_chapters,
+                duration_seconds=total_duration,
+                output_dir=out_path,
+            )
+            print(f"✅ YouTube metadata exported to {out_path / 'video_metadata.json'}")
 
         # 4. Assemble Master Audio & Pre-compute Waveform Bars
         print("🎵 Assembling master audio track...")
@@ -123,11 +147,81 @@ class ShadowingVideoPipeline:
             f"\n🎉 Video rendered successfully in {elapsed:.1f}s ({fps_render:.1f} fps rendering speed)!"
         )
 
-        return {
+        result_dict = {
             "video": final_mp4,
             "srt": final_srt,
             "timeline": final_json,
             "chapters": final_chapters,
             "duration": total_duration,
+        }
+        if yt_meta_paths:
+            result_dict.update({
+                "metadata": yt_meta_paths["metadata_path"],
+                "description": yt_meta_paths["description_path"],
+                "tags": yt_meta_paths["tags_path"],
+            })
+        return result_dict
+
+    def export_metadata_only(
+        self,
+        script_input: dict | str,
+        output_dir: str = "output",
+    ) -> Dict[str, Any]:
+        """Validates script and exports all metadata without rendering video frames.
+
+        Generates:
+        - chapters.txt
+        - video_metadata.json
+        - description.txt
+        - tags.txt
+        - timeline.json
+        """
+        out_path = Path(output_dir).resolve()
+        out_path.mkdir(parents=True, exist_ok=True)
+
+        if isinstance(script_input, str):
+            if script_input.strip().startswith("{"):
+                raw_dict = json.loads(script_input)
+            else:
+                with open(script_input, "r", encoding="utf-8") as f:
+                    raw_dict = json.load(f)
+        else:
+            raw_dict = script_input
+
+        script = parse_and_validate_script(raw_dict)
+        events = self.timeline_builder.build_timeline(script, preview=False)
+        total_duration = events[-1].end_time if events else 0.0
+
+        base_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in script.title)
+        final_json = str(out_path / f"{base_name}_timeline.json")
+        final_chapters = str(out_path / "chapters.txt")
+        export_timeline_json(events, final_json)
+
+        formatted_chapters, chap_warnings = build_chapters_list(
+            self.timeline_builder.chapters, total_duration=total_duration
+        )
+        chapters_txt = export_chapters_txt(formatted_chapters, final_chapters)
+
+        yt_meta_paths = {}
+        if script.youtube:
+            yt_meta_paths = export_youtube_metadata(
+                youtube_data=script.youtube,
+                chapters_content=chapters_txt,
+                chapters_list=formatted_chapters,
+                duration_seconds=total_duration,
+                output_dir=out_path,
+            )
+
+        return {
+            "title": script.title,
+            "duration_seconds": total_duration,
+            "chapters": formatted_chapters,
+            "chapters_txt": chapters_txt,
+            "metadata_path": yt_meta_paths.get("metadata_path", str(out_path / "video_metadata.json")),
+            "description_path": yt_meta_paths.get("description_path", str(out_path / "description.txt")),
+            "tags_path": yt_meta_paths.get("tags_path", str(out_path / "tags.txt")),
+            "chapters_path": final_chapters,
+            "video_metadata": yt_meta_paths.get("video_metadata", {}),
+            "warnings": chap_warnings,
         }
 

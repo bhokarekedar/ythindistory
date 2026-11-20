@@ -74,15 +74,54 @@ class TestTimelineSpec(unittest.TestCase):
                 "SIM": "sim",
             },
         }
+        self.sample_youtube = {
+            "title": "Job Interview English Shadowing Practice | Speak Along",
+            "title_alternatives": [
+                "Answer Interview Questions in English | Shadowing Practice",
+                "Speak Confidently in Job Interviews | English Shadowing",
+                "Can You Answer These Interview Questions in English?",
+            ],
+            "description": "English shadowing practice for job interviews.\n\n{{CHAPTERS}}\n\nSubscribe for more.",
+            "tags": [
+                "english shadowing practice",
+                "job interview english",
+                "english interview questions",
+                "english sentences for job interview",
+                "shadowing english",
+                "speak english confidently",
+                "english speaking practice",
+                "learn english",
+                "english conversation practice",
+                "interview english phrases",
+                "business english",
+                "english for work",
+                "english listening and speaking",
+                "repeat after me english",
+                "english fluency practice",
+            ],
+            "hashtags": ["#EnglishShadowing", "#JobInterviewEnglish", "#SpeakEnglish"],
+            "thumbnail_text": "SPEAK IN INTERVIEWS",
+            "pinned_comment": "Comment below!",
+            "playlist": "Work English",
+            "category": "Education",
+            "language": "en",
+            "made_for_kids": False,
+        }
         self.builder = TimelineBuilder(self.mock_audio, config=self.config)
+
+    def _with_youtube(self, d: dict) -> dict:
+        merged = dict(d)
+        if "youtube" not in merged:
+            merged["youtube"] = self.sample_youtube
+        return merged
 
     def test_shadow_repeat_1_2_3(self):
         """Verify shadow segment with repeat 1, 2, and 3."""
         # Repeat = 1
-        script_r1 = parse_and_validate_script({
+        script_r1 = parse_and_validate_script(self._with_youtube({
             "title": "Test R1",
             "segments": [{"type": "shadow", "text": "This is a test sentence.", "repeat": 1}],
-        }, self.config)
+        }), self.config)
         events_r1 = self.builder.build_timeline(script_r1)
         self.assertEqual(len(events_r1), 2)
         self.assertEqual(events_r1[0].event_type, "SPEECH")
@@ -98,10 +137,10 @@ class TestTimelineSpec(unittest.TestCase):
         self.assertTrue(2.0 <= buffer_val <= 3.0)
 
         # Repeat = 2 (default)
-        script_r2 = parse_and_validate_script({
+        script_r2 = parse_and_validate_script(self._with_youtube({
             "title": "Test R2",
             "segments": [{"type": "shadow", "text": "This is a test sentence.", "repeat": 2}],
-        }, self.config)
+        }), self.config)
         events_r2 = self.builder.build_timeline(script_r2)
         self.assertEqual(len(events_r2), 4)
         self.assertEqual([e.event_type for e in events_r2], ["SPEECH", "SILENCE", "SPEECH", "SILENCE"])
@@ -116,10 +155,10 @@ class TestTimelineSpec(unittest.TestCase):
         self.assertIn("2/2", events_r2[3].badge_text)
 
         # Repeat = 3
-        script_r3 = parse_and_validate_script({
+        script_r3 = parse_and_validate_script(self._with_youtube({
             "title": "Test R3",
             "segments": [{"type": "shadow", "text": "This is a test sentence.", "repeat": 3}],
-        }, self.config)
+        }), self.config)
         events_r3 = self.builder.build_timeline(script_r3)
         self.assertEqual(len(events_r3), 6)
         self.assertEqual(
@@ -131,7 +170,7 @@ class TestTimelineSpec(unittest.TestCase):
 
     def test_shadow_pair_two_rounds(self):
         """Verify shadow_pair with 2 rounds repeats the whole multi-line exchange as a block."""
-        script_pair = parse_and_validate_script({
+        script_pair = parse_and_validate_script(self._with_youtube({
             "title": "Test Shadow Pair",
             "segments": [
                 {
@@ -144,7 +183,7 @@ class TestTimelineSpec(unittest.TestCase):
                     ],
                 }
             ],
-        }, self.config)
+        }), self.config)
         events = self.builder.build_timeline(script_pair)
 
         # 2 lines * 2 (speech + silence) * 2 rounds = 8 events total
@@ -172,13 +211,13 @@ class TestTimelineSpec(unittest.TestCase):
 
     def test_narration_produces_no_silence(self):
         """Verify narration creates only SPEECH events and zero learner silence pauses."""
-        script_narr = parse_and_validate_script({
+        script_narr = parse_and_validate_script(self._with_youtube({
             "title": "Test Narration",
             "segments": [
                 {"type": "narration", "text": "Welcome to our practice session today."},
                 {"type": "narration", "text": "Remember to speak aloud after each sentence."},
             ],
-        }, self.config)
+        }), self.config)
         events = self.builder.build_timeline(script_narr)
 
         # Must have exactly 2 speech events and 0 silence events
@@ -195,12 +234,12 @@ class TestTimelineSpec(unittest.TestCase):
 
     def test_free_answer_own_pause_rule(self):
         """Verify free_answer uses free_answer pause rule (1.6x factor, min 4s, max 15s) and does not repeat."""
-        script_fa = parse_and_validate_script({
+        script_fa = parse_and_validate_script(self._with_youtube({
             "title": "Test Free Answer",
             "segments": [
                 {"type": "free_answer", "text": "What do you usually like to eat for breakfast?"}
             ],
-        }, self.config)
+        }), self.config)
         events = self.builder.build_timeline(script_fa)
 
         # Exactly 1 SPEECH (question) and 1 SILENCE (answer)
@@ -215,7 +254,7 @@ class TestTimelineSpec(unittest.TestCase):
 
     def test_ignored_pause_seconds(self):
         """Verify pause_seconds in script is ignored in favor of dynamically calculated pauses, and warns."""
-        raw_data = {
+        raw_data = self._with_youtube({
             "title": "Test Ignored Pauses",
             "segments": [
                 {
@@ -224,7 +263,7 @@ class TestTimelineSpec(unittest.TestCase):
                     "pause_seconds": 99.0,  # Should be ignored!
                 }
             ],
-        }
+        })
         script, errors, warnings = validate_script_full(raw_data, self.config)
         self.assertEqual(len(errors), 0)
         # Verify warning was recorded
