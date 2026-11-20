@@ -15,16 +15,60 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 CACHE_DIR = PACKAGE_DIR / "assets" / "audio_cache"
 
+_KOKORO_PIPELINES: Dict[str, Any] = {}
 
-def compute_audio_hash(text: str, voice: str) -> str:
-    """Deterministic hash for a sentence and voice."""
-    key = f"{voice.strip()}::{text.strip()}"
+
+def get_kokoro_pipeline(lang_code: str = "a"):
+    """Thread-safe / reusable pipeline singleton per language code."""
+    global _KOKORO_PIPELINES
+    if lang_code not in _KOKORO_PIPELINES:
+        from kokoro import KPipeline
+        _KOKORO_PIPELINES[lang_code] = KPipeline(lang_code=lang_code)
+    return _KOKORO_PIPELINES[lang_code]
+
+
+def map_to_kokoro_voice(voice: str) -> Tuple[str, str]:
+    """Map voice names or aliases to (kokoro_voice_id, lang_code)."""
+    if not voice:
+        return "af_heart", "a"
+    v = voice.lower().strip()
+    # Common mappings
+    if v in ["samantha", "victoria", "karen", "female", "teacher", "af_heart", "heart"]:
+        return "af_heart", "a"
+    if v in ["alex", "daniel", "fred", "male", "speaker_b", "am_adam", "adam"]:
+        return "am_adam", "a"
+    if v in ["af_bella", "bella"]:
+        return "af_bella", "a"
+    if v in ["af_nicole", "nicole"]:
+        return "af_nicole", "a"
+    if v in ["af_sarah", "sarah"]:
+        return "af_sarah", "a"
+    if v in ["am_michael", "michael"]:
+        return "am_michael", "a"
+    if v in ["bf_emma", "emma"]:
+        return "bf_emma", "b"
+    if v in ["bm_george", "george"]:
+        return "bm_george", "b"
+
+    # Direct Kokoro voice ID passed
+    if v.startswith("bf_") or v.startswith("bm_"):
+        return v, "b"
+    if v.startswith("af_") or v.startswith("am_"):
+        return v, "a"
+
+    return "af_heart", "a"
+
+
+def compute_audio_hash(text: str, voice: str, speed: float = 0.92) -> str:
+    """Deterministic hash for a sentence, voice, and speed."""
+    resolved_voice, lang = map_to_kokoro_voice(voice)
+    key = f"{resolved_voice}::{speed:.2f}::{text.strip()}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
@@ -43,7 +87,7 @@ class AudioProvider:
         self.custom_transcribe = custom_transcribe
 
     def get_audio_and_transcription(
-        self, text: str, voice: str = "Samantha"
+        self, text: str, voice: str = "af_heart", speed: float = 0.92
     ) -> Tuple[str, List[Dict], float]:
         """Returns (audio_path, word_timings, duration_seconds).
 
@@ -51,7 +95,7 @@ class AudioProvider:
         word_timings: list of {"word": str, "start": float, "end": float}
         """
         text = text.strip()
-        h = compute_audio_hash(text, voice)
+        h = compute_audio_hash(text, voice, speed)
         cached_wav = self.cache_dir / f"{h}.wav"
         cached_meta = self.cache_dir / f"{h}.json"
 
@@ -69,7 +113,7 @@ class AudioProvider:
             # Ensure standard WAV format (44100Hz, mono, 16-bit PCM)
             self._normalize_audio(raw_audio_path, str(cached_wav))
         else:
-            self._default_tts(text, voice, str(cached_wav))
+            self._default_tts(text, voice, str(cached_wav), speed=speed)
 
         duration = self._get_audio_duration(str(cached_wav))
 
@@ -102,49 +146,42 @@ class AudioProvider:
         ]
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-    def _default_tts(self, text: str, voice: str, dst_wav: str):
-        """Built-in TTS: uses macOS `say` or python fallback."""
-        if shutil.which("say"):
-            # macOS native high quality speech synthesizer
-            tmp_aiff = dst_wav + ".aiff"
-            try:
-                cmd = ["say", "-v", voice, "-r", "165", text, "-o", tmp_aiff]
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                self._normalize_audio(tmp_aiff, dst_wav)
-                if os.path.exists(tmp_aiff):
-                    os.remove(tmp_aiff)
-                return
-            except Exception:
-                # If specified voice is unavailable, retry with default voice
-                try:
-                    cmd = ["say", "-r", "165", text, "-o", tmp_aiff]
-                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    self._normalize_audio(tmp_aiff, dst_wav)
-                    if os.path.exists(tmp_aiff):
-                        os.remove(tmp_aiff)
-                    return
-                except Exception:
-                    pass
+    def _kokoro_tts(self, text: str, voice: str, dst_wav: str, speed: float = 0.92) -> bool:
+        """Generate high-quality neural speech using Kokoro TTS."""
+        try:
+            import numpy as np
+            import soundfile as sf
+            kokoro_voice, lang_code = map_to_kokoro_voice(voice)
+            pipeline = get_kokoro_pipeline(lang_code)
+            generator = pipeline(text, voice=kokoro_voice, speed=speed)
+            chunks = []
+            for _, _, audio in generator:
+                if audio is not None and len(audio) > 0:
+                    chunks.append(audio)
+            if not chunks:
+                return False
+            full_audio = np.concatenate(chunks)
+            # Peak normalize slightly below 0 dB to avoid clipping
+            peak = np.max(np.abs(full_audio))
+            if peak > 1e-4:
+                full_audio = (full_audio / peak) * 0.92
 
-        # Universal fallback using ffmpeg synthetic tone or silence for unit tests
-        words = text.split()
-        estimated_duration = max(1.2, len(words) * 0.38)
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            f"sine=frequency=440:duration={estimated_duration}",
-            "-ar",
-            "44100",
-            "-ac",
-            "1",
-            "-af",
-            "volume=0.01",
-            dst_wav,
-        ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            tmp_wav = dst_wav + ".raw.wav"
+            sf.write(tmp_wav, full_audio, 24000)
+            self._normalize_audio(tmp_wav, dst_wav)
+            if os.path.exists(tmp_wav):
+                os.remove(tmp_wav)
+            return True
+        except Exception as e:
+            import logging
+            logging.error(f"Kokoro TTS generation error: {e}")
+            return False
+
+    def _default_tts(self, text: str, voice: str, dst_wav: str, speed: float = 0.92):
+        """Built-in TTS: uses Kokoro neural TTS exclusively."""
+        success = self._kokoro_tts(text, voice, dst_wav, speed=speed)
+        if not success:
+            raise RuntimeError(f"Kokoro TTS failed to generate audio for text: '{text}'")
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """Extracts exact audio duration in seconds using ffprobe."""

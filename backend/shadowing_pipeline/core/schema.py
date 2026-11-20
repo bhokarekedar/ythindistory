@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 class Settings(BaseModel):
     buffer_seconds: float = Field(default=1.5, ge=0.5, le=5.0, description="Buffer silence seconds added to shadow pause")
     default_repeat: int = Field(default=2, ge=1, le=10, description="Default number of shadow repeats")
-    voice_teacher: str = Field(default="Samantha", description="Default voice for teacher/narration")
-    voice_speaker_b: str = Field(default="Alex", description="Default voice for dialogue second speaker")
+    voice_teacher: str = Field(default="af_heart", description="Default voice for teacher/narration (Kokoro)")
+    voice_speaker_b: str = Field(default="am_adam", description="Default voice for dialogue second speaker (Kokoro)")
+    speed: float = Field(default=0.92, ge=0.5, le=2.0, description="Default speech speed for Kokoro")
 
 
 class NarrationSegment(BaseModel):

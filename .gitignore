@@ -2,9 +2,13 @@
 output/
 _temp/
 temp/
+backend/output/
+backend/_temp/
+backend/temp/
 
 # Audio Cache
 shadowing_pipeline/assets/audio_cache/
+backend/shadowing_pipeline/assets/audio_cache/
 
 # Python & Environment
 __pycache__/

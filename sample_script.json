@@ -3,8 +3,9 @@
   "settings": {
     "buffer_seconds": 1.5,
     "default_repeat": 2,
-    "voice_teacher": "Samantha",
-    "voice_speaker_b": "Alex"
+    "voice_teacher": "af_heart",
+    "voice_speaker_b": "am_adam",
+    "speed": 0.92
   },
   "segments": [
     {

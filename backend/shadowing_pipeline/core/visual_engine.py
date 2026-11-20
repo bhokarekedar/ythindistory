@@ -53,7 +53,7 @@ class VisualEngine:
         self.font_small = ImageFont.truetype(font_bold_path, 22)
 
         # Pre-render base background
-        self.base_background = self._create_wavy_gradient_background()
+        self.base_background = self._create_base_background()
 
         # Load static assets
         self.illustration_img = self._load_image(
@@ -72,23 +72,47 @@ class VisualEngine:
         if p.exists():
             return str(p.resolve())
         # Try relative to PACKAGE_DIR
-        sub = rel_path.replace("shadowing_pipeline/", "")
+        sub = rel_path.replace("backend/", "").replace("shadowing_pipeline/", "")
         pkg_p = PACKAGE_DIR / sub
         if pkg_p.exists():
             return str(pkg_p.resolve())
-        root_p = PACKAGE_DIR.parent / rel_path
+        # Check assets/images or assets/fonts
+        for subfolder in ["assets/images", "assets/fonts", "assets"]:
+            cand = PACKAGE_DIR / subfolder / p.name
+            if cand.exists():
+                return str(cand.resolve())
+        root_p = PACKAGE_DIR.parent.parent / rel_path
         if root_p.exists():
             return str(root_p.resolve())
         # Try fallback system fonts if not found
         return "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 
-    def _load_image(self, rel_path: str, max_size: Tuple[int, int]) -> Optional[Image.Image]:
+    def _load_image(self, rel_path: Optional[str], max_size: Tuple[int, int]) -> Optional[Image.Image]:
+        if not rel_path:
+            return None
         path = self._resolve_path(rel_path)
         if os.path.exists(path):
             img = Image.open(path).convert("RGBA")
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
             return img
         return None
+
+    def _create_base_background(self) -> Image.Image:
+        """Loads custom background image (scaled/cropped to 1080p), or falls back to synthetic gradient."""
+        bg_path_cfg = self.theme.get("background", {}).get("image_path")
+        if bg_path_cfg:
+            resolved_bg = self._resolve_path(bg_path_cfg)
+            if os.path.exists(resolved_bg):
+                im = Image.open(resolved_bg).convert("RGB")
+                scale = max(self.width / im.width, self.height / im.height)
+                new_w = int(round(im.width * scale))
+                new_h = int(round(im.height * scale))
+                im_resized = im.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                left = (new_w - self.width) // 2
+                top = (new_h - self.height) // 2
+                return im_resized.crop((left, top, left + self.width, top + self.height))
+
+        return self._create_wavy_gradient_background()
 
     def _create_wavy_gradient_background(self) -> Image.Image:
         """Pre-renders 1920x1080 gradient with decorative wavy lines."""
@@ -204,23 +228,66 @@ class VisualEngine:
         # 4. Animated Waveform Bars
         self._render_waveform(draw, waveform_heights, is_speech)
 
-        # 5. Progress Bar (if in silence / pause)
-        if not is_speech and event.type == "silence":
-            progress = min(1.0, max(0.0, local_time / max(0.01, event.duration)))
-            self._render_progress_bar(draw, progress)
-
         return frame
 
     def _render_section_title(
         self, draw: ImageDraw.ImageDraw, event: TimelineEvent, local_time: float
     ):
-        """Renders an impactful centered section title card."""
-        cx = int(self.width * 0.40)
+        """Renders an impactful centered section title card with automatic fitting."""
+        cx = int(self.width * 0.50)
         cy = int(self.height * 0.48)
 
-        # Title Card Background
-        card_w = 1100
-        card_h = 320
+        text = event.text.strip()
+        font_path = self._resolve_path(self.theme["typography"]["font_extrabold"])
+
+        chosen_font = self.font_title
+        chosen_lines = [text]
+        max_card_text_w = 1400
+
+        for f_size in [64, 56, 48, 42, 36]:
+            test_font = ImageFont.truetype(font_path, f_size)
+            bbox = test_font.getbbox(text)
+            text_w = bbox[2] - bbox[0]
+            if text_w <= max_card_text_w:
+                chosen_font = test_font
+                chosen_lines = [text]
+                break
+            else:
+                words = text.split()
+                if len(words) > 1:
+                    mid = len(words) // 2
+                    line1 = " ".join(words[:mid])
+                    line2 = " ".join(words[mid:])
+                    bb1 = test_font.getbbox(line1)
+                    bb2 = test_font.getbbox(line2)
+                    w1 = bb1[2] - bb1[0]
+                    w2 = bb2[2] - bb2[0]
+                    if max(w1, w2) <= max_card_text_w:
+                        chosen_font = test_font
+                        chosen_lines = [line1, line2]
+                        break
+        else:
+            chosen_font = ImageFont.truetype(font_path, 36)
+            chosen_lines = [text]
+
+        line_heights = []
+        line_widths = []
+        for l in chosen_lines:
+            bb = chosen_font.getbbox(l)
+            line_widths.append(bb[2] - bb[0])
+            line_heights.append(bb[3] - bb[1])
+
+        max_text_w = max(line_widths) if line_widths else 300
+        line_spacing = 16
+        total_text_h = sum(line_heights) + (len(chosen_lines) - 1) * line_spacing
+
+        badge_text = "SECTION BREAK"
+        b_box = self.font_badge.getbbox(badge_text)
+        bw = b_box[2] - b_box[0] + 40
+        bh = b_box[3] - b_box[1] + 20
+
+        card_w = max(700, min(max_text_w + 140, 1600))
+        card_h = bh + total_text_h + 120
         x0 = cx - card_w // 2
         y0 = cy - card_h // 2
         x1 = x0 + card_w
@@ -234,13 +301,8 @@ class VisualEngine:
             width=3,
         )
 
-        # Section Pill Badge
-        badge_text = "SECTION BREAK"
-        b_box = self.font_badge.getbbox(badge_text)
-        bw = b_box[2] - b_box[0] + 40
-        bh = b_box[3] - b_box[1] + 20
         bx = cx - bw // 2
-        by = y0 + 35
+        by = y0 + 32
         draw.rounded_rectangle(
             [bx, by, bx + bw, by + bh],
             radius=16,
@@ -254,14 +316,17 @@ class VisualEngine:
             anchor="mm",
         )
 
-        # Title Text
-        draw.text(
-            (cx, cy + 30),
-            event.text,
-            font=self.font_title,
-            fill=tuple(self.theme["colors"]["text_normal"]),
-            anchor="mm",
-        )
+        curr_text_y = by + bh + 30
+        for i, l in enumerate(chosen_lines):
+            lh = line_heights[i]
+            draw.text(
+                (cx, curr_text_y + lh // 2),
+                l,
+                font=chosen_font,
+                fill=tuple(self.theme["colors"]["text_normal"]),
+                anchor="mm",
+            )
+            curr_text_y += lh + line_spacing
 
     def _render_sentence_view(
         self,
@@ -417,40 +482,4 @@ class VisualEngine:
             by1 = by
 
             draw.rounded_rectangle([bx0, by0, bx1, by1], radius=3, fill=color)
-
-    def _render_progress_bar(self, draw: ImageDraw.ImageDraw, progress: float):
-        """Draws a smooth progress indicator bar during silence pauses."""
-        cfg = self.theme["progressbar"]
-        x0 = cfg["x"]
-        y0 = cfg["y"]
-        w = cfg["width"]
-        h = cfg["height"]
-        x1 = x0 + w
-        y1 = y0 + h
-
-        # Track background
-        draw.rounded_rectangle(
-            [x0, y0, x1, y1],
-            radius=h // 2,
-            fill=tuple(cfg["bg_color"]),
-        )
-
-        # Filled progress
-        fill_w = int(w * progress)
-        if fill_w > 8:
-            fill_x1 = x0 + fill_w
-            draw.rounded_rectangle(
-                [x0, y0, fill_x1, y1],
-                radius=h // 2,
-                fill=tuple(cfg["fill_color"]),
-            )
-
-        # "REPEAT NOW" subtitle label above progress bar
-        pct = int(progress * 100)
-        draw.text(
-            (x0 + 4, y0 - 32),
-            f"Speaking time • {pct}%",
-            font=self.font_small,
-            fill=(60, 45, 35, 230),
-        )
 

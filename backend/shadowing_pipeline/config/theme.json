@@ -5,6 +5,7 @@
     "fps": 30
   },
   "background": {
+    "image_path": "backend/shadowing_pipeline/assets/images/Gemini_Generated_Image_jlnpidjlnpidjlnp.png",
     "gradient_top": [255, 145, 40],
     "gradient_bottom": [255, 215, 75],
     "wave_color": [255, 255, 255, 35],
@@ -28,10 +29,10 @@
     "card_outline": [255, 255, 255, 220]
   },
   "layout": {
-    "text_area_width_ratio": 0.65,
+    "text_area_width_ratio": 0.85,
     "margin_left": 110,
     "margin_top": 240,
-    "illustration_path": "shadowing_pipeline/assets/images/illustration.png",
+    "illustration_path": null,
     "illustration_pos": [1300, 180],
     "logo_path": "shadowing_pipeline/assets/images/logo.png",
     "logo_pos": [1600, 940]
@@ -42,7 +43,7 @@
     "bar_gap": 6,
     "max_height": 75,
     "min_height": 6,
-    "center_x": 620,
+    "center_x": 960,
     "bottom_y": 1010,
     "active_color": [255, 255, 255, 240],
     "dim_color": [235, 185, 130, 120]
@@ -58,12 +59,12 @@
   },
   "badges": {
     "listen": {
-      "text": "🎧 LISTEN & READ",
+      "text": "LISTEN & READ",
       "bg_color": [42, 140, 80],
       "text_color": [255, 255, 255]
     },
     "your_turn": {
-      "text": "🎙️ YOUR TURN (REPEAT OUT LOUD)",
+      "text": "YOUR TURN (REPEAT OUT LOUD)",
       "bg_color": [235, 85, 25],
       "text_color": [255, 255, 255]
     },
@@ -72,7 +73,7 @@
       "text_color": [255, 255, 255]
     },
     "free_answer": {
-      "text": "💬 ANSWER ALOUD NOW",
+      "text": "ANSWER ALOUD NOW",
       "bg_color": [170, 50, 180],
       "text_color": [255, 255, 255]
     }

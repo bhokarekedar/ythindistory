@@ -2351,9 +2351,10 @@ def _run_shadowing_job_worker(job_id: str, script_data: dict, preview: bool):
             shadowing_jobs[job_id]["status_text"] = f"Rendering frames: {rendered}/{total} ({pct:.0f}%)"
 
         pipeline = ShadowingVideoPipeline()
+        backend_dir = Path(__file__).resolve().parent
         results = pipeline.run(
             script_input=script_data,
-            output_dir=str(Path("output").resolve()),
+            output_dir=str(backend_dir / "output"),
             preview=preview,
             progress_callback=progress_cb,
         )

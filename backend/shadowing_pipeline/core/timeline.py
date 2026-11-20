@@ -61,13 +61,14 @@ class TimelineBuilder:
         default_repeat = script.settings.default_repeat
         teacher_voice = script.settings.voice_teacher
         speaker_b_voice = script.settings.voice_speaker_b
+        speed = getattr(script.settings, "speed", 0.92)
 
         for seg_idx, segment in enumerate(segments_to_process):
             if isinstance(segment, NarrationSegment):
                 voice = segment.voice or teacher_voice
                 audio_path, raw_timings, dur = (
                     self.audio_provider.get_audio_and_transcription(
-                        segment.text, voice
+                        segment.text, voice, speed=speed
                     )
                 )
                 aligned_words = align_script_words(segment.text, raw_timings, dur)
@@ -81,7 +82,7 @@ class TimelineBuilder:
                     sub_type="narration",
                     text=segment.text,
                     speaker="Teacher",
-                    badge_text="🎧 LISTEN & READ",
+                    badge_text="LISTEN & READ",
                     audio_path=audio_path,
                     word_timings=aligned_words,
                 )
@@ -93,7 +94,7 @@ class TimelineBuilder:
                 voice = segment.voice or teacher_voice
                 audio_path, raw_timings, dur = (
                     self.audio_provider.get_audio_and_transcription(
-                        segment.text, voice
+                        segment.text, voice, speed=speed
                     )
                 )
                 aligned_words = align_script_words(segment.text, raw_timings, dur)
@@ -110,7 +111,7 @@ class TimelineBuilder:
                     sub_type="section_title",
                     text=segment.text,
                     speaker="Teacher",
-                    badge_text="📌 SECTION",
+                    badge_text="SECTION",
                     audio_path=audio_path,
                     word_timings=aligned_words,
                 )
@@ -130,7 +131,7 @@ class TimelineBuilder:
                 # Generate TTS ONCE and reuse across all repeats
                 audio_path, raw_timings, dur = (
                     self.audio_provider.get_audio_and_transcription(
-                        segment.text, voice
+                        segment.text, voice, speed=speed
                     )
                 )
                 aligned_words = align_script_words(segment.text, raw_timings, dur)
@@ -147,7 +148,7 @@ class TimelineBuilder:
                         sub_type="shadow_speech",
                         text=segment.text,
                         speaker="Teacher",
-                        badge_text=f"🎧 LISTEN & READ ({r}/{repeat_count})",
+                        badge_text=f"LISTEN & READ ({r}/{repeat_count})",
                         audio_path=audio_path,
                         word_timings=aligned_words,
                         repeat_index=r,
@@ -167,7 +168,7 @@ class TimelineBuilder:
                         sub_type="shadow_silence",
                         text=segment.text,
                         speaker="You",
-                        badge_text=f"🎙️ YOUR TURN ({r}/{repeat_count})",
+                        badge_text=f"YOUR TURN ({r}/{repeat_count})",
                         audio_path=None,
                         word_timings=aligned_words,
                         repeat_index=r,
@@ -190,7 +191,7 @@ class TimelineBuilder:
 
                 audio_path, raw_timings, dur = (
                     self.audio_provider.get_audio_and_transcription(
-                        segment.text, voice
+                        segment.text, voice, speed=speed
                     )
                 )
                 aligned_words = align_script_words(segment.text, raw_timings, dur)
@@ -204,7 +205,7 @@ class TimelineBuilder:
                     sub_type="dialogue",
                     text=segment.text,
                     speaker=segment.speaker,
-                    badge_text=f"🗣️ {segment.speaker.upper()}",
+                    badge_text=segment.speaker.upper(),
                     audio_path=audio_path,
                     word_timings=aligned_words,
                 )
@@ -216,7 +217,7 @@ class TimelineBuilder:
                 voice = segment.voice or teacher_voice
                 audio_path, raw_timings, dur = (
                     self.audio_provider.get_audio_and_transcription(
-                        segment.text, voice
+                        segment.text, voice, speed=speed
                     )
                 )
                 aligned_words = align_script_words(segment.text, raw_timings, dur)
@@ -250,7 +251,7 @@ class TimelineBuilder:
                     sub_type="free_answer_silence",
                     text=segment.text,
                     speaker="You",
-                    badge_text="💬 ANSWER ALOUD NOW",
+                    badge_text="ANSWER ALOUD NOW",
                     audio_path=None,
                     word_timings=aligned_words,
                 )

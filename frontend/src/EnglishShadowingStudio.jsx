@@ -7,8 +7,9 @@ const sampleScript = {
   "settings": {
     "buffer_seconds": 1.5,
     "default_repeat": 2,
-    "voice_teacher": "Samantha",
-    "voice_speaker_b": "Alex"
+    "voice_teacher": "af_heart",
+    "voice_speaker_b": "am_adam",
+    "speed": 0.92
   },
   "segments": [
     {
@@ -71,6 +72,24 @@ export default function EnglishShadowingStudio() {
   const handleLoadSample = () => {
     setScriptJson(JSON.stringify(sampleScript, null, 2));
     setErrorMsg('');
+  };
+
+  const setKokoroVoice = (teacherVoice) => {
+    try {
+      const parsed = JSON.parse(scriptJson);
+      parsed.settings = parsed.settings || {};
+      parsed.settings.voice_teacher = teacherVoice;
+      setScriptJson(JSON.stringify(parsed, null, 2));
+    } catch (e) { }
+  };
+
+  const setKokoroSpeed = (spd) => {
+    try {
+      const parsed = JSON.parse(scriptJson);
+      parsed.settings = parsed.settings || {};
+      parsed.settings.speed = spd;
+      setScriptJson(JSON.stringify(parsed, null, 2));
+    } catch (e) { }
   };
 
   const handleStartGeneration = async (preview = false) => {
@@ -237,6 +256,49 @@ export default function EnglishShadowingStudio() {
             <span style={{ color: '#a1a1aa', fontSize: '12px' }}>
               narration • section_title • shadow • dialogue • free_answer
             </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', background: '#27272a', padding: '8px 12px', borderRadius: '8px' }}>
+            <span style={{ fontSize: '12px', color: '#fb923c', fontWeight: 'bold' }}>Kokoro Teacher:</span>
+            {['af_heart', 'af_bella', 'af_nicole', 'af_sarah', 'bf_emma'].map(v => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setKokoroVoice(v)}
+                style={{
+                  background: scriptJson.includes(`"voice_teacher": "${v}"`) ? '#ea580c' : '#3f3f46',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                {v}
+              </button>
+            ))}
+            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold', marginLeft: '6px' }}>Speed:</span>
+            {[0.90, 0.92, 1.0].map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setKokoroSpeed(s)}
+                style={{
+                  background: scriptJson.includes(`"speed": ${s}`) ? '#0284c7' : '#3f3f46',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                {s}x
+              </button>
+            ))}
           </div>
 
           <textarea
