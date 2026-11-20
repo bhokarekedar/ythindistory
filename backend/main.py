@@ -1025,6 +1025,17 @@ def cleanup_all():
                 cleared.append(f"output/{item}")
             except Exception as e:
                 print(f"Error deleting {p}: {e}")
+
+    # Also clear shadowing audio cache
+    shadowing_cache = Path(__file__).resolve().parent / "shadowing_pipeline" / "assets" / "audio_cache"
+    if shadowing_cache.exists():
+        for item in shadowing_cache.iterdir():
+            try:
+                if item.is_file():
+                    item.unlink(missing_ok=True)
+                    cleared.append(f"audio_cache/{item.name}")
+            except Exception as e:
+                print(f"Error deleting cache item {item}: {e}")
                 
     return {"status": "success", "cleared": cleared}
 

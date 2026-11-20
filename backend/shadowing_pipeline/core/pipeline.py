@@ -224,6 +224,21 @@ class ShadowingVideoPipeline:
                 print(f"⚠️ Auto-upload to YouTube encountered an error: {e}")
                 result_dict["youtube_upload_error"] = str(e)
 
+        # 7. Automatically clean up intermediate audio cache & temp files to free disk space
+        try:
+            import shutil
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                print(f"🗑️ Cleaned up temporary audio files: {temp_dir}")
+            cache_dir = getattr(self.audio_provider, "cache_dir", None)
+            if cache_dir and cache_dir.exists():
+                for item in cache_dir.iterdir():
+                    if item.is_file():
+                        item.unlink(missing_ok=True)
+                print(f"🗑️ Cleaned up audio cache: {cache_dir}")
+        except Exception as cleanup_err:
+            print(f"⚠️ Note: Error during post-render cache cleanup: {cleanup_err}")
+
         return result_dict
 
     def export_metadata_only(
